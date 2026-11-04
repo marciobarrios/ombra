@@ -15,15 +15,15 @@ pnpm dev
 
 The docs app serves the home page and the spike at <http://127.0.0.1:3000/spike>.
 
-| Script | What it does |
-| --- | --- |
-| `pnpm dev` | Next.js dev server for `apps/docs` |
-| `pnpm build` | Registry JSON, then the Next.js production build |
-| `pnpm lint` | Oxlint, including the vendored anti-slop plugin |
-| `pnpm format` / `pnpm format:check` | Oxfmt |
-| `pnpm typecheck` | `next typegen` and `tsc` |
-| `pnpm test:e2e` | Playwright (Chromium, WebKit, and mobile device profiles) |
-| `pnpm registry:build` | `shadcn build` into `apps/docs/public/r` |
+| Script                              | What it does                                              |
+| ----------------------------------- | --------------------------------------------------------- |
+| `pnpm dev`                          | Next.js dev server for `apps/docs`                        |
+| `pnpm build`                        | Registry JSON, then the Next.js production build          |
+| `pnpm lint`                         | Oxlint, including the vendored anti-slop plugin           |
+| `pnpm format` / `pnpm format:check` | Oxfmt                                                     |
+| `pnpm typecheck`                    | `next typegen` and `tsc`                                  |
+| `pnpm test:e2e`                     | Playwright (Chromium, WebKit, and mobile device profiles) |
+| `pnpm registry:build`               | `shadcn build` into `apps/docs/public/r`                  |
 
 `pnpm test:e2e` expects a production build already, because Playwright starts `next start`.
 

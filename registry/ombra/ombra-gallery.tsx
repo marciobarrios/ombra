@@ -103,6 +103,27 @@ function EngineSwitch({
   );
 }
 
+function FrameReadout({
+  longest,
+  dropped,
+  engine,
+}: {
+  longest: string;
+  dropped: string;
+  engine: MorphEngine;
+}) {
+  return (
+    <div
+      data-slot="ombra-readout"
+      className="pointer-events-none w-max rounded-md bg-black/80 px-3 py-2 font-mono text-[11px] leading-4 text-white"
+    >
+      <div>Longest frame {longest} ms</div>
+      <div>Dropped (&gt;33 ms) {dropped}</div>
+      <div>Engine {engine}</div>
+    </div>
+  );
+}
+
 function IconButton({
   label,
   className,
@@ -165,6 +186,8 @@ export function OmbraGallery({
   const [animEpoch, setAnimEpoch] = useState(0);
   const [readout, setReadout] = useState<FrameSample | null>(null);
   const [sharpId, setSharpId] = useState<string | null>(null);
+  const [stripOverflows, setStripOverflows] = useState(false);
+  const [releaseScroll, setReleaseScroll] = useState(false);
 
   const triggers = useRef<Array<HTMLButtonElement | null>>([]);
   const images = useRef<Array<HTMLImageElement | null>>([]);
@@ -266,14 +289,49 @@ export function OmbraGallery({
 
     if (!open || !strip) return;
 
+    const row = strip.querySelector<HTMLElement>("[data-slot=ombra-thumbnails-row]");
+
+    if (!row) return;
+
+    const measure = () => {
+      const style = getComputedStyle(row);
+
+      const pad = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
+
+      const content = row.scrollWidth - pad;
+
+      setStripOverflows((current) => {
+        const next = content > strip.clientWidth + 1;
+
+        return current === next ? current : next;
+      });
+    };
+
+    measure();
+
+    const observer = new ResizeObserver(measure);
+
+    observer.observe(strip);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [open, phase, items.length, stripOverflows]);
+
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+
+    if (!open || !strip) return;
+
     const current = strip.querySelector<HTMLElement>("[data-active=true]");
 
-    current?.scrollIntoView({
-      inline: "center",
-      block: "nearest",
-      behavior: reduced ? "auto" : "smooth",
-    });
-  }, [index, open, reduced]);
+    if (!current) return;
+
+    const delta = current.getBoundingClientRect().left - strip.getBoundingClientRect().left;
+    const left = strip.scrollLeft + delta - (strip.clientWidth - current.clientWidth) / 2;
+
+    strip.scrollTo({ left: Math.max(0, left), behavior: reduced ? "auto" : "smooth" });
+  }, [index, open, phase, reduced, stripOverflows]);
 
   useLayoutEffect(() => {
     const track = trackRef.current;
@@ -726,6 +784,8 @@ export function OmbraGallery({
     const thumb = trigger ? imageChild(trigger) : null;
     const canMorph = trigger ? mostlyVisible(trigger) : false;
 
+    setReleaseScroll(!canMorph);
+
     if (
       driverRef.current === "vt" &&
       supportsViewTransitions() &&
@@ -826,7 +886,10 @@ export function OmbraGallery({
   return (
     <div data-slot="ombra-root" className={cn("text-[#241e18]", className)}>
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <EngineSwitch engine={engine} tone="paper" onEngineChange={onEngineChange} />
+        <div className="flex flex-col items-start gap-3">
+          <EngineSwitch engine={engine} tone="paper" onEngineChange={onEngineChange} />
+          <FrameReadout longest={longest} dropped={dropped} engine={effective} />
+        </div>
         <button
           type="button"
           aria-pressed={slow}
@@ -870,18 +933,9 @@ export function OmbraGallery({
         viewer shows the full frame.
       </p>
 
-      <div
-        data-slot="ombra-readout"
-        className="pointer-events-none fixed bottom-3 left-3 z-[90] rounded-md bg-black/80 px-3 py-2 font-mono text-[11px] leading-4 text-white"
-      >
-        <div>Longest frame {longest} ms</div>
-        <div>Dropped (&gt;33 ms) {dropped}</div>
-        <div>Engine {effective}</div>
-      </div>
-
       <Dialog.Root
         open={open}
-        modal={phase === "closing" ? false : true}
+        modal={phase === "closing" && releaseScroll ? false : true}
         actionsRef={actionsRef}
         onOpenChange={(next, details) => {
           if (next) return;
@@ -910,21 +964,24 @@ export function OmbraGallery({
             finalFocus={() => triggers.current[indexRef.current] ?? true}
             onKeyDown={onKeyDown}
             className={cn(
-              "fixed inset-0 z-50 flex h-dvh w-full flex-col bg-transparent text-white outline-none",
+              "fixed inset-0 z-50 flex h-dvh w-full flex-col overflow-hidden bg-transparent text-white outline-none",
               phase === "closing" && "pointer-events-none",
             )}
           >
             <Dialog.Title className="sr-only">{active?.alt ?? "Photo"}</Dialog.Title>
             <Dialog.Description className="sr-only">{active?.caption ?? ""}</Dialog.Description>
-            <div data-slot="ombra-sheet" className="flex min-h-0 flex-1 flex-col">
+            <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
               <header className="flex flex-col gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-                <div className="flex items-center justify-between gap-3">
-                  <p
-                    data-slot="ombra-counter"
-                    className="font-mono text-xs tracking-wide text-white/80"
-                  >
-                    {index + 1} / {count}
-                  </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 flex-col items-start gap-2">
+                    <p
+                      data-slot="ombra-counter"
+                      className="font-mono text-xs tracking-wide text-white/80"
+                    >
+                      {index + 1} / {count}
+                    </p>
+                    <FrameReadout longest={longest} dropped={dropped} engine={effective} />
+                  </div>
                   <div className="flex items-center gap-1">
                     <IconButton
                       label="Zoom out"
@@ -945,58 +1002,62 @@ export function OmbraGallery({
                 <EngineSwitch engine={engine} tone="ink" onEngineChange={onEngineChange} />
               </header>
 
-              <div className="relative min-h-0 flex-1">
-                <div
-                  ref={trackRef}
-                  data-slot="ombra-track"
-                  className="relative flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overscroll-x-contain px-[7%] touch-pan-x"
-                >
-                  {items.map((item, itemIndex) => {
-                    const near = Math.abs(itemIndex - index) <= 1;
-                    const source = sharpId === item.id ? item.src : item.thumbSrc;
+              <div className="relative min-h-0 min-w-0 flex-1">
+                <div className="@container h-full min-w-0">
+                  <div
+                    ref={trackRef}
+                    data-slot="ombra-track"
+                    className="flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  >
+                    <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
+                    {items.map((item, itemIndex) => {
+                      const near = Math.abs(itemIndex - index) <= 1;
+                      const source = sharpId === item.id ? item.src : item.thumbSrc;
 
-                    return (
-                      <div
-                        key={item.id}
-                        ref={(node) => {
-                          slides.current[itemIndex] = node;
-                        }}
-                        data-slot="ombra-slide"
-                        data-active={itemIndex === index ? "true" : "false"}
-                        role="group"
-                        aria-roledescription="slide"
-                        aria-label={`${itemIndex + 1} of ${count}`}
-                        className="flex w-[86%] shrink-0 snap-center snap-always items-center justify-center"
-                      >
+                      return (
                         <div
-                          ref={itemIndex === index ? layerRef : undefined}
-                          data-slot="ombra-zoom"
-                          className="flex h-full w-full items-center justify-center"
+                          key={item.id}
+                          ref={(node) => {
+                            slides.current[itemIndex] = node;
+                          }}
+                          data-slot="ombra-slide"
+                          data-active={itemIndex === index ? "true" : "false"}
+                          role="group"
+                          aria-roledescription="slide"
+                          aria-label={`${itemIndex + 1} of ${count}`}
+                          className="flex w-[86cqi] shrink-0 snap-center snap-always items-center justify-center"
                         >
-                          {near ? (
-                            <img
-                              ref={(node) => {
-                                images.current[itemIndex] = node;
-                              }}
-                              data-slot="ombra-image"
-                              data-active={itemIndex === index ? "true" : "false"}
-                              src={source}
-                              srcSet={item.srcSet}
-                              sizes="100vw"
-                              alt=""
-                              width={item.width}
-                              height={item.height}
-                              draggable={false}
-                              fetchPriority={itemIndex === index ? "high" : "low"}
-                              className="max-h-full max-w-full object-contain"
-                            />
-                          ) : (
-                            <div className="h-3/4 w-full bg-white/5" />
-                          )}
+                          <div
+                            ref={itemIndex === index ? layerRef : undefined}
+                            data-slot="ombra-zoom"
+                            className="flex h-full w-full items-center justify-center"
+                          >
+                            {near ? (
+                              <img
+                                ref={(node) => {
+                                  images.current[itemIndex] = node;
+                                }}
+                                data-slot="ombra-image"
+                                data-active={itemIndex === index ? "true" : "false"}
+                                src={source}
+                                srcSet={item.srcSet}
+                                sizes="100vw"
+                                alt=""
+                                width={item.width}
+                                height={item.height}
+                                draggable={false}
+                                fetchPriority={itemIndex === index ? "high" : "low"}
+                                className="max-h-full max-w-full object-contain"
+                              />
+                            ) : (
+                              <div className="h-3/4 w-full bg-white/5" />
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                    <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
+                  </div>
                 </div>
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2">
                   <IconButton
@@ -1029,29 +1090,41 @@ export function OmbraGallery({
                 <div
                   ref={stripRef}
                   data-slot="ombra-thumbnails"
-                  className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1"
+                  data-overflowing={stripOverflows ? "true" : "false"}
+                  className={cn(
+                    "overflow-x-auto overflow-y-hidden py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                    stripOverflows && "snap-x snap-mandatory",
+                  )}
                 >
-                  {items.map((item, itemIndex) => {
-                    const selected = itemIndex === index;
+                  <div
+                    data-slot="ombra-thumbnails-row"
+                    className={cn(
+                      "mx-auto flex w-max gap-2",
+                      stripOverflows ? "px-[max(0.25rem,calc(50%-1.375rem))]" : "px-1",
+                    )}
+                  >
+                    {items.map((item, itemIndex) => {
+                      const selected = itemIndex === index;
 
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        data-slot="ombra-thumbnail"
-                        data-active={selected ? "true" : "false"}
-                        aria-current={selected ? "true" : undefined}
-                        aria-label={item.alt}
-                        onClick={() => goTo(itemIndex, reduced ? "auto" : "smooth")}
-                        className={cn(
-                          "size-11 shrink-0 snap-center overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
-                          selected ? "outline outline-2 outline-white" : "opacity-60",
-                        )}
-                      >
-                        <img src={item.thumbSrc} alt="" className="h-full w-full object-cover" />
-                      </button>
-                    );
-                  })}
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          data-slot="ombra-thumbnail"
+                          data-active={selected ? "true" : "false"}
+                          aria-current={selected ? "true" : undefined}
+                          aria-label={item.alt}
+                          onClick={() => goTo(itemIndex, reduced ? "auto" : "smooth")}
+                          className={cn(
+                            "size-11 shrink-0 snap-center overflow-hidden border-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
+                            selected ? "border-white" : "border-transparent opacity-60",
+                          )}
+                        >
+                          <img src={item.thumbSrc} alt="" className="h-full w-full object-cover" />
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </footer>
             </div>

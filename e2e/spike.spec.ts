@@ -60,6 +60,131 @@ test.describe("spike viewer", () => {
     await expect(viewer).toHaveAttribute("data-zoomed", "false");
   });
 
+  test("centers the slide and the thumbnail strip", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/spike?engine=fade");
+
+    const gutter = () =>
+      page.evaluate(() => window.innerWidth - document.documentElement.clientWidth);
+
+    const gutterBefore = await gutter();
+
+    await page.getByRole("button", { name: "Granite cliff rising over a sunlit meadow" }).click();
+
+    const viewer = page.locator("[data-slot=ombra-viewer]");
+
+    await expect(viewer).toHaveAttribute("data-phase", "open");
+    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("12 / 12");
+
+    const layout = () =>
+      page.evaluate(() => {
+        const track = document.querySelector("[data-slot=ombra-track]");
+        const slide = document.querySelector("[data-slot=ombra-slide][data-active=true]");
+        const strip = document.querySelector("[data-slot=ombra-thumbnails]");
+        const row = document.querySelector("[data-slot=ombra-thumbnails-row]");
+        const thumb = document.querySelector("[data-slot=ombra-thumbnail][data-active=true]");
+        const popup = document.querySelector("[data-slot=ombra-viewer]");
+
+        if (
+          !(track instanceof HTMLElement) ||
+          !(slide instanceof HTMLElement) ||
+          !(strip instanceof HTMLElement) ||
+          !(row instanceof HTMLElement) ||
+          !(thumb instanceof HTMLElement) ||
+          !(popup instanceof HTMLElement)
+        ) {
+          return null;
+        }
+
+        const trackRect = track.getBoundingClientRect();
+        const slideRect = slide.getBoundingClientRect();
+        const stripRect = strip.getBoundingClientRect();
+        const rowRect = row.getBoundingClientRect();
+        const thumbRect = thumb.getBoundingClientRect();
+        const thumbs = row.querySelectorAll("[data-slot=ombra-thumbnail]");
+        let content = 0;
+
+        for (const item of thumbs) {
+          content += item.getBoundingClientRect().width;
+        }
+
+        if (thumbs.length > 1) content += 8 * (thumbs.length - 1);
+
+        const readout = popup.querySelector("[data-slot=ombra-readout]");
+        const readoutRect = readout instanceof HTMLElement ? readout.getBoundingClientRect() : null;
+
+        return {
+          slideDelta: Math.abs(
+            slideRect.left + slideRect.width / 2 - (trackRect.left + trackRect.width / 2),
+          ),
+          fits: content <= strip.clientWidth + 1,
+          rowDelta: Math.abs(
+            rowRect.left + rowRect.width / 2 - (stripRect.left + stripRect.width / 2),
+          ),
+          thumbDelta: Math.abs(
+            thumbRect.left + thumbRect.width / 2 - (stripRect.left + stripRect.width / 2),
+          ),
+          thumbInside:
+            thumbRect.top >= stripRect.top - 1 &&
+            thumbRect.bottom <= stripRect.bottom + 1 &&
+            thumbRect.left >= stripRect.left - 1 &&
+            thumbRect.right <= stripRect.right + 1,
+          readoutClearsStrip: readoutRect === null || readoutRect.bottom <= stripRect.top,
+          trackBar: track.offsetWidth - track.clientWidth,
+          stripBar: strip.offsetHeight - strip.clientHeight,
+          popupOverflows: popup.scrollHeight > popup.clientHeight + 1,
+          trackScrollbar: getComputedStyle(track).scrollbarWidth,
+          stripScrollbar: getComputedStyle(strip).scrollbarWidth,
+        };
+      });
+
+    await expect.poll(async () => (await layout())?.slideDelta ?? 99).toBeLessThan(3);
+    await expect.poll(async () => (await layout())?.thumbInside).toBe(true);
+
+    const openLayout = await layout();
+
+    if (!openLayout) throw new Error("viewer layout was not measurable");
+    expect(openLayout.readoutClearsStrip).toBe(true);
+    expect(openLayout.trackBar).toBe(0);
+    expect(openLayout.stripBar).toBe(0);
+    expect(openLayout.popupOverflows).toBe(false);
+    expect(openLayout.trackScrollbar).toBe("none");
+    expect(openLayout.stripScrollbar).toBe("none");
+
+    if (openLayout.fits) expect(openLayout.rowDelta).toBeLessThan(2);
+    else expect(openLayout.thumbDelta).toBeLessThan(3);
+
+    const reach = await page.locator("[data-slot=ombra-thumbnails]").evaluate((node) => {
+      const thumbs = node.querySelectorAll("[data-slot=ombra-thumbnail]");
+      const first = thumbs[0];
+      const last = thumbs[thumbs.length - 1];
+
+      if (!(first instanceof HTMLElement) || !(last instanceof HTMLElement)) return null;
+
+      node.scrollLeft = 0;
+
+      const start = first.getBoundingClientRect().left - node.getBoundingClientRect().left;
+
+      node.scrollLeft = node.scrollWidth;
+
+      const end = node.getBoundingClientRect().right - last.getBoundingClientRect().right;
+
+      return { start, end };
+    });
+
+    expect(reach?.start).toBeGreaterThanOrEqual(-1);
+    expect(reach?.end).toBeGreaterThanOrEqual(-1);
+
+    await page.keyboard.press("Home");
+    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("1 / 12");
+    await expect.poll(async () => (await layout())?.slideDelta ?? 99).toBeLessThan(3);
+
+    expect(await gutter()).toBe(gutterBefore);
+    await page.keyboard.press("Escape");
+    await expect(viewer).toBeHidden();
+    expect(await gutter()).toBe(gutterBefore);
+  });
+
   test("escape during a slow flip still closes", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/spike?engine=flip&slow=1");
