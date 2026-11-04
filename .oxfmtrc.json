@@ -1,0 +1,11 @@
+{
+  "ignorePatterns": [
+    "tools/oxlint/anti-slop/**",
+    "pnpm-lock.yaml",
+    "**/.next/**",
+    "**/public/**",
+    "playwright-report/**",
+    "test-results/**",
+    "apps/docs/next-env.d.ts"
+  ]
+}
