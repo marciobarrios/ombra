@@ -317,6 +317,43 @@ test.describe("spike viewer", () => {
     }
   });
 
+  test("does not flash the scrim when a flip close finishes", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.evaluate(() => {
+      const tick = () => {
+        const backdrop = document.querySelector("[data-slot=ombra-backdrop]");
+
+        const opacity =
+          backdrop instanceof HTMLElement ? Number(getComputedStyle(backdrop).opacity) : -1;
+
+        const previous = document.documentElement.dataset.scrim ?? "";
+        const faded = previous.includes("low");
+        const marker = opacity < 0 ? "gone" : opacity < 0.08 ? "low" : faded ? "back" : "up";
+
+        if (!previous.endsWith(marker)) {
+          document.documentElement.dataset.scrim = previous ? `${previous} ${marker}` : marker;
+        }
+
+        if (marker !== "gone") requestAnimationFrame(tick);
+      };
+
+      requestAnimationFrame(tick);
+    });
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.dataset.scrim))
+      .toContain("gone");
+
+    const trace = await page.evaluate(() => document.documentElement.dataset.scrim ?? "");
+
+    expect(trace).toContain("low");
+    expect(trace).not.toContain("back");
+  });
+
   test("escape during a slow flip still closes", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/spike?engine=flip&slow=1");
