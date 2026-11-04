@@ -185,6 +185,66 @@ test.describe("spike viewer", () => {
     expect(await gutter()).toBe(gutterBefore);
   });
 
+  test("keeps every slide visible while the track scrolls", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/spike?engine=fade");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+
+    const images = page.locator("[data-slot=ombra-track] [data-slot=ombra-image]");
+
+    await expect(images).toHaveCount(12);
+    await expect
+      .poll(() =>
+        images.evaluateAll((nodes) =>
+          nodes.every(
+            (node) => node instanceof HTMLImageElement && node.complete && node.naturalWidth > 0,
+          ),
+        ),
+      )
+      .toBe(true);
+
+    await page.locator("[data-slot=ombra-track]").evaluate((track) => {
+      if (!(track instanceof HTMLElement)) return;
+
+      const slide = track.querySelectorAll("[data-slot=ombra-slide]")[6];
+
+      if (!(slide instanceof HTMLElement)) return;
+
+      const delta = slide.getBoundingClientRect().left - track.getBoundingClientRect().left;
+
+      track.scrollLeft += delta - (track.clientWidth - slide.clientWidth) / 2;
+    });
+
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const track = document.querySelector("[data-slot=ombra-track]");
+          const slide = document.querySelectorAll("[data-slot=ombra-slide]")[6];
+
+          if (!(track instanceof HTMLElement) || !(slide instanceof HTMLElement)) return false;
+
+          const image = slide.querySelector("img");
+
+          if (!(image instanceof HTMLImageElement) || image.naturalWidth === 0) return false;
+
+          const trackRect = track.getBoundingClientRect();
+          const imageRect = image.getBoundingClientRect();
+          const center = trackRect.left + trackRect.width / 2;
+          const imageCenter = imageRect.left + imageRect.width / 2;
+
+          return (
+            Math.abs(imageCenter - center) < 3 && imageRect.width > 40 && imageRect.height > 40
+          );
+        }),
+      )
+      .toBe(true);
+    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("7 / 12");
+    await expect(page.locator("[data-slot=ombra-caption]")).toHaveText(
+      "Night, and the ridge still holding snow.",
+    );
+  });
+
   test("escape during a slow flip still closes", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/spike?engine=flip&slow=1");
