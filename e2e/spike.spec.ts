@@ -245,6 +245,78 @@ test.describe("spike viewer", () => {
     );
   });
 
+  test("keeps a landscape photo at the size it opened", async ({ page }) => {
+    await page.setViewportSize({ width: 2560, height: 1440 });
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip");
+    await page.evaluate(() => {
+      const tick = () => {
+        const flight = document.querySelector("[data-slot=ombra-flight]");
+
+        if (flight instanceof HTMLElement) {
+          const rect = flight.getBoundingClientRect();
+
+          document.documentElement.dataset.flight = `${rect.width},${rect.height}`;
+        }
+
+        requestAnimationFrame(tick);
+      };
+
+      requestAnimationFrame(tick);
+    });
+    await page
+      .getByRole("button", { name: "Wooden boats tied beside a cabin on a mountain lake" })
+      .click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+
+    const landed = () =>
+      page.evaluate(() => {
+        const recorded = document.documentElement.dataset.flight ?? "";
+        const [flightWidthText, flightHeightText] = recorded.split(",");
+        const flightWidth = Number(flightWidthText);
+        const flightHeight = Number(flightHeightText);
+        const image = document.querySelector("[data-slot=ombra-image][data-active=true]");
+        const slide = document.querySelector("[data-slot=ombra-slide][data-active=true]");
+
+        if (
+          !(image instanceof HTMLImageElement) ||
+          !(slide instanceof HTMLElement) ||
+          image.naturalWidth <= 0
+        ) {
+          return null;
+        }
+
+        const rect = image.getBoundingClientRect();
+        const slideRect = slide.getBoundingClientRect();
+        const scale = Math.min(rect.width / image.naturalWidth, rect.height / image.naturalHeight);
+        const aspect = image.naturalWidth / image.naturalHeight;
+        const height = Math.min(slideRect.height, slideRect.width / aspect);
+        const width = height * aspect;
+
+        return {
+          flightWidth: Number.isFinite(flightWidth) ? flightWidth : 0,
+          flightHeight: Number.isFinite(flightHeight) ? flightHeight : 0,
+          paintWidth: image.naturalWidth * scale,
+          paintHeight: image.naturalHeight * scale,
+          containWidth: width,
+          containHeight: height,
+        };
+      });
+
+    await expect.poll(async () => (await landed())?.paintWidth ?? 0).toBeGreaterThan(100);
+
+    const settled = await landed();
+
+    if (!settled) throw new Error("open image was not measured");
+    expect(Math.abs(settled.paintWidth - settled.containWidth)).toBeLessThan(2);
+    expect(Math.abs(settled.paintHeight - settled.containHeight)).toBeLessThan(2);
+
+    if (settled.flightWidth > 0) {
+      expect(Math.abs(settled.paintWidth - settled.flightWidth)).toBeLessThan(3);
+      expect(Math.abs(settled.paintHeight - settled.flightHeight)).toBeLessThan(3);
+    }
+  });
+
   test("escape during a slow flip still closes", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/spike?engine=flip&slow=1");
