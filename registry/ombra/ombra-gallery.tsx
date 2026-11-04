@@ -1033,12 +1033,12 @@ export function OmbraGallery({
                           role="group"
                           aria-roledescription="slide"
                           aria-label={`${itemIndex + 1} of ${count}`}
-                          className="flex w-[86cqi] shrink-0 snap-center snap-always items-center justify-center bg-black"
+                          className="flex h-full min-h-0 w-[86cqi] shrink-0 snap-center snap-always items-center justify-center bg-black"
                         >
                           <div
                             ref={itemIndex === index ? layerRef : undefined}
                             data-slot="ombra-zoom"
-                            className="flex h-full w-full items-center justify-center"
+                            className="flex h-full min-h-0 w-full min-w-0 items-center justify-center"
                           >
                             <img
                               ref={(node) => {
@@ -1054,7 +1054,7 @@ export function OmbraGallery({
                               height={item.height}
                               draggable={false}
                               fetchPriority={itemIndex === index ? "high" : "low"}
-                              className="max-h-full max-w-full object-contain"
+                              className="h-full max-h-full min-h-0 w-full max-w-full min-w-0 object-contain"
                             />
                           </div>
                         </div>
