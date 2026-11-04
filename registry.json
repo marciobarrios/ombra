@@ -15,6 +15,7 @@
         { "path": "registry/ombra/types.ts", "type": "registry:lib" },
         { "path": "registry/ombra/geometry.ts", "type": "registry:lib" },
         { "path": "registry/ombra/morph.ts", "type": "registry:lib" },
+        { "path": "registry/ombra/spring.ts", "type": "registry:lib" },
         { "path": "registry/ombra/frame-sampler.ts", "type": "registry:lib" },
         { "path": "registry/ombra/use-reduced-motion.ts", "type": "registry:hook" },
         { "path": "registry/ombra/use-pull.ts", "type": "registry:hook" },
@@ -30,6 +31,7 @@
         { "path": "registry/ombra/types.ts", "type": "registry:lib" },
         { "path": "registry/ombra/geometry.ts", "type": "registry:lib" },
         { "path": "registry/ombra/morph.ts", "type": "registry:lib" },
+        { "path": "registry/ombra/spring.ts", "type": "registry:lib" },
         { "path": "registry/ombra/frame-sampler.ts", "type": "registry:lib" }
       ]
     },
@@ -38,7 +40,10 @@
       "type": "registry:hook",
       "title": "Ombra zoom",
       "description": "Pinch, double-tap, and ctrl+wheel zoom with scroll-snap hand-off.",
-      "files": [{ "path": "registry/ombra/use-zoom.ts", "type": "registry:hook" }]
+      "files": [
+        { "path": "registry/ombra/use-zoom.ts", "type": "registry:hook" },
+        { "path": "registry/ombra/spring.ts", "type": "registry:lib" }
+      ]
     }
   ]
 }

@@ -79,8 +79,10 @@ export function playFlight(
   from: FlipPose,
   to: FlipPose,
   duration: number,
+  easing: string = MORPH_EASING,
 ): Promise<boolean> {
   flight.animation?.cancel();
+  flight.element.dataset.easing = easing;
 
   if (duration <= 0) {
     flight.element.style.transform = to.transform;
@@ -94,7 +96,7 @@ export function playFlight(
       { transform: from.transform, clipPath: from.clipPath },
       { transform: to.transform, clipPath: to.clipPath },
     ],
-    { duration, easing: MORPH_EASING, fill: "forwards" },
+    { duration, easing, fill: "forwards" },
   );
 
   flight.animation = animation;

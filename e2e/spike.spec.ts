@@ -362,4 +362,170 @@ test.describe("spike viewer", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toBeHidden({ timeout: 8_000 });
   });
+
+  test("uses a spring easing when the toggle is on", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip&slow=1&spring=1");
+    await expect(page.getByRole("button", { name: "Spring" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    const flight = page.locator("[data-slot=ombra-flight]");
+
+    await page.getByRole("button", { name: firstPhoto }).click();
+
+    let easing = "";
+
+    await expect
+      .poll(async () => {
+        easing = (await flight.getAttribute("data-easing")) ?? "";
+
+        return easing;
+      })
+      .not.toBe("");
+
+    const supportsLinear = await page.evaluate(() =>
+      CSS.supports("animation-timing-function", "linear(0, 1)"),
+    );
+
+    expect(easing?.startsWith("linear(") || easing?.startsWith("cubic-bezier(")).toBe(true);
+    expect(easing).not.toBe("cubic-bezier(0.22, 1, 0.36, 1)");
+
+    if (supportsLinear) expect(easing?.startsWith("linear(")).toBe(true);
+  });
+
+  test("keeps the cubic morph easing when spring is off", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip&slow=1");
+    await expect(page.getByRole("button", { name: "Spring" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect
+      .poll(async () => page.locator("[data-slot=ombra-flight]").getAttribute("data-easing"))
+      .toBe("cubic-bezier(0.22, 1, 0.36, 1)");
+  });
+
+  test("falls back to a cubic bezier when linear() is unsupported", async ({ page }) => {
+    await page.addInitScript(`
+      const original = CSS.supports.bind(CSS);
+      CSS.supports = function (property, value) {
+        const text = value === undefined ? String(property) : String(value);
+        if (text.includes("linear(")) return false;
+        if (value === undefined) return original(property);
+        return original(property, value);
+      };
+    `);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip&slow=1&spring=1");
+    await page.getByRole("button", { name: firstPhoto }).click();
+
+    let easing = "";
+
+    await expect
+      .poll(async () => {
+        easing = (await page.locator("[data-slot=ombra-flight]").getAttribute("data-easing")) ?? "";
+
+        return easing;
+      })
+      .toMatch(/^cubic-bezier\(/);
+
+    expect(easing?.startsWith("cubic-bezier(")).toBe(true);
+    expect(easing).not.toBe("cubic-bezier(0.22, 1, 0.36, 1)");
+    expect(easing?.includes("linear(")).toBe(false);
+  });
+
+  test("writes the spring easing onto the view transition", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=vt&spring=1&slow=1");
+    await expect(page.getByRole("radio", { name: "View Transition" })).toBeChecked();
+    await expect(page.getByRole("button", { name: "Spring" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(page.getByRole("button", { name: "Slow motion on" })).toBeVisible();
+    await page.getByRole("button", { name: firstPhoto }).click();
+
+    const supportsViewTransition = await page.evaluate(() => "startViewTransition" in document);
+
+    if (supportsViewTransition) {
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            getComputedStyle(document.documentElement).getPropertyValue("--ombra-vt-easing").trim(),
+          ),
+        )
+        .toMatch(/linear\(|cubic-bezier\(/);
+
+      const easing = await page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue("--ombra-vt-easing").trim(),
+      );
+
+      expect(easing).not.toBe("cubic-bezier(0.22, 1, 0.36, 1)");
+    } else {
+      await expect
+        .poll(async () => page.locator("[data-slot=ombra-flight]").getAttribute("data-easing"))
+        .not.toBe("cubic-bezier(0.22, 1, 0.36, 1)");
+    }
+  });
+
+  test("springs the zoom button when the toggle is on", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip&slow=1&spring=1");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.getByRole("button", { name: "Zoom in" }).click();
+
+    await expect
+      .poll(() =>
+        page
+          .locator("[data-slot=ombra-zoom]")
+          .first()
+          .evaluate((node) => {
+            const animation = node.getAnimations()[0];
+            const effect = animation?.effect;
+
+            if (!effect) return "";
+
+            return effect.getTiming().easing ?? "";
+          }),
+      )
+      .toMatch(/^linear\(|^cubic-bezier\(/);
+  });
+
+  test("keeps zoom instant when spring is off", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip&slow=1");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.getByRole("button", { name: "Zoom in" }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-zoomed", "true");
+
+    const running = await page
+      .locator("[data-slot=ombra-zoom]")
+      .first()
+      .evaluate((node) => node.getAnimations().length);
+
+    expect(running).toBe(0);
+  });
+
+  test("reduced motion stays on the fade when spring is on", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/spike?engine=flip&spring=1");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-engine", "fade");
+  });
+
+  test("the spring switch shares the address bar with the engine and slow motion", async ({
+    page,
+  }) => {
+    await page.goto("/spike?engine=flip");
+    await page.getByRole("button", { name: "Spring" }).click();
+    await expect.poll(() => page.url()).toContain("spring=1");
+    await page.getByRole("button", { name: "Slow motion" }).click();
+    await expect.poll(() => page.url()).toContain("slow=1");
+    await expect.poll(() => page.url()).toContain("engine=flip");
+  });
 });

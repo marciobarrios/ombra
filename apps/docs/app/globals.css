@@ -164,7 +164,7 @@
 ::view-transition-old(ombra-shared),
 ::view-transition-new(ombra-shared) {
   animation-duration: var(--ombra-vt-duration, 480ms);
-  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-timing-function: var(--ombra-vt-easing, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
 ::view-transition-old(ombra-shared),

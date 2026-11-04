@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
 import { MORPH_EASING } from "./morph";
+import { SNAP_SPRING, normalizeVelocity, springCurve } from "./spring";
 
 const AXIS_LOCK_PX = 8;
 const DISMISS_DISTANCE = 110;
@@ -21,17 +22,20 @@ export function usePull(
   readyRef: RefObject<boolean>,
   reduced: boolean,
   slow: boolean,
-  onDismiss: () => void,
+  spring: boolean,
+  onDismiss: (velocity: number) => void,
 ): boolean {
   const enabledRef = useRef(enabled);
   const reducedRef = useRef(reduced);
   const slowRef = useRef(slow);
+  const springRef = useRef(spring);
   const onDismissRef = useRef(onDismiss);
   const [pulling, setPulling] = useState(false);
 
   enabledRef.current = enabled;
   reducedRef.current = reduced;
   slowRef.current = slow;
+  springRef.current = spring;
   onDismissRef.current = onDismiss;
 
   useEffect(() => {
@@ -51,16 +55,29 @@ export function usePull(
       document.documentElement.style.setProperty("--ombra-pull-live", String(value));
     };
 
-    const settleBack = () => {
+    const settleBack = (pixelsPerSecond: number) => {
       const from = Number(
         document.documentElement.style.getPropertyValue("--ombra-pull-live") || "0",
       );
 
-      const duration = reducedRef.current ? 0 : slowRef.current ? 900 : 320;
+      let duration = reducedRef.current ? 0 : slowRef.current ? 900 : 320;
+      let easing: string = MORPH_EASING;
+
+      if (springRef.current && !reducedRef.current) {
+        const span = window.innerHeight * 0.62 * from;
+
+        const curve = springCurve({
+          ...SNAP_SPRING,
+          velocity: from > 0.04 ? normalizeVelocity(-pixelsPerSecond, span) : 0,
+        });
+
+        duration = slowRef.current ? curve.duration * 3 : curve.duration;
+        easing = curve.easing;
+      }
 
       const animation = document.documentElement.animate(
         [{ "--ombra-pull-live": String(from) }, { "--ombra-pull-live": "0" }],
-        { duration, easing: MORPH_EASING, fill: "forwards" },
+        { duration, easing, fill: "forwards" },
       );
 
       void animation.finished.then(
@@ -143,14 +160,14 @@ export function usePull(
       const dismiss = dy > DISMISS_DISTANCE || velocity > DISMISS_VELOCITY;
 
       if (!dismiss) {
-        if (!reducedRef.current) settleBack();
+        if (!reducedRef.current) settleBack(velocity);
 
         return;
       }
 
       if (reducedRef.current) setProgress(0);
 
-      onDismissRef.current();
+      onDismissRef.current(velocity);
     };
 
     track.addEventListener("pointerdown", onPointerDown);
