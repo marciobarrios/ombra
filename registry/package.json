@@ -1,0 +1,16 @@
+{
+  "name": "@ombra/registry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@base-ui/react": "1.9.0",
+    "cn": "^0.5.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19"
+  }
+}
