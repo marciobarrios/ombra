@@ -197,6 +197,7 @@ export function OmbraGallery({
   const layerRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
+  const backdropAnimationRef = useRef<Animation | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
   const actionsRef = useRef<{ unmount: () => void; close: () => void } | null>(null);
@@ -632,7 +633,15 @@ export function OmbraGallery({
   function fadeBackdrop(from: number, to: number, duration: number) {
     const backdrop = backdropRef.current;
 
-    if (!backdrop || duration <= 0) return;
+    if (!backdrop) return;
+
+    backdropAnimationRef.current?.cancel();
+    backdropAnimationRef.current = null;
+    // The resting CSS opacity is 1. Cancelling a fade-out drops fill:forwards and
+    // the scrim paints at full strength for a frame before the dialog unmounts.
+    backdrop.style.opacity = to === 0 && duration <= 0 ? "0" : "";
+
+    if (duration <= 0) return;
 
     const animation = backdrop.animate([{ opacity: from }, { opacity: to }], {
       duration,
@@ -640,9 +649,15 @@ export function OmbraGallery({
       fill: "forwards",
     });
 
+    backdropAnimationRef.current = animation;
+
     void animation.finished.then(
       () => {
+        if (backdropAnimationRef.current !== animation) return;
+
+        backdrop.style.opacity = to === 0 ? "0" : "";
         animation.cancel();
+        backdropAnimationRef.current = null;
       },
       () => undefined,
     );
