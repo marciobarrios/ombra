@@ -2,7 +2,7 @@
 
 The open/close engine is undecided until this page is tried on a real iPhone. The spike is the docs route `/spike`, so one Vercel project can deploy it. Nothing here is the final registry API.
 
-`?engine=vt|flip|fade` selects View Transitions, WAAPI FLIP, or a plain fade. The on-screen radios write the same query. `?slow=1` (or the Slow motion button) multiplies open, close, and pull-snap durations by three. When the OS asks for reduced motion, every engine becomes a fade and pull does not scale the sheet.
+`?engine=vt|flip|fade` selects View Transitions, WAAPI FLIP, or a plain fade. The on-screen radios write the same query. `?slow=1` (or the Slow motion button) multiplies open, close, and pull-snap durations by three. `?spring=1` (or the Spring switch beside those controls) replaces the cubic morph easing with a hand-rolled spring. It combines with the engine and with slow motion. When the OS asks for reduced motion, every engine becomes a fade and pull does not scale the sheet.
 
 The fixed readout is the longest frame and the count of frames over 33 ms during the last open or close, sampled with `requestAnimationFrame`. The first frame of a sample is ignored. Safari does not need the long-animation-frame API.
 
@@ -18,10 +18,11 @@ Open <http://127.0.0.1:3000/spike>. The grid is twelve mixed-aspect photographs.
 - Arrow keys, Home, and End move the scroll-snap track. Escape closes. Focus returns to the thumbnail of the current slide.
 - The bottom strip follows the current slide. Click a strip thumbnail to move there.
 - Zoom in / out, `+`, `-`, and `0`. Double-click or double-tap the photo. Pinch, and ctrl+wheel, zoom toward the pointer. While zoomed, horizontal wheel pans the photo and the track does not change slides. Dragging past the edge hands the extra movement to the track.
-- Drag down on the photo. A short drag springs back. Past about 110 px, or a flick faster than about 700 px/s, the drag hands off into the close morph. Pull is ignored while zoomed and while the track is still settling.
+- Drag down on the photo. A short drag springs back. Past about 110 px, or a flick faster than about 700 px/s, the drag hands off into the close morph. Pull is ignored while zoomed and while the track is still settling. With `?spring=1`, the snap-back and the close morph take the release velocity.
+- Compare spring on and off: pull flick (snap-back versus dismiss), zoom button / double-tap / pinch past the maximum then release, and open/close on both FLIP and View Transitions.
 - Close returns to the current slide’s thumbnail. If that thumbnail is off screen, the page scrolls it into view first. If it is still mostly hidden, the close is a fade.
 
-Playwright covers open, keyboard movement, focus return, the engine query, zoom versus track scroll, and Escape during a slow FLIP close, on Chromium, WebKit, Pixel 7, and iPhone 13 profiles:
+Playwright covers open, keyboard movement, focus return, the engine query, zoom versus track scroll, Escape during a slow FLIP close, and the spring toggle (on, off, and the `linear()` fallback), on Chromium, WebKit, Pixel 7, and iPhone 13 profiles:
 
 ```bash
 pnpm build
@@ -52,6 +53,17 @@ Log the iOS version. Repeat with Low Power Mode on. The readout stays on screen.
 The query default on this page is `flip` only so the spike has a stable starting point. It is not that decision.
 
 iOS version, Low Power Mode, and the engine choice still need a pass on Marcio’s phone.
+
+## Spring
+
+`?spring=1` samples a slightly under-damped spring (`registry/ombra/spring.ts`) into a CSS `linear()` easing. Open and close, the pull snap-back, and the zoom release (zoom buttons, double-tap, pinch past the limits) use it. View Transitions take the same easing on the shared pseudo-elements through `--ombra-vt-easing`. A browser without `linear()` gets a nearby `cubic-bezier`, distinct from `cubic-bezier(0.22, 1, 0.36, 1)`. Velocity is the release speed divided by the distance the animation travels, so a fast flick keeps its momentum. `?slow=1` still triples the settle time. Reduced motion stays on the fade.
+
+| Motion                     | Stiffness | Damping | ζ      | Settle   |
+| -------------------------- | --------- | ------- | ------ | -------- |
+| Open / close morph         | 230       | 25      | ≈ 0.82 | ≈ 500 ms |
+| Pull snap and zoom release | 500       | 35      | ≈ 0.78 | ≈ 380 ms |
+
+Overshoot is about 1% on the morph and about 2% on the snap. On an iPhone, compare spring on and off: a downward flick that snaps back, a flick that dismisses, a pinch past the maximum that releases, and an open and close on FLIP and on View Transitions.
 
 ## Desktop observations (4 Nov 2026)
 

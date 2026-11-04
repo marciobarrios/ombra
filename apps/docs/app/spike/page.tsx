@@ -19,6 +19,7 @@ async function SpikeRoute({ searchParams }: { searchParams: PageProps<"/spike">[
     <SpikeApp
       initialEngine={parseMorphEngine(firstString(query.engine))}
       initialSlow={firstString(query.slow) === "1"}
+      initialSpring={firstString(query.spring) === "1"}
     />
   );
 }

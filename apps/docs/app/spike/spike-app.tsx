@@ -10,12 +10,15 @@ import { photos } from "./photos";
 export function SpikeApp({
   initialEngine,
   initialSlow,
+  initialSpring,
 }: {
   initialEngine: MorphEngine;
   initialSlow: boolean;
+  initialSpring: boolean;
 }) {
   const [engine, setEngine] = useState(initialEngine);
   const [slow, setSlow] = useState(initialSlow);
+  const [spring, setSpring] = useState(initialSpring);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -25,8 +28,11 @@ export function SpikeApp({
     if (slow) url.searchParams.set("slow", "1");
     else url.searchParams.delete("slow");
 
+    if (spring) url.searchParams.set("spring", "1");
+    else url.searchParams.delete("spring");
+
     window.history.replaceState(null, "", url);
-  }, [engine, slow]);
+  }, [engine, slow, spring]);
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-8 sm:py-16">
@@ -45,8 +51,10 @@ export function SpikeApp({
           items={photos}
           engine={engine}
           slow={slow}
+          spring={spring}
           onEngineChange={setEngine}
           onSlowChange={setSlow}
+          onSpringChange={setSpring}
         />
       </div>
     </main>
@@ -57,8 +65,9 @@ function reducedNote() {
   return (
     <p className="mt-4 max-w-xl text-sm leading-6 text-[#241e18]/70">
       Add <span className="font-mono">?engine=vt</span>, <span className="font-mono">flip</span>, or{" "}
-      <span className="font-mono">fade</span>, and <span className="font-mono">?slow=1</span> to
-      inspect. When the system asks for reduced motion, movement falls back to a fade.
+      <span className="font-mono">fade</span>, <span className="font-mono">?slow=1</span>, and{" "}
+      <span className="font-mono">?spring=1</span> to inspect. When the system asks for reduced
+      motion, movement falls back to a fade.
     </p>
   );
 }

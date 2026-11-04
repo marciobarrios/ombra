@@ -27,6 +27,7 @@ import {
   supportsViewTransitions,
 } from "./morph";
 import type { Flight } from "./morph";
+import { MORPH_SPRING, normalizeVelocity, springCurve } from "./spring";
 import type { Box, FlipPose, FrameSample, MorphEngine, OmbraItem } from "./types";
 import { motionDuration } from "./types";
 import { usePull } from "./use-pull";
@@ -45,10 +46,22 @@ export type OmbraGalleryProps = {
   items: readonly OmbraItem[];
   engine: MorphEngine;
   slow: boolean;
+  spring: boolean;
   onEngineChange: (engine: MorphEngine) => void;
   onSlowChange: (slow: boolean) => void;
+  onSpringChange: (spring: boolean) => void;
   className?: string;
 };
+
+function releaseVelocity(pixelsPerSecond: number, from: Box, to: Box): number {
+  const dx = to.x + to.width / 2 - (from.x + from.width / 2);
+  const dy = to.y + to.height / 2 - (from.y + from.height / 2);
+  const distance = Math.hypot(dx, dy);
+
+  if (distance < 8) return 0;
+
+  return normalizeVelocity((pixelsPerSecond * dy) / distance, distance);
+}
 
 function imageChild(element: HTMLElement): HTMLImageElement | null {
   const child = element.querySelector("img");
@@ -100,6 +113,34 @@ function EngineSwitch({
         );
       })}
     </div>
+  );
+}
+
+function SpringToggle({
+  spring,
+  onSpringChange,
+  tone,
+}: {
+  spring: boolean;
+  onSpringChange: (spring: boolean) => void;
+  tone: "paper" | "ink";
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={spring}
+      data-slot="ombra-spring"
+      onClick={() => onSpringChange(!spring)}
+      className={cn(
+        "min-h-11 rounded-full px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2",
+        tone === "paper" && "text-[#241e18] focus-visible:outline-[#8f3d2b]",
+        tone === "paper" && spring && "bg-[#241e18] text-[#f6f1ea]",
+        tone === "ink" && "text-white focus-visible:outline-white",
+        tone === "ink" && spring && "bg-white text-[#241e18]",
+      )}
+    >
+      Spring
+    </button>
   );
 }
 
@@ -175,8 +216,10 @@ export function OmbraGallery({
   items,
   engine,
   slow,
+  spring,
   onEngineChange,
   onSlowChange,
+  onSpringChange,
   className,
 }: OmbraGalleryProps) {
   const reduced = useReducedMotion();
@@ -209,6 +252,8 @@ export function OmbraGallery({
   const indexRef = useRef(index);
   const engineRef = useRef(engine);
   const slowRef = useRef(slow);
+  const springRef = useRef(spring);
+  const flickRef = useRef(0);
   const reducedRef = useRef(reduced);
   const driverRef = useRef<MorphEngine>("flip");
   const settledRef = useRef(true);
@@ -220,6 +265,7 @@ export function OmbraGallery({
   indexRef.current = index;
   engineRef.current = engine;
   slowRef.current = slow;
+  springRef.current = spring;
   reducedRef.current = reduced;
 
   const effective: MorphEngine = reduced ? "fade" : engine;
@@ -238,7 +284,15 @@ export function OmbraGallery({
     });
   };
 
-  const zoom = useZoom(trackRef, layerRef, open && phase === "open", settleTrack);
+  const zoom = useZoom(
+    trackRef,
+    layerRef,
+    open && phase === "open",
+    settleTrack,
+    spring,
+    slow,
+    reduced,
+  );
 
   const pulling = usePull(
     trackRef,
@@ -246,7 +300,9 @@ export function OmbraGallery({
     settledRef,
     reduced,
     slow,
-    () => {
+    spring,
+    (velocity) => {
+      flickRef.current = velocity;
       requestClose();
     },
   );
@@ -442,12 +498,17 @@ export function OmbraGallery({
       placeTrack(itemIndex);
 
       const home = containBox(boxFromRect(slide.getBoundingClientRect()), item.width / item.height);
-      const duration = motionDuration(480, slowRef.current, reducedRef.current);
+      const fadeDuration = motionDuration(480, slowRef.current, reducedRef.current);
 
-      fadeBackdrop(0, 1, duration);
+      const timing =
+        driverRef.current === "fade"
+          ? { duration: fadeDuration, easing: MORPH_EASING }
+          : morphTiming(480, 0);
+
+      fadeBackdrop(0, 1, timing.duration, timing.easing);
 
       if (driverRef.current === "fade") {
-        fadePopup(0, 1, duration, () => {
+        fadePopup(0, 1, timing.duration, () => {
           if (!alive || tokenRef.current !== token) return;
 
           endSample();
@@ -457,7 +518,7 @@ export function OmbraGallery({
         return;
       }
 
-      fadePopup(0, 1, duration, null);
+      fadePopup(0, 1, timing.duration, null, springRef.current ? timing.easing : "ease-out");
 
       const crop = coverCrop(item.width, item.height, origin.width, origin.height);
       const from = poseBetween(origin, home, crop);
@@ -473,24 +534,25 @@ export function OmbraGallery({
 
       if (hero) hero.style.visibility = "hidden";
 
-      void playFlight(flight, startPose, RESTING_POSE, duration).then((completed) => {
-        if (!alive || tokenRef.current !== token || !completed) return;
+      void playFlight(flight, startPose, RESTING_POSE, timing.duration, timing.easing).then(
+        (completed) => {
+          if (!alive || tokenRef.current !== token || !completed) return;
 
-        if (hero) hero.style.visibility = "";
+          if (hero) hero.style.visibility = "";
 
-        showThumb(itemIndex);
-        flightRef.current?.destroy();
-        flightRef.current = null;
-        endSample();
-        setPhase("open");
-      });
+          showThumb(itemIndex);
+          flightRef.current?.destroy();
+          flightRef.current = null;
+          endSample();
+          setPhase("open");
+        },
+      );
     }
 
     function runClose() {
       const itemIndex = indexRef.current;
       const item = items[itemIndex];
       const trigger = triggers.current[itemIndex];
-      const duration = motionDuration(420, slowRef.current, reducedRef.current);
 
       if (!item || !trigger) {
         retry(runClose);
@@ -501,6 +563,9 @@ export function OmbraGallery({
       const revealed = revealElement(trigger);
       const thumb = imageChild(trigger);
       const fade = driverRef.current === "fade" || revealed === "hidden" || !thumb;
+      const flick = flickRef.current;
+
+      flickRef.current = 0;
 
       if (fade) {
         flightRef.current?.destroy();
@@ -543,13 +608,16 @@ export function OmbraGallery({
       const thumbBox = boxFromRect(thumb.getBoundingClientRect());
       const crop = coverCrop(item.width, item.height, thumbBox.width, thumbBox.height);
       const endPose = poseBetween(thumbBox, home, crop);
+      const fromBox = pulledBox ?? home;
+      const velocity = releaseVelocity(flick, fromBox, thumbBox);
+      const timing = morphTiming(420, velocity);
       const hero = images.current[itemIndex];
 
       if (hero) hero.style.visibility = "hidden";
 
       hideThumb(itemIndex);
-      fadeBackdrop(1, 0, duration);
-      fadePopup(1, 0, duration, null);
+      fadeBackdrop(1, 0, timing.duration, timing.easing);
+      fadePopup(1, 0, timing.duration, null, springRef.current ? timing.easing : "ease-out");
 
       let from: FlipPose = RESTING_POSE;
       let flight = flightRef.current;
@@ -565,7 +633,7 @@ export function OmbraGallery({
         flightRef.current = flight;
       }
 
-      void playFlight(flight, from, endPose, duration).then((completed) => {
+      void playFlight(flight, from, endPose, timing.duration, timing.easing).then((completed) => {
         if (!alive || tokenRef.current !== token || !completed) return;
 
         showThumb(itemIndex);
@@ -630,7 +698,23 @@ export function OmbraGallery({
     track.scrollTo({ left: Math.max(0, left), behavior });
   }
 
-  function fadeBackdrop(from: number, to: number, duration: number) {
+  function morphTiming(baseMs: number, velocity: number) {
+    if (reducedRef.current || !springRef.current) {
+      return {
+        duration: motionDuration(baseMs, slowRef.current, reducedRef.current),
+        easing: MORPH_EASING,
+      };
+    }
+
+    const curve = springCurve({ ...MORPH_SPRING, velocity });
+
+    return {
+      duration: slowRef.current ? curve.duration * 3 : curve.duration,
+      easing: curve.easing,
+    };
+  }
+
+  function fadeBackdrop(from: number, to: number, duration: number, easing: string = MORPH_EASING) {
     const backdrop = backdropRef.current;
 
     if (!backdrop) return;
@@ -645,7 +729,7 @@ export function OmbraGallery({
 
     const animation = backdrop.animate([{ opacity: from }, { opacity: to }], {
       duration,
-      easing: MORPH_EASING,
+      easing,
       fill: "forwards",
     });
 
@@ -663,7 +747,13 @@ export function OmbraGallery({
     );
   }
 
-  function fadePopup(from: number, to: number, duration: number, done: (() => void) | null) {
+  function fadePopup(
+    from: number,
+    to: number,
+    duration: number,
+    done: (() => void) | null,
+    easing = "ease-out",
+  ) {
     const popup = popupRef.current;
 
     if (!popup || duration <= 0) {
@@ -676,7 +766,7 @@ export function OmbraGallery({
 
     const animation = popup.animate([{ opacity: from }, { opacity: to }], {
       duration,
-      easing: "ease-out",
+      easing,
       fill: "forwards",
     });
 
@@ -752,10 +842,11 @@ export function OmbraGallery({
 
   function openWithViewTransition(nextIndex: number, thumb: HTMLImageElement) {
     const token = ++tokenRef.current;
-    const duration = motionDuration(480, slowRef.current, false);
+    const timing = morphTiming(480, 0);
 
     beginSample();
-    document.documentElement.style.setProperty("--ombra-vt-duration", `${duration}ms`);
+    document.documentElement.style.setProperty("--ombra-vt-duration", `${timing.duration}ms`);
+    document.documentElement.style.setProperty("--ombra-vt-easing", timing.easing);
     thumb.style.viewTransitionName = VIEW_TRANSITION_NAME;
 
     const transition = runViewTransition(() => {
@@ -830,11 +921,22 @@ export function OmbraGallery({
 
   function closeWithViewTransition(thumb: HTMLImageElement) {
     const token = ++tokenRef.current;
-    const duration = motionDuration(420, slowRef.current, false);
     const hero = images.current[indexRef.current];
+    const flick = flickRef.current;
+
+    flickRef.current = 0;
+
+    const from = hero ? boxFromRect(hero.getBoundingClientRect()) : null;
+
+    const velocity = from
+      ? releaseVelocity(flick, from, boxFromRect(thumb.getBoundingClientRect()))
+      : 0;
+
+    const timing = morphTiming(420, velocity);
 
     beginSample();
-    document.documentElement.style.setProperty("--ombra-vt-duration", `${duration}ms`);
+    document.documentElement.style.setProperty("--ombra-vt-duration", `${timing.duration}ms`);
+    document.documentElement.style.setProperty("--ombra-vt-easing", timing.easing);
 
     if (hero) hero.style.viewTransitionName = VIEW_TRANSITION_NAME;
 
@@ -900,7 +1002,7 @@ export function OmbraGallery({
       zoomRef.current.zoomOut();
     } else if (event.key === "0") {
       event.preventDefault();
-      zoomRef.current.reset();
+      zoomRef.current.home();
     }
   }
 
@@ -908,21 +1010,28 @@ export function OmbraGallery({
   const dropped = readout ? String(readout.dropped) : "–";
 
   return (
-    <div data-slot="ombra-root" className={cn("text-[#241e18]", className)}>
+    <div
+      data-slot="ombra-root"
+      data-spring={spring ? "on" : "off"}
+      className={cn("text-[#241e18]", className)}
+    >
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col items-start gap-3">
           <EngineSwitch engine={engine} tone="paper" onEngineChange={onEngineChange} />
           <FrameReadout longest={longest} dropped={dropped} engine={effective} />
         </div>
-        <button
-          type="button"
-          aria-pressed={slow}
-          data-slot="ombra-slow"
-          onClick={() => onSlowChange(!slow)}
-          className="min-h-11 rounded-full px-3 text-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3d2b]"
-        >
-          {slow ? "Slow motion on" : "Slow motion"}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <SpringToggle spring={spring} tone="paper" onSpringChange={onSpringChange} />
+          <button
+            type="button"
+            aria-pressed={slow}
+            data-slot="ombra-slow"
+            onClick={() => onSlowChange(!slow)}
+            className="min-h-11 rounded-full px-3 text-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3d2b]"
+          >
+            {slow ? "Slow motion on" : "Slow motion"}
+          </button>
+        </div>
       </div>
 
       <div className="columns-2 gap-3 md:columns-3">
@@ -1023,7 +1132,10 @@ export function OmbraGallery({
                     </IconButton>
                   </div>
                 </div>
-                <EngineSwitch engine={engine} tone="ink" onEngineChange={onEngineChange} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <EngineSwitch engine={engine} tone="ink" onEngineChange={onEngineChange} />
+                  <SpringToggle spring={spring} tone="ink" onSpringChange={onSpringChange} />
+                </div>
               </header>
 
               <div className="relative min-h-0 min-w-0 flex-1">
