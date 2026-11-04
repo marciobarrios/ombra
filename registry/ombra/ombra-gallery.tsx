@@ -2,7 +2,7 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "cn";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { flushSync } from "react-dom";
 
@@ -193,6 +193,7 @@ export function OmbraGallery({
   const images = useRef<Array<HTMLImageElement | null>>([]);
   const slides = useRef<Array<HTMLDivElement | null>>([]);
   const trackRef = useRef<HTMLDivElement>(null);
+  const trackCleanup = useRef<(() => void) | null>(null);
   const layerRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
@@ -333,42 +334,50 @@ export function OmbraGallery({
     strip.scrollTo({ left: Math.max(0, left), behavior: reduced ? "auto" : "smooth" });
   }, [index, open, phase, reduced, stripOverflows]);
 
-  useLayoutEffect(() => {
-    const track = trackRef.current;
+  const bindTrack = useCallback((node: HTMLDivElement | null) => {
+    trackRef.current = node;
+    const previous = trackCleanup.current;
 
-    if (!open || !track) return;
+    previous?.();
+    trackCleanup.current = null;
+
+    if (!node) return;
 
     settledRef.current = true;
 
     let timer = 0;
 
-    const commit = () => {
-      settledRef.current = true;
-      const next = indexFromScroll(track);
+    const publish = () => {
+      const next = indexFromScroll(node);
 
       setIndex((current) => (current === next ? current : next));
+    };
+
+    const settle = () => {
+      settledRef.current = true;
+      publish();
     };
 
     const onScroll = () => {
       settledRef.current = false;
       window.clearTimeout(timer);
-      timer = window.setTimeout(commit, 140);
+      timer = window.setTimeout(settle, 140);
+      publish();
     };
 
     const onScrollEnd = () => {
       window.clearTimeout(timer);
-      commit();
+      settle();
     };
 
-    track.addEventListener("scroll", onScroll, { passive: true });
-    track.addEventListener("scrollend", onScrollEnd);
-
-    return () => {
-      track.removeEventListener("scroll", onScroll);
-      track.removeEventListener("scrollend", onScrollEnd);
+    node.addEventListener("scroll", onScroll, { passive: true });
+    node.addEventListener("scrollend", onScrollEnd);
+    trackCleanup.current = () => {
+      node.removeEventListener("scroll", onScroll);
+      node.removeEventListener("scrollend", onScrollEnd);
       window.clearTimeout(timer);
     };
-  }, [open]);
+  }, []);
 
   useLayoutEffect(() => {
     if (phase !== "opening" && phase !== "closing") return;
@@ -1005,14 +1014,13 @@ export function OmbraGallery({
               <div className="relative min-h-0 min-w-0 flex-1">
                 <div className="@container h-full min-w-0">
                   <div
-                    ref={trackRef}
+                    ref={bindTrack}
                     data-slot="ombra-track"
                     className="flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                   >
                     <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
                     {items.map((item, itemIndex) => {
-                      const near = Math.abs(itemIndex - index) <= 1;
-                      const source = sharpId === item.id ? item.src : item.thumbSrc;
+                      const sharp = sharpId === item.id;
 
                       return (
                         <div
@@ -1025,33 +1033,29 @@ export function OmbraGallery({
                           role="group"
                           aria-roledescription="slide"
                           aria-label={`${itemIndex + 1} of ${count}`}
-                          className="flex w-[86cqi] shrink-0 snap-center snap-always items-center justify-center"
+                          className="flex w-[86cqi] shrink-0 snap-center snap-always items-center justify-center bg-black"
                         >
                           <div
                             ref={itemIndex === index ? layerRef : undefined}
                             data-slot="ombra-zoom"
                             className="flex h-full w-full items-center justify-center"
                           >
-                            {near ? (
-                              <img
-                                ref={(node) => {
-                                  images.current[itemIndex] = node;
-                                }}
-                                data-slot="ombra-image"
-                                data-active={itemIndex === index ? "true" : "false"}
-                                src={source}
-                                srcSet={item.srcSet}
-                                sizes="100vw"
-                                alt=""
-                                width={item.width}
-                                height={item.height}
-                                draggable={false}
-                                fetchPriority={itemIndex === index ? "high" : "low"}
-                                className="max-h-full max-w-full object-contain"
-                              />
-                            ) : (
-                              <div className="h-3/4 w-full bg-white/5" />
-                            )}
+                            <img
+                              ref={(node) => {
+                                images.current[itemIndex] = node;
+                              }}
+                              data-slot="ombra-image"
+                              data-active={itemIndex === index ? "true" : "false"}
+                              src={sharp ? item.src : item.thumbSrc}
+                              srcSet={sharp ? item.srcSet : undefined}
+                              sizes="100vw"
+                              alt=""
+                              width={item.width}
+                              height={item.height}
+                              draggable={false}
+                              fetchPriority={itemIndex === index ? "high" : "low"}
+                              className="max-h-full max-w-full object-contain"
+                            />
                           </div>
                         </div>
                       );
