@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 
+import { photos } from "../apps/docs/app/spike/photos";
+
+const photoCount = photos.length;
+
 test.describe("spike navigation", () => {
   for (const input of ["keyboard", "buttons"] as const) {
     test(`${input} arrows slide smoothly without resizing or downgrading photos`, async ({
@@ -102,7 +106,9 @@ test.describe("spike navigation", () => {
         // Native scroll duration and rAF cadence vary across WebKit platforms.
         // Check the requested behavior and landing position instead of frame count.
         await expect(track).toHaveAttribute("data-navigation-behavior", "smooth");
-        await expect(page.locator("[data-slot=ombra-counter]")).toHaveText(`${to + 1} / 12`);
+        await expect(page.locator("[data-slot=ombra-counter]")).toHaveText(
+          `${to + 1} / ${photoCount}`,
+        );
         await expect(track).toHaveAttribute("data-navigation-frames", /./);
 
         const frames: {
@@ -151,11 +157,11 @@ test.describe("spike navigation", () => {
     await expect
       .poll(() => track.evaluate((node, origin) => Math.abs(node.scrollLeft - origin), start))
       .toBeLessThan(3);
-    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("7 / 12");
+    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText(`7 / ${photoCount}`);
 
     await page.keyboard.press("ArrowRight");
     await page.keyboard.press("ArrowRight");
-    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("9 / 12");
+    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText(`9 / ${photoCount}`);
     await expect
       .poll(() =>
         track.evaluate((node) => {
