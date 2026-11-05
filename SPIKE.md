@@ -35,7 +35,7 @@ pnpm install
 pnpm dev
 ```
 
-Open <http://127.0.0.1:3000/spike>. The grid is twelve mixed-aspect photographs. Thumbnails are cover crops; the viewer shows the full frame. Click or tap one.
+Open <http://127.0.0.1:3000/spike>. The grid is thirty mixed-aspect photographs. Photos 13–30 add landscapes, foliage, architecture, and a nebula, with local WebP assets in 960px and 1600px widths. Their sources are recorded in [the photo inventory](apps/docs/public/photos/SOURCES.md). Thumbnails are cover crops; the viewer shows the full frame. Click or tap one.
 
 - Arrow keys, Home, and End move the scroll-snap track. Escape closes. Focus returns to the thumbnail of the current slide.
 - The bottom strip follows the current slide. Click a strip thumbnail to move there.

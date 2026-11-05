@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 
+import { photos } from "../apps/docs/app/spike/photos";
+
+const photoCount = photos.length;
+
 const firstPhoto = "Desert road through red rock toward a distant peak";
 
 test.describe("spike viewer", () => {
@@ -16,18 +20,16 @@ test.describe("spike viewer", () => {
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Close", exact: true })).toBeFocused();
     await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
-    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("1 / 12");
+    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText(`1 / ${photoCount}`);
     await page.keyboard.press("ArrowRight");
-    await expect(page.getByRole("status")).toContainText("2 of 12");
+    await expect(page.getByRole("status")).toContainText(`2 of ${photoCount}`);
     await page.keyboard.press("Home");
-    await expect(page.getByRole("status")).toContainText("1 of 12");
+    await expect(page.getByRole("status")).toContainText(`1 of ${photoCount}`);
     await page.keyboard.press("End");
-    await expect(page.getByRole("status")).toContainText("12 of 12");
+    await expect(page.getByRole("status")).toContainText(`${photoCount} of ${photoCount}`);
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
-    await expect(
-      page.getByRole("button", { name: "Granite cliff rising over a sunlit meadow" }),
-    ).toBeFocused();
+    await expect(page.locator("[data-slot=ombra-trigger]").last()).toBeFocused();
   });
 
   test("selects the engine from the query string", async ({ page }) => {
@@ -71,12 +73,14 @@ test.describe("spike viewer", () => {
 
     const gutterBefore = await gutter();
 
-    await page.getByRole("button", { name: "Granite cliff rising over a sunlit meadow" }).click();
+    await page.locator("[data-slot=ombra-trigger]").last().click();
 
     const viewer = page.locator("[data-slot=ombra-viewer]");
 
     await expect(viewer).toHaveAttribute("data-phase", "open");
-    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("12 / 12");
+    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText(
+      `${photoCount} / ${photoCount}`,
+    );
 
     const layout = () =>
       page.evaluate(() => {
@@ -178,7 +182,7 @@ test.describe("spike viewer", () => {
     expect(reach?.end).toBeGreaterThanOrEqual(-1);
 
     await page.keyboard.press("Home");
-    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("1 / 12");
+    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText(`1 / ${photoCount}`);
     await expect.poll(async () => (await layout())?.slideDelta ?? 99).toBeLessThan(3);
 
     expect(await gutter()).toBe(gutterBefore);
@@ -270,7 +274,7 @@ test.describe("spike viewer", () => {
 
     const images = page.locator("[data-slot=ombra-track] [data-slot=ombra-image]");
 
-    await expect(images).toHaveCount(12);
+    await expect(images).toHaveCount(photoCount);
     await expect
       .poll(() =>
         images.evaluateAll((nodes) =>
@@ -316,7 +320,7 @@ test.describe("spike viewer", () => {
         }),
       )
       .toBe(true);
-    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("7 / 12");
+    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText(`7 / ${photoCount}`);
     await expect(page.locator("[data-slot=ombra-caption]")).toHaveText(
       "Night, and the ridge still holding snow.",
     );
@@ -627,10 +631,13 @@ test.describe("spike viewer", () => {
     await page.getByRole("button", { name: firstPhoto }).click();
     await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
     await page.keyboard.press("End");
-    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("12 / 12");
+    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText(
+      `${photoCount} / ${photoCount}`,
+    );
 
     const hidden = await page.evaluate(() => {
-      const trigger = document.querySelectorAll("[data-slot=ombra-trigger]")[11];
+      const triggers = document.querySelectorAll("[data-slot=ombra-trigger]");
+      const trigger = triggers[triggers.length - 1];
 
       if (!(trigger instanceof HTMLElement)) return false;
 
