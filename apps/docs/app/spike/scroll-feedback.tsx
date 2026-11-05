@@ -1,10 +1,32 @@
+import { Tooltip } from "@base-ui/react/tooltip";
+
 export type ScrollFeedback = "off" | "edges" | "emphasis" | "both";
 
-const modes: { value: ScrollFeedback; label: string }[] = [
-  { value: "off", label: "Off" },
-  { value: "edges", label: "Edge cues" },
-  { value: "emphasis", label: "Thumbnail emphasis" },
-  { value: "both", label: "Both" },
+const modes: { value: ScrollFeedback; label: string; description: string }[] = [
+  {
+    value: "off",
+    label: "Off",
+    description:
+      "Keeps the original appearance: a white border marks the selected thumbnail, with no extra scroll feedback. Use this as the baseline when comparing the experiments.",
+  },
+  {
+    value: "edges",
+    label: "Edge cues",
+    description:
+      "Shaded edges show that more thumbnails are available in that direction. They follow the thumbnail strip and disappear at each end or when everything fits. Recommended default: a browsing cue that leaves selection unchanged.",
+  },
+  {
+    value: "emphasis",
+    label: "Thumbnail emphasis",
+    description:
+      "Each thumbnail brightens as its main photo approaches the gallery center. Brightness follows the gallery, even if you scroll the strip separately. Neighboring thumbnails can both brighten mid-swipe; the white border still marks selection.",
+  },
+  {
+    value: "both",
+    label: "Both",
+    description:
+      "Combines strip overflow cues with gallery-driven brightness. The shading shows where more thumbnails are; brightness shows which main photo is near the center. This provides more feedback, but makes the strip visually busier.",
+  },
 ];
 
 export function parseScrollFeedback(value: string | undefined): ScrollFeedback {
@@ -21,28 +43,56 @@ export function ScrollFeedbackControls({
   return (
     <fieldset className="mt-6 max-w-xl">
       <legend className="text-sm font-medium text-[#241e18]">Scroll feedback experiment</legend>
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+      <Tooltip.Provider delay={450}>
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+          {modes.map((mode) => (
+            <Tooltip.Root key={mode.value}>
+              <Tooltip.Trigger
+                render={<label />}
+                className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"
+              >
+                <input
+                  type="radio"
+                  name="scroll-feedback"
+                  value={mode.value}
+                  checked={mode.value === value}
+                  onChange={() => onChange(mode.value)}
+                  aria-describedby={`scroll-feedback-help-${mode.value}`}
+                  className="size-4 accent-[#8f3d2b]"
+                />
+                <span className="underline decoration-[#241e18]/30 decoration-dotted underline-offset-4">
+                  {mode.label}
+                </span>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Positioner sideOffset={8} className="z-[100]">
+                  <Tooltip.Popup
+                    role="tooltip"
+                    className="max-w-[min(20rem,calc(100vw-2rem))] rounded-md bg-[#241e18] px-3 py-2 text-sm leading-6 text-[#fffaf3] shadow-md"
+                  >
+                    {mode.description}
+                  </Tooltip.Popup>
+                </Tooltip.Positioner>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          ))}
+        </div>
+      </Tooltip.Provider>
+      <div className="mt-2 min-h-24 text-sm leading-6 text-[#241e18]/80">
         {modes.map((mode) => (
-          <label
+          <p
             key={mode.value}
-            className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"
+            id={`scroll-feedback-help-${mode.value}`}
+            hidden={mode.value !== value}
           >
-            <input
-              type="radio"
-              name="scroll-feedback"
-              value={mode.value}
-              checked={mode.value === value}
-              onChange={() => onChange(mode.value)}
-              className="size-4 accent-[#8f3d2b]"
-            />
-            {mode.label}
-          </label>
+            {mode.description}
+          </p>
         ))}
       </div>
       <p className="mt-1 text-sm leading-6 text-[#241e18]/70">
-        Choose a mode, then open a photo and swipe. Edge cues show more thumbnails off screen;
-        emphasis follows the main photo. Close to compare modes. Reduced motion and browsers without
-        CSS timeline support keep the original appearance.
+        Open a photo and swipe to try the selected mode; close to compare options. Use a narrow
+        window to see edge cues. Reduced motion and browsers without CSS timeline support keep the
+        original appearance.
       </p>
     </fieldset>
   );
