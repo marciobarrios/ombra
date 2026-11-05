@@ -2,6 +2,28 @@
 
 The open/close engine is undecided until this page is tried on a real iPhone. The spike is the docs route `/spike`, so one Vercel project can deploy it. Nothing here is the final registry API.
 
+See [the scroll-driven animations assessment](SCROLL-ANIMATIONS.md) for MAR-58: browser support, potential thumbnail feedback, and the interaction logic that stays in JavaScript.
+
+## Scroll feedback experiment
+
+`?scroll=off|edges|emphasis|both` selects the MAR-58 experiments; missing or invalid values default to `off`. The **Scroll feedback experiment** radios above the gallery write the same query. Choose a mode, open a photo, and swipe; close before switching modes. For a direct comparison, start with `/spike?engine=flip&scroll=both`.
+
+- **Edge cues:** narrow gradients at the thumbnail strip's edges show additional content. Each disappears at its corresponding end, and both disappear when the strip fits. Use a narrow viewport to see them.
+- **Thumbnail emphasis:** each thumbnail brightens as its full-size slide approaches the gallery center. The selected border and accessibility state still follow JavaScript selection. Scrolling the strip alone does not change selection or emphasis.
+- **Both:** combines the effects. **Off:** retains the original appearance.
+
+The animation styles live in `apps/docs/app/spike/scroll-feedback.tsx`, outside the registry payload. Two hidden, aria-hidden span hooks in the gallery provide the edge overlays. They remain hidden without the spike CSS. Ordinary elements are necessary here: in the tested WebKit build, footer pseudo-elements did not resolve the named scroll timeline even though its syntax passed `@supports`.
+
+Both experiments require CSS timeline/range/scope support and `prefers-reduced-motion: no-preference`. Otherwise they retain the original static appearance. Slow motion and Spring affect the morphs, not these effects: scroll position is their clock.
+
+The spike also exposed a pre-existing VT fallback bug: when a transition could not start, its driver remained `vt` and skipped the effect-driven morph. That path now hands control to FLIP/fade. Tests cover a missing View Transition API and closing toward an off-screen trigger with feedback off as well as on.
+
+Automated coverage in `e2e/scroll-feedback.spec.ts` checks URL controls, edge endpoints and resize, continuous emphasis between slides, independent strip browsing, reduced motion, a forced unsupported CSS gate, all morph engines, zoom, focus return, and pull dismissal. The existing keyboard test now waits for the open phase before issuing navigation commands. The complete suite passed: **104 tests** across the four existing projects, including 40 new checks. Build, lint, typecheck, and formatting checks also passed.
+
+Checked on 5 November 2026 with Playwright Chromium and WebKit, including Pixel 7 and iPhone 13 profiles, plus visual inspection of Chromium at 390×844 with normal and reduced motion. Firefox could not launch on this Mac: both default and alternate temporary profile paths produced “Could not find profile folder.” Firefox 159+, real iPhone gestures, Low Power Mode, and comparative frame-time measurements remain unverified. These are functional spike results, not a performance claim.
+
+An axe audit of the open viewer flags the existing track as `scrollable-region-focusable`; dialog-level arrow navigation passes the interaction tests. The audit also requests manual review of modal focus guards and counter contrast. The new edge spans are hidden from assistive technology and do not take focus.
+
 `?engine=vt|flip|fade` selects View Transitions, WAAPI FLIP, or a plain fade. The on-screen radios write the same query. `?slow=1` (or the Slow motion button) multiplies open, close, and pull-snap durations by three. `?spring=1` (or the Spring switch beside those controls) replaces the cubic morph easing with a hand-rolled spring. It combines with the engine and with slow motion. When the OS asks for reduced motion, every engine becomes a fade and pull does not scale the sheet.
 
 The fixed readout is the longest frame and the count of frames over 33 ms during the last open or close, sampled with `requestAnimationFrame`. The first frame of a sample is ignored. Safari does not need the long-animation-frame API.
