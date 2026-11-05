@@ -76,6 +76,8 @@ The query default on this page is `flip` only so the spike has a stable starting
 
 iOS version, Low Power Mode, and the engine choice still need a pass on Marcio’s phone.
 
+The [5 November iOS Simulator session](SPIKE-IOS-SIMULATOR-2026-11-05.md) records the separate correctness pass on iPhone 18 Pro / iOS 27.2, including the results, Linear follow-ups, and attached evidence. It does not decide the engine or easing default.
+
 ## Spring
 
 `?spring=1` samples a slightly under-damped spring (`registry/ombra/spring.ts`) into a CSS `linear()` easing. Open and close, the pull snap-back, and the zoom release (zoom buttons, double-tap, pinch past the limits) use it. View Transitions take the same easing on the shared pseudo-elements through `--ombra-vt-easing`. A browser without `linear()` gets a nearby `cubic-bezier`, distinct from `cubic-bezier(0.22, 1, 0.36, 1)`. Velocity is the release speed divided by the distance the animation travels, so a fast flick keeps its momentum. `?slow=1` still triples the settle time. Reduced motion stays on the fade.
