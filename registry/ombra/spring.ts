@@ -7,6 +7,9 @@ export const SNAP_SPRING = { stiffness: 500, damping: 35 };
 const REST = 0.005;
 const REST_VELOCITY = 0.08;
 const STEPS = 16;
+const MAX_VELOCITY = 12;
+const MAX_STIFFNESS = 2000;
+const MAX_DAMPING = 200;
 
 export type SpringInput = {
   stiffness: number;
@@ -24,17 +27,34 @@ export type SpringPlan = {
 export function normalizeVelocity(pixelsPerSecond: number, distance: number): number {
   const span = Math.abs(distance);
 
-  if (span < 8) return 0;
+  if (!Number.isFinite(span) || span < 8) return 0;
+
+  if (pixelsPerSecond === Number.POSITIVE_INFINITY) return MAX_VELOCITY;
+
+  if (pixelsPerSecond === Number.NEGATIVE_INFINITY) return -MAX_VELOCITY;
+
+  if (!Number.isFinite(pixelsPerSecond)) return 0;
 
   const value = pixelsPerSecond / span;
 
-  return Math.max(-12, Math.min(12, value));
+  if (!Number.isFinite(value)) return 0;
+
+  return Math.max(-MAX_VELOCITY, Math.min(MAX_VELOCITY, value));
 }
 
 export function springCurve(input: SpringInput): SpringPlan {
-  const stiffness = Math.max(1, input.stiffness);
-  const damping = Math.max(0, input.damping);
-  const velocity = input.velocity ?? 0;
+  const stiffness = Math.min(
+    MAX_STIFFNESS,
+    Math.max(1, finiteOr(input.stiffness, MORPH_SPRING.stiffness)),
+  );
+
+  const damping = Math.min(MAX_DAMPING, Math.max(0, finiteOr(input.damping, 0)));
+
+  const velocity = Math.max(
+    -MAX_VELOCITY,
+    Math.min(MAX_VELOCITY, finiteOr(input.velocity ?? 0, 0)),
+  );
+
   const seconds = settleSeconds(stiffness, damping, velocity);
   const duration = Math.max(1, Math.round(seconds * 1000));
   const linear = supportsLinearEasing();
@@ -43,11 +63,17 @@ export function springCurve(input: SpringInput): SpringPlan {
     return { easing: cubicFallback(velocity, duration), duration, linear: false };
   }
 
-  return {
-    easing: linearEasing(stiffness, damping, velocity, seconds),
-    duration,
-    linear: true,
-  };
+  const easing = linearEasing(stiffness, damping, velocity, seconds);
+
+  if (!Number.isFinite(duration) || easing.includes("NaN") || easing.includes("Infinity")) {
+    return {
+      easing: cubicFallback(velocity, duration),
+      duration: finiteOr(duration, 1),
+      linear: false,
+    };
+  }
+
+  return { easing, duration, linear: true };
 }
 
 function supportsLinearEasing(): boolean {
@@ -59,17 +85,33 @@ function supportsLinearEasing(): boolean {
 function progress(stiffness: number, damping: number, velocity: number, time: number): number {
   const omega = Math.sqrt(stiffness);
   const zeta = damping / (2 * omega);
+  const underdamped = zeta < 0.999 ? underdampedProgress(omega, zeta, velocity, time) : null;
+  const value = underdamped ?? criticalProgress(omega, velocity, time);
 
-  if (zeta < 0.999) {
-    const wd = omega * Math.sqrt(1 - zeta * zeta);
-    const amplitude = -1;
-    const wave = (velocity + zeta * omega * amplitude) / wd;
-    const decay = Math.exp(-zeta * omega * time);
-    const displacement = decay * (amplitude * Math.cos(wd * time) + wave * Math.sin(wd * time));
+  if (!Number.isFinite(value)) return time <= 0 ? 0 : 1;
 
-    return 1 + displacement;
-  }
+  return value;
+}
 
+function underdampedProgress(
+  omega: number,
+  zeta: number,
+  velocity: number,
+  time: number,
+): number | null {
+  const wd = omega * Math.sqrt(Math.max(0, 1 - zeta * zeta));
+
+  if (wd <= 1e-4) return null;
+
+  const amplitude = -1;
+  const wave = (velocity + zeta * omega * amplitude) / wd;
+  const decay = Math.exp(-zeta * omega * time);
+  const displacement = decay * (amplitude * Math.cos(wd * time) + wave * Math.sin(wd * time));
+
+  return 1 + displacement;
+}
+
+function criticalProgress(omega: number, velocity: number, time: number): number {
   const amplitude = -1;
   const slope = velocity + omega * amplitude;
 
@@ -124,11 +166,15 @@ function linearEasing(
 }
 
 function cubicFallback(velocity: number, durationMs: number): string {
-  const slope = Math.max(0, velocity) * (durationMs / 1000);
+  const slope = Math.max(0, finiteOr(velocity, 0)) * (finiteOr(durationMs, 1) / 1000);
   const rise = Math.min(1.3, 0.82 + slope * 0.12);
   const land = Math.min(1.15, 1.04 + Math.min(slope, 3) * 0.02);
 
   return `cubic-bezier(0.2, ${round(rise)}, 0.28, ${round(land)})`;
+}
+
+function finiteOr(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback;
 }
 
 function round(value: number): number {

@@ -257,6 +257,7 @@ export function OmbraGallery({
   const reducedRef = useRef(reduced);
   const driverRef = useRef<MorphEngine>("flip");
   const settledRef = useRef(true);
+  const zoomGestureRef = useRef(false);
   const samplerRef = useRef<FrameSampler | null>(null);
   const vtRef = useRef<ViewTransition | null>(null);
   const seenIndex = useRef(index);
@@ -282,6 +283,7 @@ export function OmbraGallery({
       block: "nearest",
       behavior: reducedRef.current ? "auto" : "smooth",
     });
+    setIndex((current) => (current === nearest ? current : nearest));
   };
 
   const zoom = useZoom(
@@ -292,6 +294,7 @@ export function OmbraGallery({
     spring,
     slow,
     reduced,
+    zoomGestureRef,
   );
 
   const pulling = usePull(
@@ -405,6 +408,8 @@ export function OmbraGallery({
     let timer = 0;
 
     const publish = () => {
+      if (zoomGestureRef.current) return;
+
       const next = indexFromScroll(node);
 
       setIndex((current) => (current === next ? current : next));
@@ -456,12 +461,17 @@ export function OmbraGallery({
       if (preserveFlightRef.current) {
         preserveFlightRef.current = false;
         flightRef.current?.hold();
-
-        return;
+      } else {
+        flightRef.current?.destroy();
+        flightRef.current = null;
       }
 
-      flightRef.current?.destroy();
-      flightRef.current = null;
+      // A replacement morph increments the token before this cleanup and starts
+      // its own sampler. Unmount does not, so stop the rAF loop here.
+      if (tokenRef.current === token) {
+        samplerRef.current?.stop();
+        samplerRef.current = null;
+      }
     };
 
     function retry(again: () => void) {
@@ -484,6 +494,9 @@ export function OmbraGallery({
     }
 
     function runOpen() {
+      restoreVisibility();
+      clearSheetHold();
+
       const itemIndex = indexRef.current;
       const item = items[itemIndex];
       const slide = slides.current[itemIndex];
@@ -550,6 +563,8 @@ export function OmbraGallery({
     }
 
     function runClose() {
+      restoreVisibility();
+
       const itemIndex = indexRef.current;
       const item = items[itemIndex];
       const trigger = triggers.current[itemIndex];
@@ -605,18 +620,24 @@ export function OmbraGallery({
         return;
       }
 
+      // The pull hook clears the variable when the gesture ends, which would snap
+      // the sheet and scrim back before paint. Hold the dragged pose on the sheet
+      // and fade the scrim from the opacity the drag already reached.
+      holdPulledSheet(pull);
+
       const thumbBox = boxFromRect(thumb.getBoundingClientRect());
       const crop = coverCrop(item.width, item.height, thumbBox.width, thumbBox.height);
       const endPose = poseBetween(thumbBox, home, crop);
       const fromBox = pulledBox ?? home;
       const velocity = releaseVelocity(flick, fromBox, thumbBox);
       const timing = morphTiming(420, velocity);
+      const scrimFrom = 1 - Math.min(1, Math.max(0, pull)) * 0.7;
       const hero = images.current[itemIndex];
 
       if (hero) hero.style.visibility = "hidden";
 
       hideThumb(itemIndex);
-      fadeBackdrop(1, 0, timing.duration, timing.easing);
+      fadeBackdrop(scrimFrom, 0, timing.duration, timing.easing);
       fadePopup(1, 0, timing.duration, null, springRef.current ? timing.easing : "ease-out");
 
       let from: FlipPose = RESTING_POSE;
@@ -680,6 +701,48 @@ export function OmbraGallery({
     const thumb = trigger ? imageChild(trigger) : null;
 
     if (thumb) thumb.style.visibility = "";
+  }
+
+  function restoreVisibility() {
+    for (const trigger of triggers.current) {
+      const thumb = trigger ? imageChild(trigger) : null;
+
+      if (thumb) thumb.style.visibility = "";
+    }
+
+    for (const image of images.current) {
+      if (image) image.style.visibility = "";
+    }
+  }
+
+  function sheetElement(): HTMLElement | null {
+    const sheet = popupRef.current?.querySelector("[data-slot=ombra-sheet]");
+
+    if (sheet instanceof HTMLElement) return sheet;
+
+    return null;
+  }
+
+  function holdPulledSheet(pull: number) {
+    if (pull <= 0.02) return;
+
+    const sheet = sheetElement();
+
+    if (!sheet) return;
+
+    sheet.style.transform = `translate3d(0, ${pull * 22}dvh, 0) scale(${1 - pull * 0.07})`;
+    sheet.style.transformOrigin = "center center";
+    sheet.style.borderRadius = `${pull * 24}px`;
+  }
+
+  function clearSheetHold() {
+    const sheet = sheetElement();
+
+    if (!sheet) return;
+
+    sheet.style.transform = "";
+    sheet.style.transformOrigin = "";
+    sheet.style.borderRadius = "";
   }
 
   function placeTrack(itemIndex: number) {
@@ -784,6 +847,7 @@ export function OmbraGallery({
   const restoreFocusRef = useRef(false);
 
   function finishClose() {
+    clearSheetHold();
     document.documentElement.style.setProperty("--ombra-pull-live", "0");
 
     for (const trigger of triggers.current) {
@@ -831,6 +895,10 @@ export function OmbraGallery({
 
       return;
     }
+
+    // The FLIP effect bails while the driver is still "vt", which leaves the
+    // dialog stuck in "opening" when View Transitions are unavailable.
+    if (driverRef.current === "vt") driverRef.current = "flip";
 
     preserveFlightRef.current = flightRef.current !== null;
     tokenRef.current += 1;
@@ -913,6 +981,10 @@ export function OmbraGallery({
       return;
     }
 
+    // Same bail-out as open: an off-screen thumbnail, or a flight already in
+    // the air, must fall through to FLIP/fade instead of staying on "vt".
+    if (driverRef.current === "vt") driverRef.current = "flip";
+
     preserveFlightRef.current = flightRef.current !== null;
     tokenRef.current += 1;
     setAnimEpoch((value) => value + 1);
@@ -966,7 +1038,11 @@ export function OmbraGallery({
       },
       () => {
         thumb.style.viewTransitionName = "";
+
+        if (tokenRef.current !== token) return;
+
         endSample();
+        vtRef.current = null;
       },
     );
   }

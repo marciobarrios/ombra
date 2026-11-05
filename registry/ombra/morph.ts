@@ -59,7 +59,14 @@ export function mountFlight(home: Box, pose: FlipPose, src: string): Flight {
 
       if (!animation) return readPose(element);
 
-      animation.commitStyles();
+      try {
+        animation.commitStyles();
+      } catch (error) {
+        // commitStyles throws InvalidStateError when the effect has no target.
+        // The computed style still has the in-flight frame until cancel.
+        if (!(error instanceof DOMException)) throw error;
+      }
+
       const poseNow = readPose(element);
 
       animation.cancel();
@@ -108,7 +115,9 @@ export function playFlight(
 }
 
 export function supportsViewTransitions(): boolean {
-  return "startViewTransition" in document;
+  if (!("startViewTransition" in document)) return false;
+
+  return document.startViewTransition instanceof Function;
 }
 
 export function runViewTransition(update: () => void): ViewTransition | null {

@@ -51,14 +51,25 @@ export function usePull(
     let lastY = 0;
     const samples: Sample[] = [];
 
+    let snap: Animation | null = null;
+
     const setProgress = (value: number) => {
       document.documentElement.style.setProperty("--ombra-pull-live", String(value));
+    };
+
+    const cancelSnap = () => {
+      const animation = snap;
+
+      snap = null;
+      animation?.cancel();
     };
 
     const settleBack = (pixelsPerSecond: number) => {
       const from = Number(
         document.documentElement.style.getPropertyValue("--ombra-pull-live") || "0",
       );
+
+      cancelSnap();
 
       let duration = reducedRef.current ? 0 : slowRef.current ? 900 : 320;
       let easing: string = MORPH_EASING;
@@ -80,8 +91,13 @@ export function usePull(
         { duration, easing, fill: "forwards" },
       );
 
+      snap = animation;
+
       void animation.finished.then(
         () => {
+          if (snap !== animation) return;
+
+          snap = null;
           document.documentElement.style.setProperty("--ombra-pull-live", "0");
         },
         () => undefined,
@@ -95,6 +111,7 @@ export function usePull(
 
       if (tracking) return;
 
+      cancelSnap();
       tracking = true;
       pointerId = event.pointerId;
       axis = null;
@@ -118,15 +135,24 @@ export function usePull(
 
         if (axis === "x") return;
 
-        track.setPointerCapture(event.pointerId);
+        try {
+          track.setPointerCapture(event.pointerId);
+        } catch (error) {
+          // The pointer can already be gone. The pull still follows the events we have.
+          if (!(error instanceof DOMException)) throw error;
+        }
+
         setPulling(true);
       }
 
-      if (axis !== "y" || reducedRef.current) return;
+      if (axis !== "y") return;
 
-      const progress = Math.min(1, Math.max(0, dy) / (window.innerHeight * 0.62));
+      if (!reducedRef.current) {
+        const progress = Math.min(1, Math.max(0, dy) / (window.innerHeight * 0.62));
 
-      setProgress(progress);
+        setProgress(progress);
+      }
+
       samples.push({ y: event.clientY, t: event.timeStamp });
 
       const now = event.timeStamp;
@@ -165,21 +191,26 @@ export function usePull(
         return;
       }
 
+      cancelSnap();
+
       if (reducedRef.current) setProgress(0);
 
       onDismissRef.current(velocity);
     };
 
+    // pointerup is listened on window so a release outside the track cannot
+    // leave `tracking` stuck and ignore the next gesture.
     track.addEventListener("pointerdown", onPointerDown);
     track.addEventListener("pointermove", onPointerMove);
-    track.addEventListener("pointerup", finish);
-    track.addEventListener("pointercancel", finish);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
 
     return () => {
       track.removeEventListener("pointerdown", onPointerDown);
       track.removeEventListener("pointermove", onPointerMove);
-      track.removeEventListener("pointerup", finish);
-      track.removeEventListener("pointercancel", finish);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      cancelSnap();
       document.documentElement.style.setProperty("--ombra-pull-live", "0");
     };
   }, [trackRef, enabled]);

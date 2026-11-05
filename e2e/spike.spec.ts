@@ -250,19 +250,33 @@ test.describe("spike viewer", () => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/spike?engine=flip");
     await page.evaluate(() => {
-      const tick = () => {
-        const flight = document.querySelector("[data-slot=ombra-flight]");
+      const prototype = HTMLImageElement.prototype;
+      const original = prototype.animate;
 
-        if (flight instanceof HTMLElement) {
-          const rect = flight.getBoundingClientRect();
+      // A dropped frame can remove the flight between animation frames, so a rAF
+      // sample is the size from before the stall. The finished callback runs while
+      // the element is still at the end keyframe, before the gallery removes it.
+      Object.defineProperty(prototype, "animate", {
+        configurable: true,
+        writable: true,
+        value(
+          this: HTMLImageElement,
+          keyframes: Keyframe[] | PropertyIndexedKeyframes | null,
+          options?: number | KeyframeAnimationOptions,
+        ) {
+          const animation = original.call(this, keyframes, options);
 
-          document.documentElement.dataset.flight = `${rect.width},${rect.height}`;
-        }
+          if (this.dataset.slot === "ombra-flight") {
+            void animation.finished.then(() => {
+              const rect = this.getBoundingClientRect();
 
-        requestAnimationFrame(tick);
-      };
+              document.documentElement.dataset.flight = `${rect.width},${rect.height}`;
+            });
+          }
 
-      requestAnimationFrame(tick);
+          return animation;
+        },
+      });
     });
     await page
       .getByRole("button", { name: "Wooden boats tied beside a cabin on a mountain lake" })
@@ -527,5 +541,334 @@ test.describe("spike viewer", () => {
     await page.getByRole("button", { name: "Slow motion" }).click();
     await expect.poll(() => page.url()).toContain("slow=1");
     await expect.poll(() => page.url()).toContain("engine=flip");
+  });
+
+  test("closes a view transition when the current thumbnail is off screen", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 480 });
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=vt");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.keyboard.press("End");
+    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("12 / 12");
+
+    const hidden = await page.evaluate(() => {
+      const trigger = document.querySelectorAll("[data-slot=ombra-trigger]")[11];
+
+      if (!(trigger instanceof HTMLElement)) return false;
+
+      const rect = trigger.getBoundingClientRect();
+      const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
+
+      return visibleHeight < rect.height * 0.55;
+    });
+
+    expect(hidden).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toBeHidden({ timeout: 8_000 });
+  });
+
+  test("opens with flip when view transitions are missing", async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(Document.prototype, "startViewTransition", {
+        configurable: true,
+        writable: true,
+        value: undefined,
+      });
+    });
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=vt");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+
+    const vtDuration = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue("--ombra-vt-duration").trim(),
+    );
+
+    expect(vtDuration).toBe("");
+    await page.getByRole("button", { name: "Zoom in" }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-zoomed", "true");
+  });
+
+  test("keeps the scrim and sheet where the pull released", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip&slow=1");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    const track = page.locator("[data-slot=ombra-track]");
+    const box = await track.boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + Math.min(72, box.height / 3);
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + 220, { steps: 10 });
+
+    const before = await page.evaluate(() => {
+      const backdrop = document.querySelector("[data-slot=ombra-backdrop]");
+      const sheet = document.querySelector("[data-slot=ombra-sheet]");
+
+      return {
+        opacity: backdrop instanceof HTMLElement ? Number(getComputedStyle(backdrop).opacity) : 1,
+        ty: sheet instanceof HTMLElement ? new DOMMatrix(getComputedStyle(sheet).transform).m42 : 0,
+      };
+    });
+
+    expect(before.ty).toBeGreaterThan(24);
+    expect(before.opacity).toBeLessThan(0.92);
+    await page.mouse.up();
+    await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve(undefined)));
+        }),
+    );
+
+    const after = await page.evaluate(() => {
+      const backdrop = document.querySelector("[data-slot=ombra-backdrop]");
+      const sheet = document.querySelector("[data-slot=ombra-sheet]");
+
+      return {
+        opacity: backdrop instanceof HTMLElement ? Number(getComputedStyle(backdrop).opacity) : 1,
+        ty: sheet instanceof HTMLElement ? new DOMMatrix(getComputedStyle(sheet).transform).m42 : 0,
+      };
+    });
+
+    expect(after.opacity).toBeLessThan(before.opacity + 0.08);
+    expect(after.ty).toBeGreaterThan(20);
+  });
+
+  test("a second pull cancels the snap-back", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip&slow=1");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    const track = page.locator("[data-slot=ombra-track]");
+    const box = await track.boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + Math.min(72, box.height / 3);
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+
+    for (let step = 1; step <= 8; step += 1) {
+      await page.mouse.move(x, y + step * 8);
+      await page.waitForTimeout(30);
+    }
+
+    await page.mouse.up();
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + 220, { steps: 8 });
+
+    const progress = await page.evaluate(() =>
+      Number(getComputedStyle(document.documentElement).getPropertyValue("--ombra-pull-live")),
+    );
+
+    expect(progress).toBeGreaterThan(0.25);
+    await page.mouse.up();
+  });
+
+  test("a pointerup outside the track does not swallow the next pull", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=fade");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    const track = page.locator("[data-slot=ombra-track]");
+    const box = await track.boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+
+    await page.mouse.move(x, box.y + 2);
+    await page.mouse.down();
+    await page.mouse.move(x, box.y - 5);
+    await page.mouse.up();
+    await page.mouse.move(x, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(x, box.y + box.height / 2 + 180, { steps: 8 });
+
+    const progress = await page.evaluate(() =>
+      Number(document.documentElement.style.getPropertyValue("--ombra-pull-live") || "0"),
+    );
+
+    expect(progress).toBeGreaterThan(0.1);
+    await page.mouse.up();
+  });
+
+  test("reduced motion can still pull to dismiss", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/spike?engine=flip");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    const track = page.locator("[data-slot=ombra-track]");
+    const box = await track.boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + Math.min(72, box.height / 3);
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + 200, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByRole("dialog")).toBeHidden();
+  });
+
+  test("keeps a zoomed photo inside its slide while panning", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/spike?engine=fade");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.getByRole("button", { name: "Zoom in" }).click();
+    await page.getByRole("button", { name: "Zoom in" }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-zoomed", "true");
+
+    const track = page.locator("[data-slot=ombra-track]");
+    const box = await track.boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - 900, y, { steps: 12 });
+    await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve(undefined)));
+        }),
+    );
+
+    const pose = await page.evaluate(() => {
+      const slide = document.querySelector("[data-slot=ombra-slide][data-active=true]");
+      const layer = slide?.querySelector("[data-slot=ombra-zoom]");
+
+      if (!(slide instanceof HTMLElement) || !(layer instanceof HTMLElement)) return null;
+
+      const slideRect = slide.getBoundingClientRect();
+      const layerRect = layer.getBoundingClientRect();
+
+      return {
+        gap: Math.max(layerRect.left - slideRect.left, slideRect.right - layerRect.right),
+        scale: new DOMMatrix(getComputedStyle(layer).transform).a,
+      };
+    });
+
+    expect(pose?.scale ?? 0).toBeGreaterThan(1.3);
+    expect(pose?.gap ?? 99).toBeGreaterThan(-8);
+    expect(pose?.gap ?? 99).toBeLessThan(8);
+    await page.mouse.up();
+  });
+
+  test("a second ctrl+wheel stays on the point under the cursor", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/spike?engine=fade");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+
+    const edges = await page.evaluate(() => {
+      const slide = document.querySelector("[data-slot=ombra-slide][data-active=true]");
+      const layer = slide?.querySelector("[data-slot=ombra-zoom]");
+      const track = document.querySelector("[data-slot=ombra-track]");
+
+      if (
+        !(slide instanceof HTMLElement) ||
+        !(layer instanceof HTMLElement) ||
+        !(track instanceof HTMLElement)
+      ) {
+        return [];
+      }
+
+      const lefts: number[] = [];
+
+      for (let step = 0; step < 2; step += 1) {
+        const rect = layer.getBoundingClientRect();
+
+        track.dispatchEvent(
+          new WheelEvent("wheel", {
+            deltaY: -80,
+            clientX: rect.left + 2,
+            clientY: rect.top + rect.height / 2,
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        lefts.push(layer.getBoundingClientRect().left);
+      }
+
+      return lefts;
+    });
+
+    expect(edges.length).toBe(2);
+    expect(Math.abs((edges[1] ?? 0) - (edges[0] ?? 0))).toBeLessThan(6);
+  });
+
+  test("a second zoom does not jump a spring that is still moving", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip&slow=1&spring=1");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.getByRole("button", { name: "Zoom in" }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const layer = document.querySelector(
+            "[data-slot=ombra-slide][data-active=true] [data-slot=ombra-zoom]",
+          );
+
+          if (!(layer instanceof HTMLElement)) return 0;
+
+          return new DOMMatrix(getComputedStyle(layer).transform).a;
+        }),
+      )
+      .toBeGreaterThan(1.05);
+
+    const jump = await page.evaluate(
+      () =>
+        new Promise<number>((resolve) => {
+          const layer = document.querySelector(
+            "[data-slot=ombra-slide][data-active=true] [data-slot=ombra-zoom]",
+          );
+
+          const button = document.querySelector("[data-slot=ombra-zoom-in]");
+
+          if (!(layer instanceof HTMLElement) || !(button instanceof HTMLButtonElement)) {
+            resolve(99);
+
+            return;
+          }
+
+          const before = new DOMMatrix(getComputedStyle(layer).transform).a;
+
+          button.click();
+          requestAnimationFrame(() => {
+            const after = new DOMMatrix(getComputedStyle(layer).transform).a;
+
+            resolve(Math.abs(after - before));
+          });
+        }),
+    );
+
+    expect(jump).toBeLessThan(0.08);
   });
 });
