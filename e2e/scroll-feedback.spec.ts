@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
+import { photos } from "../apps/docs/app/spike/photos";
+
+const photoCount = photos.length;
+
 async function openViewer(page: Page, query = "scroll=both&engine=fade") {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -102,9 +106,9 @@ test("edge cues follow strip overflow and disappear when it fits", async ({ page
     strip.scrollLeft = strip.scrollWidth;
   });
   await expect.poll(async () => (await feedback(page)).right).toBeLessThan(0.01);
-  await expect(page.locator('[data-slot="ombra-counter"]')).toHaveText("1 / 12");
+  await expect(page.locator('[data-slot="ombra-counter"]')).toHaveText(`1 / ${photoCount}`);
 
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setViewportSize({ width: Math.max(1280, photoCount * 52 + 64), height: 900 });
   await expect.poll(async () => (await feedback(page)).overflowing).toBe("false");
   await expect.poll(async () => (await feedback(page)).cue).toBe("none");
 });
@@ -122,16 +126,18 @@ test("thumbnail emphasis follows gallery progress independently of strip browsin
     strip.scrollLeft = strip.scrollWidth;
   });
   await expect.poll(async () => (await feedback(page)).opacities[0]).toBeGreaterThan(0.99);
-  await expect(page.locator('[data-slot="ombra-counter"]')).toHaveText("1 / 12");
+  await expect(page.locator('[data-slot="ombra-counter"]')).toHaveText(`1 / ${photoCount}`);
 
   await positionSlide(page, 0, 0.5);
   await expect.poll(async () => (await feedback(page)).opacities[0]).toBeLessThan(0.9);
   await expect.poll(async () => (await feedback(page)).opacities[1]).toBeGreaterThan(0.65);
   await positionSlide(page, 6);
   await expect.poll(async () => (await feedback(page)).opacities[6]).toBeGreaterThan(0.99);
-  await expect(page.locator('[data-slot="ombra-counter"]')).toHaveText("7 / 12");
-  await positionSlide(page, 11);
-  await expect.poll(async () => (await feedback(page)).opacities[11]).toBeGreaterThan(0.99);
+  await expect(page.locator('[data-slot="ombra-counter"]')).toHaveText(`7 / ${photoCount}`);
+  await positionSlide(page, photoCount - 1);
+  await expect
+    .poll(async () => (await feedback(page)).opacities[photoCount - 1])
+    .toBeGreaterThan(0.99);
   await expect(page.locator('[data-slot="ombra-thumbnail"]').last()).toHaveAttribute(
     "aria-current",
     "true",
@@ -163,7 +169,9 @@ test("reduced motion and an unsupported CSS gate preserve the original appearanc
   await expect.poll(async () => (await feedback(page)).cue).toBe("none");
   await expect.poll(async () => (await feedback(page)).opacities[1]).toBeCloseTo(0.6);
   await page.keyboard.press("End");
-  await expect(page.locator('[data-slot="ombra-counter"]')).toHaveText("12 / 12");
+  await expect(page.locator('[data-slot="ombra-counter"]')).toHaveText(
+    `${photoCount} / ${photoCount}`,
+  );
   await page.keyboard.press("Escape");
   await expect(page.locator('[data-slot="ombra-trigger"]').last()).toBeFocused();
 });
@@ -172,7 +180,7 @@ for (const engine of ["fade", "flip", "vt"]) {
   test(`both effects preserve navigation, zoom, and focus with ${engine}`, async ({ page }) => {
     await openViewer(page, `scroll=both&engine=${engine}`);
     await page.locator('[data-slot="ombra-thumbnail"]').nth(5).click();
-    await expect(page.locator('[data-slot="ombra-counter"]')).toHaveText("6 / 12");
+    await expect(page.locator('[data-slot="ombra-counter"]')).toHaveText(`6 / ${photoCount}`);
     await expect.poll(async () => (await feedback(page)).opacities[5]).toBeGreaterThan(0.99);
     await page.getByRole("button", { name: "Zoom in", exact: true }).click();
     await expect(page.locator('[data-slot="ombra-viewer"]')).toHaveAttribute("data-zoomed", "true");
@@ -190,7 +198,7 @@ for (const engine of ["fade", "flip", "vt"]) {
 test("VT falls back for an off-screen close even with feedback off", async ({ page }) => {
   await openViewer(page, "scroll=off&engine=vt");
   await page.locator('[data-slot="ombra-thumbnail"]').nth(5).click();
-  await expect(page.locator('[data-slot="ombra-counter"]')).toHaveText("6 / 12");
+  await expect(page.locator('[data-slot="ombra-counter"]')).toHaveText(`6 / ${photoCount}`);
   await page.keyboard.press("Escape");
   await expect(page.locator('[data-slot="ombra-viewer"]')).toBeHidden();
   await expect(page.locator('[data-slot="ombra-trigger"]').nth(5)).toBeFocused();
