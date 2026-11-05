@@ -14,6 +14,7 @@ test.describe("spike viewer", () => {
     const dialog = page.getByRole("dialog");
 
     await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Close", exact: true })).toBeFocused();
     await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("1 / 12");
     await page.keyboard.press("ArrowRight");
     await expect(page.getByRole("status")).toContainText("2 of 12");

@@ -74,21 +74,16 @@ function imageChild(element: HTMLElement): HTMLImageElement | null {
 function EngineSwitch({
   engine,
   onEngineChange,
-  tone,
 }: {
   engine: MorphEngine;
   onEngineChange: (engine: MorphEngine) => void;
-  tone: "paper" | "ink";
 }) {
   return (
     <div
       role="radiogroup"
       aria-label="Morph engine"
       data-slot="ombra-engine"
-      className={cn(
-        "flex flex-wrap rounded-full p-1",
-        tone === "paper" ? "bg-black/5" : "bg-white/10",
-      )}
+      className="flex flex-wrap rounded-full bg-black/5 p-1"
     >
       {ENGINE_OPTIONS.map((option) => {
         const selected = option.id === engine;
@@ -102,10 +97,9 @@ function EngineSwitch({
             onClick={() => onEngineChange(option.id)}
             className={cn(
               "min-h-11 rounded-full px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2",
-              tone === "paper" && selected && "bg-[#241e18] text-[#f6f1ea]",
-              tone === "paper" && !selected && "text-[#241e18] focus-visible:outline-[#8f3d2b]",
-              tone === "ink" && selected && "bg-white text-[#241e18]",
-              tone === "ink" && !selected && "text-white focus-visible:outline-white",
+              selected
+                ? "bg-[#241e18] text-[#f6f1ea]"
+                : "text-[#241e18] focus-visible:outline-[#8f3d2b]",
             )}
           >
             {option.label}
@@ -119,11 +113,9 @@ function EngineSwitch({
 function SpringToggle({
   spring,
   onSpringChange,
-  tone,
 }: {
   spring: boolean;
   onSpringChange: (spring: boolean) => void;
-  tone: "paper" | "ink";
 }) {
   return (
     <button
@@ -132,11 +124,8 @@ function SpringToggle({
       data-slot="ombra-spring"
       onClick={() => onSpringChange(!spring)}
       className={cn(
-        "min-h-11 rounded-full px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2",
-        tone === "paper" && "text-[#241e18] focus-visible:outline-[#8f3d2b]",
-        tone === "paper" && spring && "bg-[#241e18] text-[#f6f1ea]",
-        tone === "ink" && "text-white focus-visible:outline-white",
-        tone === "ink" && spring && "bg-white text-[#241e18]",
+        "min-h-11 rounded-full px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3d2b]",
+        spring ? "bg-[#241e18] text-[#f6f1ea]" : "text-[#241e18]",
       )}
     >
       Spring
@@ -1096,11 +1085,11 @@ export function OmbraGallery({
     >
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col items-start gap-3">
-          <EngineSwitch engine={engine} tone="paper" onEngineChange={onEngineChange} />
+          <EngineSwitch engine={engine} onEngineChange={onEngineChange} />
           <FrameReadout longest={longest} dropped={dropped} engine={effective} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <SpringToggle spring={spring} tone="paper" onSpringChange={onSpringChange} />
+          <SpringToggle spring={spring} onSpringChange={onSpringChange} />
           <button
             type="button"
             aria-pressed={slow}
@@ -1124,7 +1113,7 @@ export function OmbraGallery({
             data-slot="ombra-trigger"
             aria-haspopup="dialog"
             onClick={() => openAt(itemIndex)}
-            className="mb-3 block w-full break-inside-avoid overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3d2b]"
+            className="relative mb-3 block w-full break-inside-avoid overflow-hidden rounded-[6px] after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:inset-ring after:inset-ring-black/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3d2b]"
             style={{ aspectRatio: item.frame }}
           >
             <img
@@ -1134,7 +1123,7 @@ export function OmbraGallery({
               alt={item.alt}
               width={item.width}
               height={item.height}
-              className="h-full w-full object-cover"
+              className="h-full w-full rounded-[inherit] object-cover"
             />
           </button>
         ))}
@@ -1161,7 +1150,7 @@ export function OmbraGallery({
             ref={backdropRef}
             data-slot="ombra-backdrop"
             className={cn(
-              "fixed inset-0 z-50 bg-black/88",
+              "fixed inset-0 z-50 bg-black",
               phase === "closing" && "pointer-events-none",
             )}
           />
@@ -1192,7 +1181,6 @@ export function OmbraGallery({
                     >
                       {index + 1} / {count}
                     </p>
-                    <FrameReadout longest={longest} dropped={dropped} engine={effective} />
                   </div>
                   <div className="flex items-center gap-1">
                     <IconButton
@@ -1211,10 +1199,6 @@ export function OmbraGallery({
                     </IconButton>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <EngineSwitch engine={engine} tone="ink" onEngineChange={onEngineChange} />
-                  <SpringToggle spring={spring} tone="ink" onSpringChange={onSpringChange} />
-                </div>
               </header>
 
               <div className="relative min-h-0 min-w-0 flex-1">
@@ -1222,7 +1206,7 @@ export function OmbraGallery({
                   <div
                     ref={bindTrack}
                     data-slot="ombra-track"
-                    className="flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    className="flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                   >
                     <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
                     {items.map((item, itemIndex) => {
@@ -1239,7 +1223,7 @@ export function OmbraGallery({
                           role="group"
                           aria-roledescription="slide"
                           aria-label={`${itemIndex + 1} of ${count}`}
-                          className="flex h-full min-h-0 w-[86cqi] shrink-0 snap-center snap-always items-center justify-center bg-black"
+                          className="flex h-full min-h-0 w-[86cqi] shrink-0 snap-center snap-always items-center justify-center"
                         >
                           <div
                             ref={itemIndex === index ? layerRef : undefined}
@@ -1260,7 +1244,7 @@ export function OmbraGallery({
                               height={item.height}
                               draggable={false}
                               fetchPriority={itemIndex === index ? "high" : "low"}
-                              className="h-full max-h-full min-h-0 w-full max-w-full min-w-0 object-contain"
+                              className="h-auto max-h-full min-h-0 w-auto max-w-full min-w-0 rounded-[6px] object-contain outline outline-1 -outline-offset-1 outline-white/10"
                             />
                           </div>
                         </div>
@@ -1326,11 +1310,15 @@ export function OmbraGallery({
                           aria-label={item.alt}
                           onClick={() => goTo(itemIndex, reduced ? "auto" : "smooth")}
                           className={cn(
-                            "size-11 shrink-0 snap-center overflow-hidden border-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
+                            "size-11 shrink-0 snap-center overflow-hidden rounded-lg border-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
                             selected ? "border-white" : "border-transparent opacity-60",
                           )}
                         >
-                          <img src={item.thumbSrc} alt="" className="h-full w-full object-cover" />
+                          <img
+                            src={item.thumbSrc}
+                            alt=""
+                            className="h-full w-full rounded-[6px] object-cover outline outline-1 -outline-offset-1 outline-white/10"
+                          />
                         </button>
                       );
                     })}
