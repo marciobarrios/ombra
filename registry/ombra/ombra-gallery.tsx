@@ -1051,7 +1051,10 @@ export function OmbraGallery({
     if (nextIndex < 0 || nextIndex >= count || nextIndex === indexRef.current) return;
 
     zoomRef.current.reset();
-    setIndex(nextIndex);
+
+    // Smooth scrolling publishes the centered slide as it moves. Selecting the
+    // destination now would flash its border before the first scroll event.
+    if (behavior !== "smooth") setIndex(nextIndex);
     scrollTrackTo(nextIndex, behavior);
   }
 

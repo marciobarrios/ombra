@@ -185,6 +185,81 @@ test.describe("spike viewer", () => {
     expect(await gutter()).toBe(gutterBefore);
   });
 
+  test("moves thumbnail selection with the track without flashing the destination", async ({
+    page,
+    isMobile,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=fade");
+    await page.getByRole("button", { name: "Sunlit path through a dense green forest" }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+
+    const strip = page.locator("[data-slot=ombra-thumbnails]");
+    const thumbs = strip.locator("[data-slot=ombra-thumbnail]");
+
+    await strip.evaluate((node) => {
+      const observer = new MutationObserver(() => {
+        const buttons = Array.from(node.querySelectorAll("[data-slot=ombra-thumbnail]"));
+        const active = buttons.findIndex((button) => button.getAttribute("data-active") === "true");
+
+        node.setAttribute(
+          "data-selection-history",
+          `${node.getAttribute("data-selection-history")},${active}`,
+        );
+      });
+
+      observer.observe(node, { attributes: true, subtree: true, attributeFilter: ["data-active"] });
+    });
+
+    for (const [from, to] of [
+      [2, 6],
+      [6, 2],
+    ]) {
+      await strip.evaluate((node, start) => {
+        node.setAttribute("data-selection-history", String(start));
+      }, from);
+
+      if (isMobile) await thumbs.nth(to).tap();
+      else await thumbs.nth(to).click();
+
+      await expect(thumbs.nth(to)).toHaveAttribute("aria-current", "true");
+      await expect
+        .poll(() =>
+          page.locator("[data-slot=ombra-track]").evaluate((track, target) => {
+            const slide = track.querySelectorAll("[data-slot=ombra-slide]")[target];
+
+            if (!slide) return 999;
+
+            const trackRect = track.getBoundingClientRect();
+            const slideRect = slide.getBoundingClientRect();
+
+            return Math.abs(
+              slideRect.left + slideRect.width / 2 - trackRect.left - trackRect.width / 2,
+            );
+          }, to),
+        )
+        .toBeLessThan(2);
+
+      const history =
+        (await strip.getAttribute("data-selection-history"))?.split(",").map(Number) ?? [];
+
+      const direction = Math.sign(to - from);
+
+      expect(history[0]).toBe(from);
+      expect(history.at(-1)).toBe(to);
+      expect(
+        history.some((value) => value > Math.min(from, to) && value < Math.max(from, to)),
+      ).toBe(true);
+
+      for (let step = 1; step < history.length; step += 1) {
+        expect(
+          (history[step] - history[step - 1]) * direction,
+          `selection history: ${history}`,
+        ).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
   test("keeps every slide visible while the track scrolls", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/spike?engine=fade");
