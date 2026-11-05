@@ -20,7 +20,8 @@ const display = Fraunces({
 
 export const metadata: Metadata = {
   title: "Ombra",
-  description: "An open-source React lightbox, distributed as a shadcn registry.",
+  description:
+    "Ombra is a small, modern React lightbox built for performance and expressive motion. Native browser animations, fluid gestures, and zero animation-library dependencies.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

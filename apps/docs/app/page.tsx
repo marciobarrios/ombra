@@ -6,8 +6,9 @@ export default function Home() {
       <p className="font-display text-sm tracking-[0.22em] text-[#8f3d2b]">OMBRA</p>
       <h1 className="font-display mt-4 text-5xl leading-none sm:text-6xl">A lightbox you own.</h1>
       <p className="mt-6 max-w-xl text-lg leading-8 text-[#241e18]/80">
-        Ombra is an open-source React lightbox, distributed as a shadcn registry. The core stays on
-        React, Base UI, and Tailwind. Motion is optional, and not in this spike.
+        Ombra is a small, modern React lightbox built for performance and expressive motion. Native
+        browser animations, fluid gestures, and zero animation-library dependencies. Copy the
+        source, make it yours, and give your images room to shine.
       </p>
       <Link
         href="/spike"
