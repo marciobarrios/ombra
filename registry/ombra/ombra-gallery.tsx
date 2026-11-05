@@ -1351,6 +1351,8 @@ export function OmbraGallery({
                     })}
                   </div>
                 </div>
+                <span data-slot="ombra-strip-edge-start" aria-hidden="true" className="hidden" />
+                <span data-slot="ombra-strip-edge-end" aria-hidden="true" className="hidden" />
               </footer>
             </div>
             <p role="status" data-slot="ombra-live" className="sr-only">
