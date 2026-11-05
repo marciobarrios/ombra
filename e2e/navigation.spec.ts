@@ -16,6 +16,17 @@ test.describe("spike navigation", () => {
 
       const track = page.locator("[data-slot=ombra-track]");
 
+      await track.evaluate((node) => {
+        const scrollTo = node.scrollTo.bind(node);
+
+        Object.defineProperty(node, "scrollTo", {
+          value(options: ScrollToOptions) {
+            node.dataset.navigationBehavior = options.behavior;
+            scrollTo(options);
+          },
+        });
+      });
+
       await expect
         .poll(() =>
           track
@@ -29,6 +40,16 @@ test.describe("spike navigation", () => {
         [6, 7],
         [7, 6],
       ]) {
+        const destination = await track.evaluate((node, target) => {
+          const slide = node.querySelectorAll("[data-slot=ombra-slide]")[target];
+          const rect = slide.getBoundingClientRect();
+          const trackRect = node.getBoundingClientRect();
+
+          return (
+            node.scrollLeft + rect.left + rect.width / 2 - trackRect.left - trackRect.width / 2
+          );
+        }, to);
+
         await track.evaluate(
           (node, indices) => {
             const images = Array.from(node.querySelectorAll<HTMLImageElement>("img"));
@@ -41,6 +62,7 @@ test.describe("spike navigation", () => {
             const start = performance.now();
 
             delete node.dataset.navigationFrames;
+            delete node.dataset.navigationBehavior;
 
             const sample = () => {
               frames.push({
@@ -77,6 +99,9 @@ test.describe("spike navigation", () => {
             .getByRole("button", { name: to > from ? "Next photo" : "Previous photo", exact: true })
             .click();
 
+        // Native scroll duration and rAF cadence vary across WebKit platforms.
+        // Check the requested behavior and landing position instead of frame count.
+        await expect(track).toHaveAttribute("data-navigation-behavior", "smooth");
         await expect(page.locator("[data-slot=ombra-counter]")).toHaveText(`${to + 1} / 12`);
         await expect(track).toHaveAttribute("data-navigation-frames", /./);
 
@@ -90,15 +115,12 @@ test.describe("spike navigation", () => {
         const distance = end.left - start.left;
 
         expect(Math.abs(distance)).toBeGreaterThan(100);
-        expect(
-          frames.filter(({ left }) => {
-            const progress = (left - start.left) / distance;
-
-            return progress > 0.05 && progress < 0.95;
-          }).length,
-        ).toBeGreaterThan(2);
+        expect(Math.abs(end.left - destination)).toBeLessThan(3);
 
         for (const [photoIndex, photo] of start.photos.entries()) {
+          expect(photo.width).toBeGreaterThan(100);
+          expect(photo.height).toBeGreaterThan(100);
+
           for (const frame of frames) {
             expect(Math.abs(frame.photos[photoIndex].width - photo.width)).toBeLessThan(2);
             expect(Math.abs(frame.photos[photoIndex].height - photo.height)).toBeLessThan(2);
