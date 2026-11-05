@@ -228,7 +228,7 @@ export function OmbraGallery({
   const [index, setIndex] = useState(0);
   const [animEpoch, setAnimEpoch] = useState(0);
   const [readout, setReadout] = useState<FrameSample | null>(null);
-  const [sharpId, setSharpId] = useState<string | null>(null);
+  const [sharpIds, setSharpIds] = useState<ReadonlySet<string>>(() => new Set());
   const [stripOverflows, setStripOverflows] = useState(false);
   const [releaseScroll, setReleaseScroll] = useState(false);
 
@@ -261,6 +261,7 @@ export function OmbraGallery({
   const samplerRef = useRef<FrameSampler | null>(null);
   const vtRef = useRef<ViewTransition | null>(null);
   const seenIndex = useRef(index);
+  const navigationTarget = useRef<number | null>(null);
 
   phaseRef.current = phase;
   indexRef.current = index;
@@ -324,21 +325,30 @@ export function OmbraGallery({
   useLayoutEffect(() => {
     if (!open) return;
 
-    const item = items[index];
-
-    if (!item) return;
-
     let cancelled = false;
-    const loader = new Image();
 
-    loader.src = item.src;
+    // Decode the neighbors before they enter the viewport, and retain decoded
+    // sources so changing selection never downgrades an outgoing photo.
+    for (const item of items.slice(Math.max(0, index - 1), index + 2)) {
+      const loader = new Image();
 
-    void loader.decode().then(
-      () => {
-        if (!cancelled) setSharpId(item.id);
-      },
-      () => undefined,
-    );
+      loader.sizes = "100vw";
+      loader.srcset = item.srcSet;
+      loader.src = item.src;
+
+      void loader.decode().then(
+        () => {
+          if (cancelled) return;
+
+          setSharpIds((current) => {
+            if (current.has(item.id)) return current;
+
+            return new Set([...current, item.id]);
+          });
+        },
+        () => undefined,
+      );
+    }
 
     return () => {
       cancelled = true;
@@ -396,6 +406,7 @@ export function OmbraGallery({
 
   const bindTrack = useCallback((node: HTMLDivElement | null) => {
     trackRef.current = node;
+    navigationTarget.current = null;
     const previous = trackCleanup.current;
 
     previous?.();
@@ -417,6 +428,7 @@ export function OmbraGallery({
 
     const settle = () => {
       settledRef.current = true;
+      navigationTarget.current = null;
       publish();
     };
 
@@ -432,11 +444,19 @@ export function OmbraGallery({
       settle();
     };
 
+    const onTrackInput = () => {
+      navigationTarget.current = null;
+    };
+
     node.addEventListener("scroll", onScroll, { passive: true });
     node.addEventListener("scrollend", onScrollEnd);
+    node.addEventListener("wheel", onTrackInput, { passive: true });
+    node.addEventListener("pointerdown", onTrackInput, { passive: true });
     trackCleanup.current = () => {
       node.removeEventListener("scroll", onScroll);
       node.removeEventListener("scrollend", onScrollEnd);
+      node.removeEventListener("wheel", onTrackInput);
+      node.removeEventListener("pointerdown", onTrackInput);
       window.clearTimeout(timer);
     };
   }, []);
@@ -1048,9 +1068,12 @@ export function OmbraGallery({
   }
 
   function goTo(nextIndex: number, behavior: ScrollBehavior) {
-    if (nextIndex < 0 || nextIndex >= count || nextIndex === indexRef.current) return;
+    if (nextIndex < 0 || nextIndex >= count) return;
+
+    if (nextIndex === indexRef.current && navigationTarget.current === null) return;
 
     zoomRef.current.reset();
+    navigationTarget.current = behavior === "smooth" ? nextIndex : null;
 
     // Smooth scrolling publishes the centered slide as it moves. Selecting the
     // destination now would flash its border before the first scroll event.
@@ -1063,10 +1086,10 @@ export function OmbraGallery({
 
     if (event.key === "ArrowRight") {
       event.preventDefault();
-      goTo(indexRef.current + 1, "auto");
+      goTo((navigationTarget.current ?? indexRef.current) + 1, reduced ? "auto" : "smooth");
     } else if (event.key === "ArrowLeft") {
       event.preventDefault();
-      goTo(indexRef.current - 1, "auto");
+      goTo((navigationTarget.current ?? indexRef.current) - 1, reduced ? "auto" : "smooth");
     } else if (event.key === "Home") {
       event.preventDefault();
       goTo(0, "auto");
@@ -1226,7 +1249,7 @@ export function OmbraGallery({
                   >
                     <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
                     {items.map((item, itemIndex) => {
-                      const sharp = sharpId === item.id;
+                      const sharp = sharpIds.has(item.id);
 
                       return (
                         <div
@@ -1275,7 +1298,9 @@ export function OmbraGallery({
                     slot="ombra-prev"
                     className="pointer-events-auto bg-black/40"
                     disabled={index === 0}
-                    onClick={() => goTo(index - 1, reduced ? "auto" : "smooth")}
+                    onClick={() =>
+                      goTo((navigationTarget.current ?? index) - 1, reduced ? "auto" : "smooth")
+                    }
                   >
                     <Chevron direction="left" />
                   </IconButton>
@@ -1286,7 +1311,9 @@ export function OmbraGallery({
                     slot="ombra-next"
                     className="pointer-events-auto bg-black/40"
                     disabled={index === count - 1}
-                    onClick={() => goTo(index + 1, reduced ? "auto" : "smooth")}
+                    onClick={() =>
+                      goTo((navigationTarget.current ?? index) + 1, reduced ? "auto" : "smooth")
+                    }
                   >
                     <Chevron direction="right" />
                   </IconButton>
