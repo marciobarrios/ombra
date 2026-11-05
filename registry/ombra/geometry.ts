@@ -62,16 +62,16 @@ export function coverCrop(
   return { inline: 0, block: (1 - visible) / 2 };
 }
 
-export function clipInset(crop: Crop): string {
+export function clipInset(crop: Crop, radius = 6): string {
   const inline = `${crop.inline * 100}%`;
   const block = `${crop.block * 100}%`;
 
-  return `inset(${block} ${inline} ${block} ${inline})`;
+  return `inset(${block} ${inline} ${block} ${inline} round ${radius}px)`;
 }
 
 export const RESTING_POSE: FlipPose = {
   transform: "translate(0px, 0px) scale(1)",
-  clipPath: "inset(0% 0% 0% 0%)",
+  clipPath: clipInset({ inline: 0, block: 0 }),
 };
 
 /**
@@ -89,7 +89,8 @@ export function poseBetween(target: Box, home: Box, crop: Crop): FlipPose {
 
   return {
     transform: `translate(${dx}px, ${dy}px) scale(${scale})`,
-    clipPath: clipInset(crop),
+    // Keep the visible corner at 6px after the flight's scale is applied.
+    clipPath: clipInset(crop, 6 / scale),
   };
 }
 
