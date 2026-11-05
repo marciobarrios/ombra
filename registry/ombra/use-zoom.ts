@@ -44,6 +44,17 @@ function resistScale(scale: number): number {
 }
 
 function poseFromTransform(transform: string): Pose | null {
+  const matrix3d = /matrix3d\(([^)]+)\)/.exec(transform);
+
+  if (matrix3d?.[1]) {
+    const parts = matrix3d[1].split(",");
+    const scale = Number(parts[0]);
+    const x = Number(parts[12]);
+    const y = Number(parts[13]);
+
+    if (Number.isFinite(scale) && Number.isFinite(x) && Number.isFinite(y)) return { scale, x, y };
+  }
+
   const matrix = /matrix\(([^)]+)\)/.exec(transform);
 
   if (matrix?.[1]) {
@@ -63,6 +74,18 @@ function poseFromTransform(transform: string): Pose | null {
   return { x: Number(translate[1]), y: Number(translate[2]), scale: Number(scaled[1]) };
 }
 
+/** Layout box in screen space. getBoundingClientRect includes the live zoom transform. */
+function layoutRect(element: HTMLElement, pose: Pose): DOMRect {
+  const visual = element.getBoundingClientRect();
+  const scale = Math.abs(pose.scale) > 0.001 ? Math.abs(pose.scale) : 1;
+  const width = visual.width / scale;
+  const height = visual.height / scale;
+  const centerX = visual.left + visual.width / 2 - pose.x;
+  const centerY = visual.top + visual.height / 2 - pose.y;
+
+  return new DOMRect(centerX - width / 2, centerY - height / 2, width, height);
+}
+
 function zoomAt(prev: Pose, nextScale: number, origin: Point, rect: DOMRect): Pose {
   const centerX = rect.left + rect.width / 2;
   const centerY = rect.top + rect.height / 2;
@@ -76,6 +99,15 @@ function zoomAt(prev: Pose, nextScale: number, origin: Point, rect: DOMRect): Po
     x: pointX - localX * nextScale,
     y: pointY - localY * nextScale,
   };
+}
+
+function capturePointer(track: HTMLElement, pointerId: number) {
+  try {
+    track.setPointerCapture(pointerId);
+  } catch (error) {
+    // The pointer can already be gone. The gesture still follows the events we have.
+    if (!(error instanceof DOMException)) throw error;
+  }
 }
 
 function clearLayers(track: HTMLElement | null) {
@@ -97,6 +129,7 @@ export function useZoom(
   spring: boolean,
   slow: boolean,
   reduced: boolean,
+  gestureRef: RefObject<boolean>,
 ): ZoomControls {
   const pose = useRef<Pose>({ scale: 1, x: 0, y: 0 });
   const pointers = useRef(new Map<number, Point>());
@@ -170,12 +203,18 @@ export function useZoom(
 
       if (allowHandoff && overflow !== 0 && track) {
         handedOff.current = true;
+        const suspended = gestureRef.current;
+
+        // The scroll event is synchronous. Hold index updates until the gesture ends
+        // so a hand-off does not reset the zoom while the pointer is still down.
+        gestureRef.current = true;
         track.style.overflowX = "auto";
         track.scrollLeft -= overflow;
         track.style.overflowX = "hidden";
+        gestureRef.current = suspended;
       }
     },
-    [layerRef, trackRef],
+    [gestureRef, layerRef, trackRef],
   );
 
   const stopSpring = useCallback(() => {
@@ -186,12 +225,22 @@ export function useZoom(
 
     if (!animation || !layer) return;
 
-    animation.commitStyles();
+    try {
+      animation.commitStyles();
+    } catch (error) {
+      // commitStyles throws InvalidStateError when the effect has no target.
+      // Computed style still reflects the in-flight frame until cancel.
+      if (!(error instanceof DOMException)) throw error;
+    }
+
+    const live = poseFromTransform(getComputedStyle(layer).transform);
+
     animation.cancel();
 
-    const live = poseFromTransform(layer.style.transform);
+    if (!live) return;
 
-    if (live) pose.current = live;
+    pose.current = live;
+    layer.style.transform = `translate3d(${live.x}px, ${live.y}px, 0) scale(${live.scale})`;
   }, [layerRef]);
 
   const animatePose = useCallback(
@@ -221,7 +270,16 @@ export function useZoom(
       zoomAnim.current = animation;
       pose.current = target;
 
-      const nowZoomed = target.scale > 1.02;
+      const nowZoomed = from.scale > 1.02 || target.scale > 1.02;
+
+      layer.dataset.zoomed = nowZoomed ? "true" : "false";
+
+      const track = trackRef.current;
+
+      if (track) {
+        track.style.overflowX = nowZoomed ? "hidden" : "";
+        track.style.touchAction = nowZoomed ? "none" : "";
+      }
 
       if (nowZoomed !== zoomedRef.current) {
         zoomedRef.current = nowZoomed;
@@ -236,13 +294,21 @@ export function useZoom(
 
           if (!current) return;
 
-          animation.commitStyles();
+          try {
+            animation.commitStyles();
+          } catch (error) {
+            if (!(error instanceof DOMException)) throw error;
+          }
+
+          const live = poseFromTransform(getComputedStyle(current).transform);
+
           animation.cancel();
           zoomAnim.current = null;
 
-          const live = poseFromTransform(current.style.transform);
-
-          if (live) pose.current = live;
+          if (live) {
+            pose.current = live;
+            current.style.transform = `translate3d(${live.x}px, ${live.y}px, 0) scale(${live.scale})`;
+          }
 
           const settled = pose.current.scale > 1.02;
 
@@ -263,7 +329,7 @@ export function useZoom(
         () => undefined,
       );
     },
-    [layerRef, stopSpring, trackRef],
+    [apply, layerRef, stopSpring, trackRef],
   );
 
   const animateRef = useRef(animatePose);
@@ -297,7 +363,9 @@ export function useZoom(
 
       if (!layer || !enabledRef.current) return;
 
-      const rect = layer.getBoundingClientRect();
+      stopSpring();
+
+      const rect = layoutRect(layer, pose.current);
 
       rectRef.current = rect;
 
@@ -305,8 +373,6 @@ export function useZoom(
         x: rect.left + rect.width / 2,
         y: rect.top + rect.height / 2,
       };
-
-      stopSpring();
 
       const nextScale = clampScale(pose.current.scale * factor);
       const next = zoomAt(pose.current, nextScale, point, rect);
@@ -430,12 +496,14 @@ export function useZoom(
 
       const layer = layerRef.current;
 
-      if (layer) rectRef.current = layer.getBoundingClientRect();
+      if (layer) rectRef.current = layoutRect(layer, pose.current);
+
+      if (pose.current.scale > 1.02 || pointers.current.size >= 2) gestureRef.current = true;
 
       if (pointers.current.size >= 2) {
         pinchStart.current = null;
         panStart.current = null;
-        track.setPointerCapture(event.pointerId);
+        capturePointer(track, event.pointerId);
         schedule();
 
         return;
@@ -446,7 +514,7 @@ export function useZoom(
           pointer: { x: event.clientX, y: event.clientY },
           pose: { ...pose.current },
         };
-        track.setPointerCapture(event.pointerId);
+        capturePointer(track, event.pointerId);
       }
     };
 
@@ -494,7 +562,7 @@ export function useZoom(
           const layer = layerRef.current;
 
           if (layer) {
-            const rect = layer.getBoundingClientRect();
+            const rect = layoutRect(layer, pose.current);
 
             rectRef.current = rect;
 
@@ -512,6 +580,8 @@ export function useZoom(
       }
 
       if (pointers.current.size === 0) {
+        gestureRef.current = false;
+
         const current = pose.current;
         const scale = clampScale(current.scale);
 
@@ -525,6 +595,11 @@ export function useZoom(
           const maxX = Math.max(0, ((scale - 1) * rect.width) / 2);
           const maxY = Math.max(0, ((scale - 1) * rect.height) / 2);
           const distance = current.scale - scale;
+          const rawVelocity = scaleVelocity.current / distance;
+
+          const velocity = Number.isFinite(rawVelocity)
+            ? Math.max(-12, Math.min(12, rawVelocity))
+            : 0;
 
           animateRef.current(
             {
@@ -532,7 +607,7 @@ export function useZoom(
               x: Math.min(maxX, Math.max(-maxX, current.x)),
               y: Math.min(maxY, Math.max(-maxY, current.y)),
             },
-            Math.max(-12, Math.min(12, scaleVelocity.current / distance)),
+            velocity,
           );
         }
 
@@ -552,7 +627,9 @@ export function useZoom(
 
       if (!layer) return;
 
-      const rect = layer.getBoundingClientRect();
+      stopRef.current();
+
+      const rect = layoutRect(layer, pose.current);
 
       rectRef.current = rect;
 
@@ -575,8 +652,9 @@ export function useZoom(
       if (!event.ctrlKey && pose.current.scale <= 1.02) return;
 
       event.preventDefault();
+      stopRef.current();
 
-      const rect = layer.getBoundingClientRect();
+      const rect = layoutRect(layer, pose.current);
 
       rectRef.current = rect;
 
@@ -598,27 +676,50 @@ export function useZoom(
       );
     };
 
+    const onResize = () => {
+      const layer = layerRef.current;
+
+      if (!layer || pose.current.scale <= 1.02) return;
+
+      if (pointers.current.size > 0) {
+        rectRef.current = layoutRect(layer, pose.current);
+
+        return;
+      }
+
+      stopRef.current();
+      rectRef.current = layoutRect(layer, pose.current);
+      apply(pose.current, false);
+    };
+
     track.addEventListener("pointerdown", onPointerDown);
     track.addEventListener("pointermove", onPointerMove);
     track.addEventListener("pointerup", onPointerUp);
     track.addEventListener("pointercancel", onPointerUp);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
     track.addEventListener("dblclick", onDoubleClick);
     track.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("resize", onResize);
 
     return () => {
       track.removeEventListener("pointerdown", onPointerDown);
       track.removeEventListener("pointermove", onPointerMove);
       track.removeEventListener("pointerup", onPointerUp);
       track.removeEventListener("pointercancel", onPointerUp);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
       track.removeEventListener("dblclick", onDoubleClick);
       track.removeEventListener("wheel", onWheel);
+      window.removeEventListener("resize", onResize);
 
       if (frame.current !== 0) cancelAnimationFrame(frame.current);
 
       zoomAnim.current?.cancel();
       zoomAnim.current = null;
+      gestureRef.current = false;
     };
-  }, [apply, enabled, layerRef, trackRef, zoomBy]);
+  }, [apply, enabled, gestureRef, layerRef, trackRef, zoomBy]);
 
   return { zoomed, zoomIn, zoomOut, reset, home };
 }
