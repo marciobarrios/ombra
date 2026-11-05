@@ -2,6 +2,14 @@
 
 Ombra is a shadcn registry, not an npm component library. Users copy files. Do not add a runtime dependency to the core beyond React, `@base-ui/react`, and `cn`.
 
+## Linear issues and pull requests
+
+- Confirm that each Linear issue belongs to Ombra and matches the change before linking it.
+- For every issue fully resolved by a PR, include a separate `Fixes MAR-123` line in the PR description, replacing the example with the actual issue identifier. A bare ID, branch name, or PR comment is not a substitute for an explicit closing keyword in the description.
+- For partial work, investigations with remaining acceptance criteria, or related follow-ups, use `Refs MAR-123` (contributing work) or `Relates to MAR-123` (context only). Do not use a closing keyword until the PR completes the issue's scope.
+- Before handing off a PR, verify its saved description contains the intended closing lines and the issues are linked in Linear. Automatic completion requires the team's GitHub integration to map **On PR or commit merge** to **Done**; when multiple PRs implement one issue, completion waits for the final linked PR. See [Linear's GitHub integration docs](https://linear.app/docs/github).
+- When reconciling stale issues, verify the implementing PRs have merged and the issue's acceptance criteria are satisfied, then mark the issue Done with links to the merged PRs. Keep issues open when implementation or required validation remains.
+
 ## Stack
 
 - pnpm 10, Node.js 24 (`.nvmrc`). This VM’s `/exec-daemon/node` is Node 22 and sits earlier on `PATH`. Put the Node 24 bin first before `pnpm`, `next`, `oxlint`, or Playwright.
