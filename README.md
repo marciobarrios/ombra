@@ -2,7 +2,9 @@
 
 Ombra (Catalan for “shadow”) is an open-source React lightbox. It is distributed as a [shadcn registry](https://ui.shadcn.com): you copy the source into your app with `shadcn add`, and you do not take a runtime dependency on an Ombra package.
 
-The core is React, [Base UI](https://base-ui.com) Dialog, and Tailwind. There is no animation library in the core. Motion, themes, and the final compound API come later. This repository currently holds the workspace scaffold and a morph-engine spike at `/spike`.
+The core is React, [Base UI](https://base-ui.com) Dialog, and Tailwind. There is no animation library in the core. The public API will prioritize composition: assemble triggers, slides, media, and controls in JSX, with editable defaults copied into your app. See the [composition-first usage contract](COMPOSITION.md) for the proposed API and migration from the current morph-engine spike at `/spike`. The compound API is not implemented yet.
+
+The architecture has three layers: behavior primitives, editable styled parts, and ready-made recipes built from the same public parts. [MAR-64](https://linear.app/marciobarrios/issue/MAR-64/migrate-the-lightbox-spike-to-composable-primitives-and-gallery) tracks the migration for v0.1.
 
 ## Develop
 
