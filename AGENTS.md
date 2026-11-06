@@ -29,7 +29,7 @@ Ombra is a shadcn registry, not an npm component library. Users copy files. Do n
 
 ## Spike behaviour
 
-- Missing `?engine=` defaults to `flip` so the page has a stable starting point. That is not the product default. Reduced motion forces `fade`.
+- Missing `?engine=` defaults to `flip`, matching the product default confirmed in MAR-12 on 6 November 2026. View Transitions remain optional. Reduced motion forces `fade`. Spring versus cubic is still undecided.
 - Morph engines: `vt` (View Transition API), `flip` (WAAPI FLIP on a fixed clone), `fade`.
 - FLIP animates `transform` and `clip-path` only. The clone is on `document.body` so the dialog cannot clip it.
 - Slide track and thumbnail strip use native scroll-snap. Zoom sets `overflow: hidden` and `touch-action: none` on the track until the scale returns to 1, and hands extra pan off to `scrollLeft`.

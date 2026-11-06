@@ -1,6 +1,6 @@
 # Morph engine spike
 
-The open/close engine is undecided until this page is tried on a real iPhone. The spike is the docs route `/spike`, so one Vercel project can deploy it. Nothing here is the final registry API.
+WAAPI FLIP is the default open/close engine, with View Transitions optional, as confirmed in MAR-12 on 6 November 2026. The spike is the docs route `/spike`, so one Vercel project can deploy it. Nothing here is the final registry API.
 
 See [the scroll-driven animations assessment](SCROLL-ANIMATIONS.md) for MAR-58: browser support, potential thumbnail feedback, and the interaction logic that stays in JavaScript.
 
@@ -65,18 +65,16 @@ Log the iOS version. Repeat with Low Power Mode on. The readout stays on screen.
 | Zoom and track arbitration    | Pinch during a track fling, pan to the image edge and keep dragging, double-tap, pull while zoomed                                                                                                   | Native scroll and zoom never fight; edge hand-off feels natural; pull is blocked while zoomed           | Stuck gestures, accidental slide change while panning, or page pinch-zoom taking over |
 | Safari quirks                 | Log the iOS version. Check address bar resize, safe areas, `view-transition-name` clashes with other fixed elements, object-fit crop interpolation, first-frame decode flash, rubber-band overscroll | Each quirk is either absent or has a one-line mitigation                                                | A quirk with no workaround                                                            |
 
-### Decision rule
+### Engine decision — 6 November 2026
 
-- View Transitions become the default only if they pass smoothness, swipe handoff, and off-screen thumbnail on the iPhone, including Low Power Mode, and interruptibility is acceptable or has a cheap mitigation such as cancelling and restarting with FLIP.
-- Otherwise WAAPI FLIP is the default and View Transitions stay available as an option.
-- Either way both backends ship behind one morph option.
-- If zoom arbitration fails on the iPhone, change the gesture model before writing the registry items.
+- **Default:** WAAPI FLIP. **Optional:** native View Transitions. Both backends ship behind one morph option.
+- Reduced motion keeps the fade behavior. The spike's missing `?engine=` already selects `flip`, so the documented decision requires no runtime change here.
+- Spring versus cubic remains **undecided**. Marcio is leaning toward spring; keep the comparison available during interaction tuning.
+- Further gesture tuning is planned. MAR-60 and MAR-61 track the reversal and zoom/header findings; the gesture model is not signed off by the general phone feedback.
 
-The query default on this page is `flip` only so the spike has a stable starting point. It is not that decision.
+Marcio tested on a real **iPhone 18 Pro**, reported that it worked fine, and found little perceptual difference between VT and FLIP. The phone's iOS version, Low Power Mode coverage, and ten-run frame measurements were not supplied. This is qualitative feedback, not a performance benchmark. The [project decision addendum](https://linear.app/marciobarrios/document/ombra-motion-decisions-flip-default-and-iphone-feedback-28ad1887de32) records the confirmed choice and pending items.
 
-iOS version, Low Power Mode, and the engine choice still need a pass on Marcio’s phone.
-
-The [5 November iOS Simulator session](SPIKE-IOS-SIMULATOR-2026-11-05.md) records the separate correctness pass on iPhone 18 Pro / iOS 27.2, including the results, Linear follow-ups, and attached evidence. It does not decide the engine or easing default.
+The [5 November iOS Simulator session](SPIKE-IOS-SIMULATOR-2026-11-05.md) records the earlier correctness pass on iPhone 18 Pro / iOS 27.2, including the results, Linear follow-ups, and attached evidence. Its simulator version must not be attributed to the real phone. A 6 November retest of the newer VT fix was attempted but did not run because the simulator remained owned by another session; MAR-59 stays open for verification.
 
 ## Spring
 

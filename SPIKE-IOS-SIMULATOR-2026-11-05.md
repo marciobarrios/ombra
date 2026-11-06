@@ -2,7 +2,7 @@
 
 This is pass 1 of [MAR-12](https://linear.app/marciobarrios/issue/MAR-12/iphone-test-session-and-morph-engine-decision). The simulator session ran through T3 Code's Device panel, using Safari on **iPhone 18 Pro, iOS 27.2**, in portrait (402 × 874 points). The page tested was <https://ombra-navy.vercel.app/spike>.
 
-The simulator pass found a reproducible VT close failure and limitations in close interruption and zoom/layout arbitration. **It does not decide the engine or spring default.** No product code was changed.
+The simulator pass found a reproducible VT close failure and limitations in close interruption and zoom/layout arbitration. **The pass itself did not decide the engine or spring default.** The confirmed engine choice and pending retest are recorded in the 6 November follow-up below. No product code was changed.
 
 Local source inspected for diagnosis: `7373d3b7c7e3cb7acea421e8ab03cff604a8709f`. The hosted deployment's commit was not verified, so the source explanations below are candidate causes, separate from the observed Safari behavior.
 
@@ -111,3 +111,9 @@ Contact sheets (`vt-sheet.png`, `flip-sheet.png`, `fade-sheet.png`, and `normal-
 The simulator correctness session is recorded. It has failures and incomplete subchecks; it is not an acceptance sign-off. Recheck the newer VT off-screen fallback, validate an actual reversal input path, and isolate the zoom/header crop through MAR-59, MAR-60, and MAR-61. At the end of this pass the default engine, default easing, and final gesture model were undecided.
 
 After the session, Marcio reported testing on a real iPhone and finding little perceptual difference between VT and FLIP. Based on that feedback and the simulator's off-screen-close result, the recommendation was FLIP by default, VT as an option, and fade for reduced motion. This records the recommendation without changing the engine configuration or asserting that the newer VT fix still fails. The phone's iOS version, Low Power Mode results, 10-run frame measurements, and spring preference were not supplied in that feedback.
+
+## Follow-up — 6 November 2026
+
+Marcio confirmed **FLIP default, VT optional** and identified the real test device as an **iPhone 18 Pro**. It worked fine in that qualitative test; he plans to tune the interactions over the next few days. Spring versus cubic is still undecided, with a tentative preference for spring. The phone's iOS version, Low Power Mode coverage, and frame measurements remain unreported. The [project decision addendum](https://linear.app/marciobarrios/document/ombra-motion-decisions-flip-default-and-iphone-feedback-28ad1887de32) records this update alongside MAR-12, MAR-15, and MAR-16.
+
+The production alias `ombra-navy.vercel.app` was verified READY at commit `8c3246f26e1f492f4b4df8bd01e2edf3bf14dfc4`, which includes the newer VT fallback fix. A targeted Safari retest was attempted on the iOS Simulator, but another session retained the device after the supported wait/retry. **No new test ran and no pass/fail result is claimed.** MAR-59 remains open to verify closes to thumbnails above and below the viewport in normal and slow motion, including trigger reveal or clean fade, focus return, and restored page scrolling. The historical findings above are unchanged.
