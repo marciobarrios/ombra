@@ -2,6 +2,8 @@
 
 WAAPI FLIP is the default open/close engine, with View Transitions optional, as confirmed in MAR-12 on 6 November 2026. The spike is the docs route `/spike`, so one Vercel project can deploy it. Nothing here is the final registry API.
 
+The [composition-first usage contract](COMPOSITION.md) defines the intended public API: consumer-owned JSX for layout, media, and controls, with the spike's diagnostics kept in the docs app.
+
 See [the scroll-driven animations assessment](SCROLL-ANIMATIONS.md) for MAR-58: browser support, potential thumbnail feedback, and the interaction logic that stays in JavaScript.
 
 ## Scroll feedback experiment
