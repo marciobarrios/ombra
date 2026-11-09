@@ -13,6 +13,7 @@ type Frame = { t: number; cx: number; cy: number; width: number; height: number;
 declare global {
   interface Window {
     ombraFrames?: Frame[];
+    ombraHold?: () => void;
   }
 }
 
@@ -114,20 +115,58 @@ async function recordFrames(page: Page) {
   });
 }
 
-async function waitForMidFlight(page: Page) {
-  await expect
-    .poll(
-      () =>
-        page.evaluate(() => {
-          const frames = window.ombraFrames ?? [];
-          const first = frames[0];
-          const last = frames.at(-1);
+/** Freezes the close in the page, so the input below cannot lose a race with the runner. */
+function holdClose() {
+  for (const animation of document.getAnimations()) {
+    const effect = animation.effect;
 
-          return first && last ? Math.hypot(last.cx - first.cx, last.cy - first.cy) : 0;
-        }),
-      { intervals: [16] },
-    )
-    .toBeGreaterThan(40);
+    if (!(effect instanceof KeyframeEffect)) continue;
+
+    const target = effect.target;
+
+    const ours =
+      effect.pseudoElement?.startsWith("::view-transition") ||
+      target?.matches(
+        "[data-slot=ombra-flight], [data-slot=ombra-backdrop], [data-slot=ombra-viewer]",
+      );
+
+    if (ours) animation.pause();
+  }
+}
+
+async function waitForMidFlight(page: Page, travel = 40) {
+  await page.evaluate(`(new Promise((resolve, reject) => {
+    const hold = ${holdClose.toString()};
+    const started = performance.now();
+
+    const tick = () => {
+      const frames = window.ombraFrames ?? [];
+      const first = frames[0];
+      const last = frames.at(-1);
+
+      if (
+        first &&
+        last &&
+        frames.length > 2 &&
+        Math.hypot(last.cx - first.cx, last.cy - first.cy) >= ${travel}
+      ) {
+        hold();
+        resolve(undefined);
+
+        return;
+      }
+
+      if (performance.now() - started > 8000) {
+        reject(new Error("the photo never left home"));
+
+        return;
+      }
+
+      requestAnimationFrame(tick);
+    };
+
+    tick();
+  }))`);
 }
 
 function swipeStart(page: Page) {
@@ -277,6 +316,7 @@ for (const engine of ["flip", "vt"] as const) {
     test("tapping another thumbnail retargets to that photo", async ({ page }) => {
       await openViewer(page, `engine=${engine}&slow=1&spring=1`);
       await recordFrames(page);
+      await page.evaluate(`window.ombraHold = ${holdClose.toString()}`);
       await page.getByRole("button", { name: "Close", exact: true }).click();
 
       // The flying photo wins a tap it covers, so wait until it has cleared one.
@@ -302,6 +342,7 @@ for (const engine of ["flip", "vt"] as const) {
                     Math.abs(y - frame.cy) > frame.height / 2 + 8;
 
                   if (clear && y > 0 && y < window.innerHeight && rect.height > 0) {
+                    window.ombraHold?.();
                     resolve({ index, x, y });
 
                     return;
@@ -337,7 +378,10 @@ for (const engine of ["flip", "vt"] as const) {
 
         await page.mouse.move(x, y);
         await page.keyboard.press("Escape");
-        await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 180)));
+        await recordFrames(page);
+
+        // Later cycles start close to the thumbnail, so there may be little travel left.
+        await waitForMidFlight(page, 0);
         await swipeUp(page);
         await expect
           .poll(() => page.locator(flightSelector).count(), { timeout: 2_000 })
@@ -350,79 +394,89 @@ for (const engine of ["flip", "vt"] as const) {
       await expect(page.getByRole("button", { name: firstPhoto })).toBeFocused();
     });
 
-    test("ends once the photo looks home instead of waiting out the spring", async ({ page }) => {
-      await openViewer(page, `engine=${engine}&slow=1&spring=1`);
+    test("ends once the photo looks home instead of waiting out the animation", async ({
+      page,
+    }) => {
+      await openViewer(page, `engine=${engine}&slow=1`);
 
       const result = await page.evaluate(
         () =>
-          new Promise<{ elapsed: number; duration: number; miss: number }>((resolve, reject) => {
+          new Promise<{ midFlight: boolean; nearHome: boolean }>((resolve, reject) => {
             const started = performance.now();
-            const root = document.documentElement;
-            const trigger = document.querySelector("[data-slot=ombra-trigger]");
-            let duration = 0;
-            let miss = Number.POSITIVE_INFINITY;
 
-            const isGroup = (animation: Animation) =>
-              animation.effect instanceof KeyframeEffect &&
-              animation.effect.pseudoElement === "::view-transition-group(ombra-shared)";
+            const closeAnimations = () =>
+              document.getAnimations().filter((animation) => {
+                const effect = animation.effect;
 
-            const tick = () => {
-              const flight = document.querySelector("[data-slot=ombra-flight]");
+                if (!(effect instanceof KeyframeEffect)) return false;
 
-              const running = flight
-                ? flight.getAnimations()[0]
-                : document.getAnimations().find(isGroup);
+                return (
+                  effect.pseudoElement?.startsWith("::view-transition") ||
+                  effect.target?.matches(
+                    "[data-slot=ombra-flight], [data-slot=ombra-backdrop], [data-slot=ombra-viewer]",
+                  )
+                );
+              });
 
-              if (running?.effect) {
-                duration = Number(running.effect.getComputedTiming().duration);
+            const running = () =>
+              document.querySelector("[data-slot=ombra-flight]") !== null ||
+              document
+                .getAnimations()
+                .some(
+                  (animation) =>
+                    animation.effect instanceof KeyframeEffect &&
+                    animation.effect.pseudoElement === "::view-transition-group(ombra-shared)",
+                );
 
-                const group = getComputedStyle(root, "::view-transition-group(ombra-shared)");
-                const rect = flight?.getBoundingClientRect();
-                const matrix = new DOMMatrix(group.transform === "none" ? "" : group.transform);
+            // Paused animations cannot end by themselves, so only the early finish can
+            // end this close, and only from the position it was told to check.
+            const seek = (fraction: number) => {
+              for (const animation of closeAnimations()) {
+                const end = Number(animation.effect?.getComputedTiming().endTime);
 
-                const cx = rect
-                  ? rect.x + rect.width / 2
-                  : matrix.e + Number.parseFloat(group.width) / 2;
-
-                const cy = rect
-                  ? rect.y + rect.height / 2
-                  : matrix.f + Number.parseFloat(group.height) / 2;
-
-                const home = trigger?.getBoundingClientRect();
-
-                if (home) {
-                  miss = Math.hypot(
-                    cx - (home.x + home.width / 2),
-                    cy - (home.y + home.height / 2),
-                  );
-                }
-              } else if (duration > 0) {
-                resolve({ elapsed: performance.now() - started, duration, miss });
-
-                return;
+                animation.pause();
+                animation.currentTime = end * fraction;
               }
+            };
 
+            const afterDelay = (delay: number, then: () => void) => {
+              window.setTimeout(then, delay);
+            };
+
+            const waitForFlight = () => {
               if (performance.now() - started > 8000) {
-                reject(new Error("the close never ended"));
+                reject(new Error("the close never started"));
 
                 return;
               }
 
-              requestAnimationFrame(tick);
+              if (!running() || closeAnimations().length === 0) {
+                requestAnimationFrame(waitForFlight);
+
+                return;
+              }
+
+              seek(0.3);
+              afterDelay(400, () => {
+                const midFlight = running();
+
+                seek(0.97);
+                afterDelay(1500, () => {
+                  resolve({ midFlight, nearHome: running() });
+                });
+              });
             };
 
             const close = document.querySelector("[data-slot=ombra-close]");
 
             if (close instanceof HTMLElement) close.click();
 
-            requestAnimationFrame(tick);
+            requestAnimationFrame(waitForFlight);
           }),
       );
 
-      expect(result.elapsed, "the invisible tail should be cut").toBeLessThan(
-        result.duration * 0.9,
-      );
-      expect(result.miss, "the photo should be home when the close ends").toBeLessThan(4);
+      expect(result.midFlight, "a close that is still travelling should keep running").toBe(true);
+      expect(result.nearHome, "a close that looks home should end by itself").toBe(false);
       await expectCleanlyClosed(page);
     });
 
