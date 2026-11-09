@@ -6,24 +6,19 @@ import { OmbraGallery } from "../../../../registry/ombra/ombra-gallery";
 import type { MorphEngine } from "../../../../registry/ombra/types";
 
 import { photos } from "./photos";
-import { ScrollFeedbackControls, ScrollFeedbackStyles } from "./scroll-feedback";
-import type { ScrollFeedback } from "./scroll-feedback";
 
 export function SpikeApp({
   initialEngine,
   initialSlow,
   initialSpring,
-  initialScrollFeedback,
 }: {
   initialEngine: MorphEngine;
   initialSlow: boolean;
   initialSpring: boolean;
-  initialScrollFeedback: ScrollFeedback;
 }) {
   const [engine, setEngine] = useState(initialEngine);
   const [slow, setSlow] = useState(initialSlow);
   const [spring, setSpring] = useState(initialSpring);
-  const [scrollFeedback, setScrollFeedback] = useState(initialScrollFeedback);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -36,11 +31,8 @@ export function SpikeApp({
     if (spring) url.searchParams.set("spring", "1");
     else url.searchParams.delete("spring");
 
-    if (scrollFeedback !== "off") url.searchParams.set("scroll", scrollFeedback);
-    else url.searchParams.delete("scroll");
-
     window.history.replaceState(null, "", url);
-  }, [engine, slow, spring, scrollFeedback]);
+  }, [engine, slow, spring]);
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-8 sm:py-16">
@@ -54,8 +46,6 @@ export function SpikeApp({
         Nothing here is the final component API.
       </p>
       {reducedNote()}
-      <ScrollFeedbackControls value={scrollFeedback} onChange={setScrollFeedback} />
-      <ScrollFeedbackStyles mode={scrollFeedback} count={photos.length} />
       <div className="mt-12">
         <OmbraGallery
           items={photos}
