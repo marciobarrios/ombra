@@ -3,7 +3,6 @@ import { Suspense } from "react";
 import { parseMorphEngine } from "../../../../registry/ombra/types";
 
 import { SpikeApp } from "./spike-app";
-import { parseScrollFeedback } from "./scroll-feedback";
 
 export default function SpikePage({ searchParams }: PageProps<"/spike">) {
   return (
@@ -21,7 +20,6 @@ async function SpikeRoute({ searchParams }: { searchParams: PageProps<"/spike">[
       initialEngine={parseMorphEngine(firstString(query.engine))}
       initialSlow={firstString(query.slow) === "1"}
       initialSpring={firstString(query.spring) === "1"}
-      initialScrollFeedback={parseScrollFeedback(firstString(query.scroll))}
     />
   );
 }

@@ -40,6 +40,59 @@ const ENGINE_OPTIONS: { id: MorphEngine; label: string }[] = [
   { id: "fade", label: "Fade" },
 ];
 
+// Keyframes need real CSS, so this ships as a stylesheet rather than Tailwind classes.
+const stripEdgeStyles = `@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: --ombra-strip) and
+    (scroll-timeline: --ombra-strip inline) and
+    (timeline-scope: --ombra-strip) and
+    (animation-range: calc(100% - 20px) 100%) {
+    [data-slot="ombra-viewer"] footer {
+      position: relative;
+      timeline-scope: --ombra-strip;
+    }
+
+    [data-slot="ombra-thumbnails"] {
+      scroll-timeline: --ombra-strip inline;
+    }
+
+    [data-slot="ombra-viewer"] footer:has([data-overflowing="true"]) [data-slot="ombra-strip-edge-start"],
+    [data-slot="ombra-viewer"] footer:has([data-overflowing="true"]) [data-slot="ombra-strip-edge-end"] {
+      display: block;
+      position: absolute;
+      z-index: 1;
+      bottom: calc(max(0.75rem, env(safe-area-inset-bottom)) + 0.25rem);
+      width: 1.25rem;
+      height: 2.75rem;
+      pointer-events: none;
+      animation: ombra-strip-edge-in linear both;
+      animation-timeline: --ombra-strip;
+      animation-range: 0px 20px;
+    }
+
+    [data-slot="ombra-viewer"] footer [data-slot="ombra-strip-edge-start"] {
+      left: 1rem;
+      background: linear-gradient(to right, black, transparent);
+    }
+
+    [data-slot="ombra-viewer"] footer:has([data-overflowing="true"]) [data-slot="ombra-strip-edge-end"] {
+      right: 1rem;
+      background: linear-gradient(to left, black, transparent);
+      animation-name: ombra-strip-edge-out;
+      animation-range: calc(100% - 20px) 100%;
+    }
+
+    @keyframes ombra-strip-edge-in {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes ombra-strip-edge-out {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+  }
+}`;
+
 type Phase = "closed" | "opening" | "open" | "closing";
 
 export type OmbraGalleryProps = {
@@ -1353,6 +1406,7 @@ export function OmbraGallery({
                 </div>
                 <span data-slot="ombra-strip-edge-start" aria-hidden="true" className="hidden" />
                 <span data-slot="ombra-strip-edge-end" aria-hidden="true" className="hidden" />
+                <style data-slot="ombra-strip-edge-styles">{stripEdgeStyles}</style>
               </footer>
             </div>
             <p role="status" data-slot="ombra-live" className="sr-only">
