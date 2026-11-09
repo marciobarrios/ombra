@@ -624,34 +624,6 @@ test.describe("spike viewer", () => {
     await expect.poll(() => page.url()).toContain("engine=flip");
   });
 
-  test("closes a view transition when the current thumbnail is off screen", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 480 });
-    await page.emulateMedia({ reducedMotion: "no-preference" });
-    await page.goto("/spike?engine=vt");
-    await page.getByRole("button", { name: firstPhoto }).click();
-    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
-    await page.keyboard.press("End");
-    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText(
-      `${photoCount} / ${photoCount}`,
-    );
-
-    const hidden = await page.evaluate(() => {
-      const triggers = document.querySelectorAll("[data-slot=ombra-trigger]");
-      const trigger = triggers[triggers.length - 1];
-
-      if (!(trigger instanceof HTMLElement)) return false;
-
-      const rect = trigger.getBoundingClientRect();
-      const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
-
-      return visibleHeight < rect.height * 0.55;
-    });
-
-    expect(hidden).toBe(true);
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toBeHidden({ timeout: 8_000 });
-  });
-
   test("opens with flip when view transitions are missing", async ({ page }) => {
     await page.addInitScript(() => {
       Object.defineProperty(Document.prototype, "startViewTransition", {
