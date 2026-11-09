@@ -190,6 +190,19 @@ export function playFlight(
   );
 }
 
+/** Runs the rest of an animation on another element, from the same moment and on the same curve. */
+export function continueAnimation(source: Animation, target: Element): Animation | null {
+  const effect = source.effect;
+
+  if (!(effect instanceof KeyframeEffect)) return null;
+
+  const copy = target.animate(effect.getKeyframes(), { ...effect.getTiming(), fill: "none" });
+
+  copy.currentTime = source.currentTime;
+
+  return copy;
+}
+
 export function supportsViewTransitions(): boolean {
   if (!("startViewTransition" in document)) return false;
 
@@ -244,6 +257,23 @@ export function watchSettled(settled: () => boolean, done: () => void): () => vo
   return () => {
     cancelAnimationFrame(frame);
   };
+}
+
+/** Milliseconds left on the shared image's group animation, or 0 if it is not running. */
+export function viewTransitionRemaining(): number {
+  const pseudo = `::view-transition-group(${VIEW_TRANSITION_NAME})`;
+
+  for (const animation of document.getAnimations()) {
+    const effect = animation.effect;
+
+    if (!(effect instanceof KeyframeEffect) || effect.pseudoElement !== pseudo) continue;
+
+    const { endTime, localTime } = effect.getComputedTiming();
+
+    return Math.max(0, Number(endTime) - Number(localTime));
+  }
+
+  return 0;
 }
 
 export function runViewTransition(update: () => void): ViewTransition | null {

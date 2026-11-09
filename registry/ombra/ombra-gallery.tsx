@@ -26,15 +26,18 @@ import type { FrameSampler } from "./frame-sampler";
 import {
   MORPH_EASING,
   VIEW_TRANSITION_NAME,
+  continueAnimation,
   flightVisibleBox,
   mountFlight,
   playFlight,
+  readPose,
   readViewTransitionBox,
   rebaseFlight,
   retireFlight,
   runViewTransition,
   supportsViewTransitions,
   viewTransitionFaded,
+  viewTransitionRemaining,
   watchSettled,
 } from "./morph";
 import type { Flight } from "./morph";
@@ -57,6 +60,12 @@ type Phase = "closed" | "opening" | "open" | "closing";
 // would keep the page locked and read a swipe as a reversal, so a close ends here.
 const ARRIVED_PX = 1.5;
 const FADED_OPACITY = 0.02;
+
+/** The rest of an opening morph, running on the real photo after a swipe took over. */
+type HeroMorph = { index: number; hero: HTMLImageElement; animations: Animation[] };
+
+// Placing the track and snapping can land a fraction of a pixel off.
+const SWIPE_START_PX = 2;
 
 export type OmbraGalleryProps = {
   items: readonly OmbraItem[];
@@ -261,6 +270,8 @@ export function OmbraGallery({
   const vtClosingRef = useRef(false);
   const resumeRef = useRef<{ backdrop: number; popup: number } | null>(null);
   const preserveFlightRef = useRef(false);
+  const heroMorphRef = useRef<HeroMorph | null>(null);
+  const stopTrackWatchRef = useRef<(() => void) | null>(null);
   const tokenRef = useRef(0);
   const originRef = useRef<Box | null>(null);
   const phaseRef = useRef(phase);
@@ -517,6 +528,8 @@ export function OmbraGallery({
     return () => {
       alive = false;
       stopCloseInput();
+      stopTrackWatch();
+      cancelHeroMorph();
 
       if (preserveFlightRef.current) {
         preserveFlightRef.current = false;
@@ -629,19 +642,23 @@ export function OmbraGallery({
 
       if (hero) hero.style.visibility = "hidden";
 
+      const settle = () => {
+        if (!alive || tokenRef.current !== token) return;
+
+        if (hero) hero.style.visibility = "";
+
+        settleOpen(itemIndex);
+      };
+
       void playFlight(flight, startPose, RESTING_POSE, timing.duration, timing.easing).then(
         (completed) => {
-          if (!alive || tokenRef.current !== token || !completed) return;
-
-          if (hero) hero.style.visibility = "";
-
-          showThumb(itemIndex);
-          flightRef.current?.destroy();
-          flightRef.current = null;
-          endSample();
-          setPhase("open");
+          if (completed) settle();
         },
       );
+
+      watchTrackForSwipe(() => {
+        void handOffFlight(itemIndex)?.finished.then(settle, () => undefined);
+      });
     }
 
     function runClose() {
@@ -861,6 +878,178 @@ export function OmbraGallery({
       { duration, easing },
     );
   }
+
+  function settleOpen(itemIndex: number) {
+    stopTrackWatch();
+    heroMorphRef.current = null;
+    showThumb(itemIndex);
+    flightRef.current?.destroy();
+    flightRef.current = null;
+    endSample();
+    setPhase("open");
+  }
+
+  function stopTrackWatch() {
+    stopTrackWatchRef.current?.();
+    stopTrackWatchRef.current = null;
+  }
+
+  function watchTrackForSwipe(onSwipe: () => void) {
+    stopTrackWatch();
+
+    const track = trackRef.current;
+
+    if (!track) return;
+
+    const start = track.scrollLeft;
+
+    const onScroll = () => {
+      if (Math.abs(track.scrollLeft - start) < SWIPE_START_PX) return;
+
+      stopTrackWatch();
+      onSwipe();
+    };
+
+    track.addEventListener("scroll", onScroll, { passive: true });
+    stopTrackWatchRef.current = () => {
+      track.removeEventListener("scroll", onScroll);
+    };
+  }
+
+  /** Everything the opening fade should still reach once the photo itself is opaque. */
+  function viewerPartsAround(hero: HTMLElement): HTMLElement[] {
+    const parts = popupRef.current?.querySelectorAll<HTMLElement>(
+      "header, footer, [data-slot=ombra-nav], [data-slot=ombra-slide]",
+    );
+
+    return [...(parts ?? [])].filter((part) => !part.contains(hero));
+  }
+
+  function revealHero(hero: HTMLImageElement, src: string) {
+    // A swipe can arrive before the slide's own source has loaded. The thumbnail
+    // the morph started from is already decoded, and the sharp source replaces it.
+    if (!hero.complete || hero.naturalWidth === 0) hero.src = src;
+
+    hero.style.visibility = "";
+  }
+
+  // The hero lives in the scroller, so it follows a native swipe with no lag. It
+  // takes over the clone's animation at the same moment, which keeps it on the same
+  // pixels. The popup fade would turn it translucent, so that moves to the rest.
+  function handOffFlight(itemIndex: number): Animation | null {
+    const flight = flightRef.current;
+    const hero = images.current[itemIndex];
+    const flying = flight?.animation;
+
+    if (!flight || !hero || !flying) return null;
+
+    const morph = continueAnimation(flying, hero);
+
+    if (!morph) return null;
+
+    const animations = [morph];
+
+    for (const fade of popupRef.current?.getAnimations() ?? []) {
+      for (const part of viewerPartsAround(hero)) {
+        const moved = continueAnimation(fade, part);
+
+        if (moved) animations.push(moved);
+      }
+
+      fade.cancel();
+    }
+
+    revealHero(hero, flight.element.src);
+    flight.destroy();
+    flightRef.current = null;
+    heroMorphRef.current = { index: itemIndex, hero, animations };
+
+    return morph;
+  }
+
+  // A view transition cannot move onto an element, so this restarts from its live
+  // frame and scrim. The curve changes, but the photo stays on the same pixels.
+  function handOffViewTransition(itemIndex: number, token: number) {
+    const item = items[itemIndex];
+    const hero = images.current[itemIndex];
+    const box = readViewTransitionBox();
+    const remaining = viewTransitionRemaining();
+
+    if (!item || !hero || !box || remaining <= 0) return;
+
+    const scrim = Number(
+      getComputedStyle(document.documentElement, "::view-transition-new(root)").opacity,
+    );
+
+    const crop = coverCrop(item.width, item.height, box.width, box.height);
+    const pose = poseBetween(box, boxFromRect(hero.getBoundingClientRect()), crop);
+    // A new animation can start a fraction of a millisecond in the future, and
+    // without a backwards fill the photo would paint at rest for that one frame.
+    const timing = { duration: remaining, easing: MORPH_EASING, fill: "backwards" as const };
+
+    const morph = hero.animate(
+      [
+        { transform: pose.transform, clipPath: pose.clipPath },
+        { transform: RESTING_POSE.transform, clipPath: RESTING_POSE.clipPath },
+      ],
+      timing,
+    );
+
+    const fades = viewerPartsAround(hero).map((part) =>
+      part.animate([{ opacity: scrim }, { opacity: 1 }], timing),
+    );
+
+    heroMorphRef.current = { index: itemIndex, hero, animations: [morph, ...fades] };
+    hideThumb(itemIndex);
+    hero.style.viewTransitionName = "";
+    revealHero(hero, cachedSrc(itemIndex));
+    vtRef.current?.skipTransition();
+    vtRef.current = null;
+    fadeBackdrop(scrim, 1, remaining);
+
+    void morph.finished.then(
+      () => {
+        if (tokenRef.current === token) settleOpen(itemIndex);
+      },
+      () => undefined,
+    );
+  }
+
+  function cancelHeroMorph() {
+    for (const animation of heroMorphRef.current?.animations ?? []) animation.cancel();
+
+    heroMorphRef.current = null;
+  }
+
+  // A close during the handoff starts from wherever the photo is, so it goes back
+  // to being a clone. If the swipe already selected another slide, that one is at rest.
+  function reclaimHeroMorph() {
+    const handoff = heroMorphRef.current;
+
+    if (!handoff) return;
+
+    const pose = readPose(handoff.hero);
+
+    cancelHeroMorph();
+
+    if (handoff.index !== indexRef.current) return;
+
+    flightRef.current = mountFlight(
+      boxFromRect(handoff.hero.getBoundingClientRect()),
+      pose,
+      cachedSrc(handoff.index),
+    );
+  }
+
+  useLayoutEffect(
+    () => () => {
+      stopTrackWatch();
+      cancelHeroMorph();
+    },
+    // Only refs are read, and this only runs on unmount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   function placeTrack(itemIndex: number) {
     scrollTrackTo(itemIndex, "auto");
@@ -1132,6 +1321,8 @@ export function OmbraGallery({
     beginSample();
     document.documentElement.style.setProperty("--ombra-vt-duration", `${timing.duration}ms`);
     document.documentElement.style.setProperty("--ombra-vt-easing", timing.easing);
+    // The pseudo-elements would otherwise swallow a swipe aimed at the track.
+    document.documentElement.style.setProperty("--ombra-vt-pointer-events", "none");
     thumb.style.viewTransitionName = VIEW_TRANSITION_NAME;
 
     const transition = runViewTransition(() => {
@@ -1147,14 +1338,27 @@ export function OmbraGallery({
       if (hero) hero.style.viewTransitionName = VIEW_TRANSITION_NAME;
 
       placeTrack(nextIndex);
+      watchTrackForSwipe(() => {
+        handOffViewTransition(nextIndex, token);
+      });
     });
 
     vtRef.current = transition;
 
+    const settled = () => {
+      if (tokenRef.current !== token) return false;
+
+      document.documentElement.style.removeProperty("--ombra-vt-pointer-events");
+
+      // A swipe skipped the transition, and the hero's morph ends the opening.
+      return heroMorphRef.current === null;
+    };
+
     void transition?.finished.then(
       () => {
-        if (tokenRef.current !== token) return;
+        if (!settled()) return;
 
+        stopTrackWatch();
         thumb.style.viewTransitionName = "";
 
         const hero = images.current[nextIndex];
@@ -1166,8 +1370,9 @@ export function OmbraGallery({
         vtRef.current = null;
       },
       () => {
-        if (tokenRef.current !== token) return;
+        if (!settled()) return;
 
+        stopTrackWatch();
         endSample();
         setPhase("open");
       },
@@ -1177,6 +1382,9 @@ export function OmbraGallery({
   function requestClose() {
     if (phaseRef.current === "closed" || phaseRef.current === "closing") return;
 
+    stopTrackWatch();
+    document.documentElement.style.removeProperty("--ombra-vt-pointer-events");
+    reclaimHeroMorph();
     driverRef.current = reducedRef.current ? "fade" : engineRef.current;
     vtRef.current?.skipTransition();
 
@@ -1504,7 +1712,10 @@ export function OmbraGallery({
                     <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
                   </div>
                 </div>
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2">
+                <div
+                  data-slot="ombra-nav"
+                  className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2"
+                >
                   <IconButton
                     label="Previous photo"
                     slot="ombra-prev"
@@ -1517,7 +1728,10 @@ export function OmbraGallery({
                     <Chevron direction="left" />
                   </IconButton>
                 </div>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                <div
+                  data-slot="ombra-nav"
+                  className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2"
+                >
                   <IconButton
                     label="Next photo"
                     slot="ombra-next"
