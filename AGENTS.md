@@ -33,6 +33,7 @@ Ombra is a shadcn registry, not an npm component library. Users copy files. Do n
 - Morph engines: `vt` (View Transition API), `flip` (WAAPI FLIP on a fixed clone), `fade`.
 - FLIP animates `transform` and `clip-path` only. The clone is on `document.body` so the dialog cannot clip it.
 - Slide track and thumbnail strip use native scroll-snap. Zoom sets `overflow: hidden` and `touch-action: none` on the track until the scale returns to 1, and hands extra pan off to `scrollLeft`.
+- A track scroll during opening ends the clone: the rest of the FLIP animation continues on the real hero at the same `currentTime`, and the popup's fade moves to the parts around it so the photo stays opaque. VT lets touches through with `--ombra-vt-pointer-events` and restarts from the live group box, because a view transition cannot move onto an element. That only helps where the browser honours it: on a real iPhone (Safari) the swipe is still blocked until the VT opening ends, which MAR-70 accepted because VT is optional.
 - Pull progress is the CSS variable `--ombra-pull-live` on `documentElement`, not React state, so a drag does not re-render every frame.
 
 ## Inspiration

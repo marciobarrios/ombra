@@ -160,6 +160,10 @@
   }
 }
 
+::view-transition {
+  pointer-events: var(--ombra-vt-pointer-events, auto);
+}
+
 ::view-transition-group(ombra-shared),
 ::view-transition-old(ombra-shared),
 ::view-transition-new(ombra-shared) {
