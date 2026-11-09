@@ -76,6 +76,8 @@ A running FLIP or VT close accepts input through window capture listeners (`regi
 - **Tap on another thumbnail:** the flying photo fades out in place, and the tapped photo opens from its thumbnail.
 - **Anything else** lets the close finish. Fade closes, including reduced motion and off-screen fallbacks, take no input.
 
+A close ends as soon as the photo is within 1.5 px of its thumbnail and the fades are done, which drops the last sliver of spring overshoot. That tail is invisible, but it would keep the page locked and read a swipe as a reversal after the photo looks home.
+
 A view transition cannot run backwards, and its dialog has already unmounted. The handoff reads the live `::view-transition-group` box, mounts a FLIP clone at that frame, skips the transition, and reopens with FLIP. The scrim resumes from the `::view-transition-old(root)` opacity.
 
 The reversal starts from the flying photo's position but does not carry its momentum: a tap reverses from rest, and a pan uses the finger's speed. Real-touch verification on an iPhone is still pending.

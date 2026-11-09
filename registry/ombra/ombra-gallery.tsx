@@ -9,6 +9,7 @@ import { flushSync } from "react-dom";
 import { listenForCloseInput } from "./close-input";
 import {
   boxContains,
+  boxDistance,
   boxFromRect,
   clipInset,
   containBox,
@@ -33,6 +34,8 @@ import {
   retireFlight,
   runViewTransition,
   supportsViewTransitions,
+  viewTransitionFaded,
+  watchSettled,
 } from "./morph";
 import type { Flight } from "./morph";
 import { MORPH_SPRING, normalizeVelocity, springCurve } from "./spring";
@@ -49,6 +52,11 @@ const ENGINE_OPTIONS: { id: MorphEngine; label: string }[] = [
 ];
 
 type Phase = "closed" | "opening" | "open" | "closing";
+
+// The end of a close is a sliver of spring overshoot, moving too little to see. It
+// would keep the page locked and read a swipe as a reversal, so a close ends here.
+const ARRIVED_PX = 1.5;
+const FADED_OPACITY = 0.02;
 
 export type OmbraGalleryProps = {
   items: readonly OmbraItem[];
@@ -411,6 +419,30 @@ export function OmbraGallery({
     strip.scrollTo({ left: Math.max(0, left), behavior: reduced ? "auto" : "smooth" });
   }, [index, open, phase, reduced, stripOverflows]);
 
+  // The dialog can take more than one frame to mount, and the fade only starts once
+  // it has. Mount at the fade's first value so the resting opacity never paints.
+  const openingOpacity = (part: "backdrop" | "popup"): string | null => {
+    if (phaseRef.current !== "opening" || driverRef.current === "vt") return null;
+
+    return String(resumeRef.current?.[part] ?? 0);
+  };
+
+  const bindBackdrop = useCallback((node: HTMLDivElement | null) => {
+    backdropRef.current = node;
+
+    const opacity = openingOpacity("backdrop");
+
+    if (node && opacity !== null) node.style.opacity = opacity;
+  }, []);
+
+  const bindPopup = useCallback((node: HTMLDivElement | null) => {
+    popupRef.current = node;
+
+    const opacity = openingOpacity("popup");
+
+    if (node && opacity !== null) node.style.opacity = opacity;
+  }, []);
+
   const bindTrack = useCallback((node: HTMLDivElement | null) => {
     trackRef.current = node;
     navigationTarget.current = null;
@@ -508,8 +540,15 @@ export function OmbraGallery({
       if (attempts > 30) {
         endSample();
 
-        if (phase === "opening") setPhase("open");
-        else finishClose();
+        if (phase === "opening") {
+          if (backdropRef.current) backdropRef.current.style.opacity = "";
+
+          if (popupRef.current) popupRef.current.style.opacity = "";
+
+          setPhase("open");
+        } else {
+          finishClose();
+        }
 
         return;
       }
@@ -707,7 +746,17 @@ export function OmbraGallery({
         finishClose();
       });
 
-      armCloseInput();
+      armCloseInput(
+        () =>
+          boxDistance(flightVisibleBox(flight), thumbBox) < ARRIVED_PX &&
+          opacityOf(backdropRef.current) < FADED_OPACITY &&
+          opacityOf(popupRef.current) < FADED_OPACITY,
+        () => {
+          backdropAnimationRef.current?.finish();
+          popupAnimationRef.current?.finish();
+          flight.animation?.finish();
+        },
+      );
     }
     // The animation reads refs on purpose so a re-render does not restart it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -898,6 +947,8 @@ export function OmbraGallery({
       return;
     }
 
+    popup.style.opacity = "";
+
     const animation = popup.animate([{ opacity: from }, { opacity: to }], {
       duration,
       easing,
@@ -960,9 +1011,10 @@ export function OmbraGallery({
 
   useEffect(() => stopCloseInput, []);
 
-  function armCloseInput() {
+  function armCloseInput(arrived: () => boolean, finish: () => void) {
     stopCloseInput();
-    closeInputRef.current = listenForCloseInput({
+
+    const stopInput = listenForCloseInput({
       onReverse: (speed) => reopenFromClose(indexRef.current, speed),
       onTap: (x, y) => {
         const itemIndex = closeTapTarget(x, y);
@@ -970,6 +1022,13 @@ export function OmbraGallery({
         return itemIndex !== null && reopenFromClose(itemIndex, 0);
       },
     });
+
+    const stopWatching = watchSettled(arrived, finish);
+
+    closeInputRef.current = () => {
+      stopInput();
+      stopWatching();
+    };
   }
 
   function closeTapTarget(x: number, y: number): number | null {
@@ -1185,7 +1244,20 @@ export function OmbraGallery({
     });
 
     vtRef.current = transition;
-    armCloseInput();
+    armCloseInput(
+      () => {
+        const box = readViewTransitionBox();
+
+        return (
+          box !== null &&
+          boxDistance(box, boxFromRect(thumb.getBoundingClientRect())) < ARRIVED_PX &&
+          viewTransitionFaded(FADED_OPACITY)
+        );
+      },
+      () => {
+        transition?.skipTransition();
+      },
+    );
 
     void transition?.finished.then(
       () => {
@@ -1326,7 +1398,7 @@ export function OmbraGallery({
       >
         <Dialog.Portal>
           <Dialog.Backdrop
-            ref={backdropRef}
+            ref={bindBackdrop}
             data-slot="ombra-backdrop"
             className={cn(
               "fixed inset-0 z-50 bg-black",
@@ -1334,7 +1406,7 @@ export function OmbraGallery({
             )}
           />
           <Dialog.Popup
-            ref={popupRef}
+            ref={bindPopup}
             data-slot="ombra-viewer"
             data-engine={effective}
             data-phase={phase}

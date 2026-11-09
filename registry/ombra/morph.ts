@@ -217,6 +217,35 @@ export function readViewTransitionBox(): Box | null {
   return { x: matrix.e, y: matrix.f, width: width * matrix.a, height: height * matrix.d };
 }
 
+/** Whether the view transition's crossfades have nothing visible left to do. */
+export function viewTransitionFaded(limit: number): boolean {
+  const root = document.documentElement;
+  const opacity = (pseudo: string) => Number(getComputedStyle(root, pseudo).opacity);
+
+  return (
+    opacity("::view-transition-old(root)") < limit &&
+    opacity(`::view-transition-old(${VIEW_TRANSITION_NAME})`) < limit &&
+    opacity(`::view-transition-new(${VIEW_TRANSITION_NAME})`) > 1 - limit
+  );
+}
+
+/** Checks every frame, calls `done` once when `settled` first holds, and returns a stop. */
+export function watchSettled(settled: () => boolean, done: () => void): () => void {
+  let frame = requestAnimationFrame(function tick() {
+    if (settled()) {
+      done();
+
+      return;
+    }
+
+    frame = requestAnimationFrame(tick);
+  });
+
+  return () => {
+    cancelAnimationFrame(frame);
+  };
+}
+
 export function runViewTransition(update: () => void): ViewTransition | null {
   if (!supportsViewTransitions()) {
     update();

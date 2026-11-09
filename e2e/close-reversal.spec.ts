@@ -130,18 +130,32 @@ async function waitForMidFlight(page: Page) {
     .toBeGreaterThan(40);
 }
 
-async function swipeUp(page: Page) {
+function swipeStart(page: Page) {
   const viewport = page.viewportSize();
 
   if (!viewport) throw new Error("no viewport");
 
-  const x = viewport.width / 2;
-  const y = viewport.height * 0.7;
+  return { x: viewport.width / 2, y: viewport.height * 0.7 };
+}
+
+// Close windows are short and each mouse call is a round trip, so the pointer is
+// already in place and the first move is past the reversal threshold.
+async function swipeUp(page: Page) {
+  const { x, y } = swipeStart(page);
+
+  await page.mouse.down();
+  await page.mouse.move(x, y - 40);
+  await page.mouse.move(x, y - 80);
+  await page.mouse.up();
+}
+
+async function pressCloseWithPointerReady(page: Page) {
+  const { x, y } = swipeStart(page);
 
   await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x, y - 80, { steps: 6 });
-  await page.mouse.up();
+  await page.locator("[data-slot=ombra-close]").evaluate((node) => {
+    if (node instanceof HTMLElement) node.click();
+  });
 }
 
 /** Checks a frame trace for the snap this issue is about: no large single-frame move. */
@@ -224,7 +238,7 @@ for (const engine of ["flip", "vt"] as const) {
     test("an upward gesture reverses from the current pose", async ({ page }) => {
       await openViewer(page, `engine=${engine}&slow=1&spring=1`);
       await recordFrames(page);
-      await page.getByRole("button", { name: "Close", exact: true }).click();
+      await pressCloseWithPointerReady(page);
       await waitForMidFlight(page);
       await swipeUp(page);
       await expectCleanlyOpen(page);
@@ -234,7 +248,7 @@ for (const engine of ["flip", "vt"] as const) {
     test("an upward gesture reverses without the spring", async ({ page }) => {
       await openViewer(page, `engine=${engine}&slow=1`);
       await recordFrames(page);
-      await page.getByRole("button", { name: "Close", exact: true }).click();
+      await pressCloseWithPointerReady(page);
       await waitForMidFlight(page);
       await swipeUp(page);
       await expectCleanlyOpen(page);
@@ -244,14 +258,17 @@ for (const engine of ["flip", "vt"] as const) {
     test("tapping the target thumbnail reverses the close", async ({ page }) => {
       await openViewer(page, `engine=${engine}&slow=1`);
       await recordFrames(page);
-      await page.getByRole("button", { name: "Close", exact: true }).click();
-      await waitForMidFlight(page);
-
       const box = await page.locator("[data-slot=ombra-trigger]").first().boundingBox();
 
       if (!box) throw new Error("trigger had no box");
 
-      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.locator("[data-slot=ombra-close]").evaluate((node) => {
+        if (node instanceof HTMLElement) node.click();
+      });
+      await waitForMidFlight(page);
+      await page.mouse.down();
+      await page.mouse.up();
       await expectCleanlyOpen(page);
       await expect(page.locator("[data-slot=ombra-counter]")).toHaveText(`1 / ${photos.length}`);
       await expectNoJump(page);
@@ -316,6 +333,9 @@ for (const engine of ["flip", "vt"] as const) {
       await openViewer(page, `engine=${engine}&slow=1&spring=1`);
 
       for (let cycle = 0; cycle < 4; cycle += 1) {
+        const { x, y } = swipeStart(page);
+
+        await page.mouse.move(x, y);
         await page.keyboard.press("Escape");
         await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 180)));
         await swipeUp(page);
@@ -328,6 +348,82 @@ for (const engine of ["flip", "vt"] as const) {
       await page.keyboard.press("Escape");
       await expectCleanlyClosed(page);
       await expect(page.getByRole("button", { name: firstPhoto })).toBeFocused();
+    });
+
+    test("ends once the photo looks home instead of waiting out the spring", async ({ page }) => {
+      await openViewer(page, `engine=${engine}&slow=1&spring=1`);
+
+      const result = await page.evaluate(
+        () =>
+          new Promise<{ elapsed: number; duration: number; miss: number }>((resolve, reject) => {
+            const started = performance.now();
+            const root = document.documentElement;
+            const trigger = document.querySelector("[data-slot=ombra-trigger]");
+            let duration = 0;
+            let miss = Number.POSITIVE_INFINITY;
+
+            const isGroup = (animation: Animation) =>
+              animation.effect instanceof KeyframeEffect &&
+              animation.effect.pseudoElement === "::view-transition-group(ombra-shared)";
+
+            const tick = () => {
+              const flight = document.querySelector("[data-slot=ombra-flight]");
+
+              const running = flight
+                ? flight.getAnimations()[0]
+                : document.getAnimations().find(isGroup);
+
+              if (running?.effect) {
+                duration = Number(running.effect.getComputedTiming().duration);
+
+                const group = getComputedStyle(root, "::view-transition-group(ombra-shared)");
+                const rect = flight?.getBoundingClientRect();
+                const matrix = new DOMMatrix(group.transform === "none" ? "" : group.transform);
+
+                const cx = rect
+                  ? rect.x + rect.width / 2
+                  : matrix.e + Number.parseFloat(group.width) / 2;
+
+                const cy = rect
+                  ? rect.y + rect.height / 2
+                  : matrix.f + Number.parseFloat(group.height) / 2;
+
+                const home = trigger?.getBoundingClientRect();
+
+                if (home) {
+                  miss = Math.hypot(
+                    cx - (home.x + home.width / 2),
+                    cy - (home.y + home.height / 2),
+                  );
+                }
+              } else if (duration > 0) {
+                resolve({ elapsed: performance.now() - started, duration, miss });
+
+                return;
+              }
+
+              if (performance.now() - started > 8000) {
+                reject(new Error("the close never ended"));
+
+                return;
+              }
+
+              requestAnimationFrame(tick);
+            };
+
+            const close = document.querySelector("[data-slot=ombra-close]");
+
+            if (close instanceof HTMLElement) close.click();
+
+            requestAnimationFrame(tick);
+          }),
+      );
+
+      expect(result.elapsed, "the invisible tail should be cut").toBeLessThan(
+        result.duration * 0.9,
+      );
+      expect(result.miss, "the photo should be home when the close ends").toBeLessThan(4);
+      await expectCleanlyClosed(page);
     });
 
     test("a downward or sideways gesture lets the close finish", async ({ page }) => {
@@ -393,6 +489,9 @@ test("reduced motion closes cleanly and ignores input during the close", async (
   await page.goto("/spike?engine=flip&slow=1&spring=1");
   await page.getByRole("button", { name: firstPhoto }).click();
   await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+  const { x, y } = swipeStart(page);
+
+  await page.mouse.move(x, y);
   await page.keyboard.press("Escape");
   await swipeUp(page);
   await expectCleanlyClosed(page);

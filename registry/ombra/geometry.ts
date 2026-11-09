@@ -107,6 +107,14 @@ export function uncropBox(box: Box, crop: Crop): Box {
   };
 }
 
+/** The largest difference in center, width, or height between two boxes. */
+export function boxDistance(a: Box, b: Box): number {
+  const dx = a.x + a.width / 2 - (b.x + b.width / 2);
+  const dy = a.y + a.height / 2 - (b.y + b.height / 2);
+
+  return Math.max(Math.hypot(dx, dy), Math.abs(a.width - b.width), Math.abs(a.height - b.height));
+}
+
 export function boxContains(box: Box, x: number, y: number): boolean {
   return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
 }
