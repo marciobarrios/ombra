@@ -6,7 +6,7 @@ The [composition-first usage contract](COMPOSITION.md) defines the intended publ
 
 See [the scroll-driven animations assessment](SCROLL-ANIMATIONS.md) for MAR-58: browser support, potential thumbnail feedback, and the interaction logic that stays in JavaScript.
 
-See [the Safari zoom/header investigation](SPIKE-ZOOM-HEADER-INVESTIGATION.md) for MAR-61. Add `&debug=zoom` to a spike URL to capture local viewport, component, and pointer telemetry; export it before reloading. The toolbar has a scoped native double-tap safeguard, while Safari reproduction and real-iPhone acceptance remain pending.
+See [the Safari zoom/header investigation](SPIKE-ZOOM-HEADER-INVESTIGATION.md) for MAR-61. Add `&debug=zoom` to a spike URL to capture local viewport, component, and pointer telemetry; export it before reloading. Native Safari telemetry isolated page zoom on image double-tap and a duplicate compatibility-event toggle. The image and toolbar surfaces now suppress native double-tap zoom, and touch owns its compatibility double-click. Final native matrix coverage and real-iPhone acceptance remain pending.
 
 ## Thumbnail edge cues
 
