@@ -117,3 +117,32 @@ After the session, Marcio reported testing on a real iPhone and finding little p
 Marcio confirmed **FLIP default, VT optional** and identified the real test device as an **iPhone 18 Pro**. It worked fine in that qualitative test; he plans to tune the interactions over the next few days. Spring versus cubic is still undecided, with a tentative preference for spring. The phone's iOS version, Low Power Mode coverage, and frame measurements remain unreported. The [project decision addendum](https://linear.app/marciobarrios/document/ombra-motion-decisions-flip-default-and-iphone-feedback-28ad1887de32) records this update alongside MAR-12, MAR-15, and MAR-16.
 
 The production alias `ombra-navy.vercel.app` was verified READY at commit `8c3246f26e1f492f4b4df8bd01e2edf3bf14dfc4`, which includes the newer VT fallback fix. A targeted Safari retest was attempted on the iOS Simulator, but another session retained the device after the supported wait/retry. **No new test ran and no pass/fail result is claimed.** MAR-59 remains open to verify closes to thumbnails above and below the viewport in normal and slow motion, including trigger reveal or clean fade, focus return, and restored page scrolling. The historical findings above are unchanged.
+
+## Follow-up — 9 November 2026
+
+The [off-screen close regression suite](e2e/offscreen-close.spec.ts) replaces the single below-viewport, normal-speed check with an above/below-target and normal/slow matrix for VT, FLIP, fade, and VT with reduced motion. It checks that the popup, backdrop, and flight clone are removed from the DOM; focus returns to the current trigger; the target is revealed; scroll-lock styles, inert state, background accessibility, and image transition names return to their initial state; and the viewer can open and close again. Desktop WebKit and Chromium profiles also receive wheel input after close. Playwright does not support wheel input in mobile WebKit, so that profile checks programmatic page movement alongside style restoration; this does not verify native touch scrolling.
+
+Validation on Node 24: the production build, lint, format check, typecheck, and full Playwright suite passed (228 tests, including 64 off-screen matrix cases across the four browser projects). Temporarily disabling the VT close fallback made both normal-speed Chromium direction cases fail at the DOM-removal assertion with the viewer still mounted. The original source was restored and the production build passed again. Product code is unchanged.
+
+The initial Simulator attempt used T3's Device panel for iPhone 18 Pro / iOS 27.2 and the local production build at `http://127.0.0.1:3000/spike?engine=vt`. Safari could not open: `DEVICE_IN_USE` reported a Padelaso session created on 5 November. Its owning thread was confirmed completed, with the last recorded UI action on 5 November at 14:38 UTC. The supported 60-second wait still returned the same error, so that attempt ran no test.
+
+After Marcio authorized asking the owning thread to close its session, that thread released it. The supported wait then opened Safari in this thread's own session. The targeted **iOS Safari Simulator matrix passed** on the unchanged production build from `1b80fb66b9a534859c1a300d6d8793484c9854e9`:
+
+| Target direction | Slow motion | Navigation before Close | Result |
+| ---------------- | ----------- | ----------------------- | ------ |
+| Below viewport   | Off         | Photo 3 → photo 9       | Passed |
+| Above viewport   | Off         | Photo 16 → photo 1      | Passed |
+| Below viewport   | On          | Photo 1 → photo 9       | Passed |
+| Above viewport   | On          | Photo 16 → photo 1      | Passed |
+
+All app opens, navigation taps, closes, scrolling gestures, and recordings used the session-bound `agent-device` command through T3's Device panel. Safari reported native View Transition API support and the viewer selected `vt`. The expanded gallery now has 30 photos; the above-target cases started at the bottom of that grid rather than using the historical 12-photo layout.
+
+To verify cleanup beyond the accessibility tree, a temporary localhost proxy on port 3001 injected read-only DOM sampling into the production HTML from port 3000. It recorded state changes every 100 ms and click-time snapshots without driving navigation or changing product behavior. For every case, telemetry confirmed that the selected trigger was completely outside the viewport before Close, a fallback flight clone ran after reveal, and the trigger became fully visible. The popup, backdrop, and clone were removed; focus returned to the current slide's trigger; scroll-lock styles returned to their initial values; and inert attributes, hidden background triggers, and image transition names were clear. A subsequent native swipe moved the page by 133–159 CSS pixels in each case. Four recordings and a machine-checked JSON summary preserve this run locally. The automation session was closed afterward to release its claim.
+
+These are Simulator correctness results. Sampling and contact-sheet review do not establish frame-by-frame crop fidelity or physical-device smoothness. FLIP, fade, and reduced-motion regressions passed in Playwright; this targeted native pass exercised VT only. Real-iPhone verification was still outstanding at the end of this Simulator pass; the subsequent manual result is recorded below.
+
+### Real-iPhone acceptance
+
+Marcio reported that every check in the guided real-iPhone checklist passed on a physical **iPhone 18 Pro running iOS 27.0.1**, using the PR #11 preview at commit `cd44f2675830ecee32b64c1bd00b7244ca9a91e6`. The checklist covered VT closes to targets above and below the viewport at normal and slow speed, selected-thumbnail reveal or clean fade, no stuck viewer/overlay, page scrolling and reopening after close, and FLIP, fade, and Reduce Motion smoke checks.
+
+This is Marcio's manual acceptance report, separate from the Simulator's instrumented DOM/focus/cleanup evidence and the 228 automated checks. It does not claim a new instrumented physical-device trace or measured smoothness result. Together, these results satisfy MAR-59's remaining verification scope. PR #11 can now use `Fixes MAR-59`; the issue remains In Review pending merge.
