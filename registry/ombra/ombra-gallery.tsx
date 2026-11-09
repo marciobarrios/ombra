@@ -1321,7 +1321,8 @@ export function OmbraGallery({
     beginSample();
     document.documentElement.style.setProperty("--ombra-vt-duration", `${timing.duration}ms`);
     document.documentElement.style.setProperty("--ombra-vt-easing", timing.easing);
-    // The pseudo-elements would otherwise swallow a swipe aimed at the track.
+    // The pseudo-elements would otherwise swallow a swipe aimed at the track. iOS Safari
+    // still blocks it until the transition ends, which is accepted because VT is optional.
     document.documentElement.style.setProperty("--ombra-vt-pointer-events", "none");
     thumb.style.viewTransitionName = VIEW_TRANSITION_NAME;
 
