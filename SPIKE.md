@@ -6,6 +6,8 @@ The [composition-first usage contract](COMPOSITION.md) defines the intended publ
 
 See [the scroll-driven animations assessment](SCROLL-ANIMATIONS.md) for MAR-58: browser support, potential thumbnail feedback, and the interaction logic that stays in JavaScript.
 
+See [the Safari zoom/header investigation](SPIKE-ZOOM-HEADER-INVESTIGATION.md) for MAR-61. Add `&debug=zoom` to a spike URL to capture local viewport, component, and pointer telemetry; export it before reloading. The toolbar has a scoped native double-tap safeguard, while Safari reproduction and real-iPhone acceptance remain pending.
+
 ## Thumbnail edge cues
 
 Narrow gradients at the thumbnail strip's edges show that more thumbnails are available in that direction. Each disappears at its corresponding end, and both disappear when the strip fits. Use a narrow viewport to see them. They follow the strip's own scroll position and say nothing about the selected photo.

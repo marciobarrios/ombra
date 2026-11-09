@@ -6,15 +6,18 @@ import { OmbraGallery } from "../../../../registry/ombra/ombra-gallery";
 import type { MorphEngine } from "../../../../registry/ombra/types";
 
 import { photos } from "./photos";
+import { ZoomDiagnostics } from "./zoom-diagnostics";
 
 export function SpikeApp({
   initialEngine,
   initialSlow,
   initialSpring,
+  debugZoom,
 }: {
   initialEngine: MorphEngine;
   initialSlow: boolean;
   initialSpring: boolean;
+  debugZoom: boolean;
 }) {
   const [engine, setEngine] = useState(initialEngine);
   const [slow, setSlow] = useState(initialSlow);
@@ -46,6 +49,7 @@ export function SpikeApp({
         Nothing here is the final component API.
       </p>
       {reducedNote()}
+      {debugZoom && <ZoomDiagnostics />}
       <div className="mt-12">
         <OmbraGallery
           items={photos}
