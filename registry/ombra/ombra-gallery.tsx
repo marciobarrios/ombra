@@ -2,12 +2,15 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "cn";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { flushSync } from "react-dom";
 
+import { listenForCloseInput } from "./close-input";
 import {
+  boxContains,
   boxFromRect,
+  clipInset,
   containBox,
   coverCrop,
   indexFromScroll,
@@ -15,14 +18,19 @@ import {
   poseBetween,
   RESTING_POSE,
   revealElement,
+  uncropBox,
 } from "./geometry";
 import { startFrameSampler } from "./frame-sampler";
 import type { FrameSampler } from "./frame-sampler";
 import {
   MORPH_EASING,
   VIEW_TRANSITION_NAME,
+  flightVisibleBox,
   mountFlight,
   playFlight,
+  readViewTransitionBox,
+  rebaseFlight,
+  retireFlight,
   runViewTransition,
   supportsViewTransitions,
 } from "./morph";
@@ -61,6 +69,10 @@ function releaseVelocity(pixelsPerSecond: number, from: Box, to: Box): number {
   if (distance < 8) return 0;
 
   return normalizeVelocity((pixelsPerSecond * dy) / distance, distance);
+}
+
+function opacityOf(element: HTMLElement | null): number {
+  return element ? Number.parseFloat(getComputedStyle(element).opacity) : 0;
 }
 
 function imageChild(element: HTMLElement): HTMLImageElement | null {
@@ -230,10 +242,16 @@ export function OmbraGallery({
   const popupRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const backdropAnimationRef = useRef<Animation | null>(null);
+  const popupAnimationRef = useRef<Animation | null>(null);
+  const sheetAnimationRef = useRef<Animation | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
   const actionsRef = useRef<{ unmount: () => void; close: () => void } | null>(null);
   const flightRef = useRef<Flight | null>(null);
+  const retiringFlightRef = useRef<Flight | null>(null);
+  const closeInputRef = useRef<(() => void) | null>(null);
+  const vtClosingRef = useRef(false);
+  const resumeRef = useRef<{ backdrop: number; popup: number } | null>(null);
   const preserveFlightRef = useRef(false);
   const tokenRef = useRef(0);
   const originRef = useRef<Box | null>(null);
@@ -466,6 +484,7 @@ export function OmbraGallery({
 
     return () => {
       alive = false;
+      stopCloseInput();
 
       if (preserveFlightRef.current) {
         preserveFlightRef.current = false;
@@ -504,7 +523,6 @@ export function OmbraGallery({
 
     function runOpen() {
       restoreVisibility();
-      clearSheetHold();
 
       const itemIndex = indexRef.current;
       const item = items[itemIndex];
@@ -521,16 +539,27 @@ export function OmbraGallery({
 
       const home = containBox(boxFromRect(slide.getBoundingClientRect()), item.width / item.height);
       const fadeDuration = motionDuration(480, slowRef.current, reducedRef.current);
+      const existing = flightRef.current;
+      const flick = flickRef.current;
+      const resume = resumeRef.current;
+
+      flickRef.current = 0;
+      resumeRef.current = null;
+
+      const velocity = existing
+        ? releaseVelocity(flick, boxFromRect(existing.element.getBoundingClientRect()), home)
+        : 0;
 
       const timing =
         driverRef.current === "fade"
           ? { duration: fadeDuration, easing: MORPH_EASING }
-          : morphTiming(480, 0);
+          : morphTiming(480, velocity);
 
-      fadeBackdrop(0, 1, timing.duration, timing.easing);
+      releaseSheetHold(timing.duration, timing.easing);
+      fadeBackdrop(resume?.backdrop ?? 0, 1, timing.duration, timing.easing);
 
       if (driverRef.current === "fade") {
-        fadePopup(0, 1, timing.duration, () => {
+        fadePopup(resume?.popup ?? 0, 1, timing.duration, () => {
           if (!alive || tokenRef.current !== token) return;
 
           endSample();
@@ -540,13 +569,18 @@ export function OmbraGallery({
         return;
       }
 
-      fadePopup(0, 1, timing.duration, null, springRef.current ? timing.easing : "ease-out");
+      fadePopup(
+        resume?.popup ?? 0,
+        1,
+        timing.duration,
+        null,
+        springRef.current ? timing.easing : "ease-out",
+      );
 
       const crop = coverCrop(item.width, item.height, origin.width, origin.height);
       const from = poseBetween(origin, home, crop);
       const src = cachedSrc(itemIndex);
-      const existing = flightRef.current;
-      const startPose = existing ? existing.hold() : from;
+      const startPose = existing ? rebaseFlight(existing, home) : from;
       const flight = existing ?? mountFlight(home, from, src);
 
       flightRef.current = flight;
@@ -672,6 +706,8 @@ export function OmbraGallery({
         endSample();
         finishClose();
       });
+
+      armCloseInput();
     }
     // The animation reads refs on purpose so a re-render does not restart it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -733,6 +769,9 @@ export function OmbraGallery({
   }
 
   function holdPulledSheet(pull: number) {
+    sheetAnimationRef.current?.cancel();
+    sheetAnimationRef.current = null;
+
     if (pull <= 0.02) return;
 
     const sheet = sheetElement();
@@ -752,6 +791,26 @@ export function OmbraGallery({
     sheet.style.transform = "";
     sheet.style.transformOrigin = "";
     sheet.style.borderRadius = "";
+  }
+
+  // A reversed pull dismissal starts with the sheet still held at the drag pose.
+  function releaseSheetHold(duration: number, easing: string) {
+    const sheet = sheetElement();
+    const transform = sheet?.style.transform;
+    const borderRadius = sheet?.style.borderRadius;
+
+    clearSheetHold();
+
+    if (!sheet || !transform || duration <= 0) return;
+
+    sheetAnimationRef.current?.cancel();
+    sheetAnimationRef.current = sheet.animate(
+      [
+        { transform, borderRadius },
+        { transform: "none", borderRadius: "0px" },
+      ],
+      { duration, easing },
+    );
   }
 
   function placeTrack(itemIndex: number) {
@@ -828,6 +887,9 @@ export function OmbraGallery({
   ) {
     const popup = popupRef.current;
 
+    popupAnimationRef.current?.cancel();
+    popupAnimationRef.current = null;
+
     if (!popup || duration <= 0) {
       if (popup) popup.style.opacity = done ? "" : String(to);
 
@@ -841,6 +903,8 @@ export function OmbraGallery({
       easing,
       fill: "forwards",
     });
+
+    popupAnimationRef.current = animation;
 
     void animation.finished.then(
       () => {
@@ -889,7 +953,92 @@ export function OmbraGallery({
     });
   }, [open, phase]);
 
-  function openAt(nextIndex: number) {
+  function stopCloseInput() {
+    closeInputRef.current?.();
+    closeInputRef.current = null;
+  }
+
+  useEffect(() => stopCloseInput, []);
+
+  function armCloseInput() {
+    stopCloseInput();
+    closeInputRef.current = listenForCloseInput({
+      onReverse: (speed) => reopenFromClose(indexRef.current, speed),
+      onTap: (x, y) => {
+        const itemIndex = closeTapTarget(x, y);
+
+        return itemIndex !== null && reopenFromClose(itemIndex, 0);
+      },
+    });
+  }
+
+  function closeTapTarget(x: number, y: number): number | null {
+    const flight = flightRef.current;
+
+    const live = vtClosingRef.current
+      ? readViewTransitionBox()
+      : flight && flightVisibleBox(flight);
+
+    // The flying photo covers whatever is under it, so it wins the hit test.
+    if (live && boxContains(live, x, y)) return indexRef.current;
+
+    const itemIndex = triggers.current.findIndex(
+      (trigger) => trigger && boxContains(boxFromRect(trigger.getBoundingClientRect()), x, y),
+    );
+
+    return itemIndex < 0 ? null : itemIndex;
+  }
+
+  function reopenFromClose(nextIndex: number, speed: number): boolean {
+    const closingIndex = indexRef.current;
+    const same = nextIndex === closingIndex;
+    let resume = { backdrop: opacityOf(backdropRef.current), popup: opacityOf(popupRef.current) };
+
+    if (vtClosingRef.current) {
+      const item = items[closingIndex];
+      const box = readViewTransitionBox();
+
+      if (!item || !box) return false;
+
+      // A view transition cannot run backwards, and the dialog is already gone
+      // from the DOM behind it. Replace the pseudo-elements with a FLIP clone at
+      // the same frame, which every later step already knows how to reverse.
+      const crop = coverCrop(item.width, item.height, box.width, box.height);
+      const pose = { transform: RESTING_POSE.transform, clipPath: clipInset(crop) };
+
+      const oldRoot = getComputedStyle(document.documentElement, "::view-transition-old(root)");
+      const scrim = Number.parseFloat(oldRoot.opacity);
+
+      resume = { backdrop: scrim || 0, popup: scrim || 0 };
+      flightRef.current = mountFlight(uncropBox(box, crop), pose, cachedSrc(closingIndex));
+      vtClosingRef.current = false;
+      vtRef.current?.skipTransition();
+      vtRef.current = null;
+
+      if (same) hideThumb(closingIndex);
+    }
+
+    stopCloseInput();
+
+    if (!same && flightRef.current) {
+      retiringFlightRef.current?.destroy();
+      retiringFlightRef.current = flightRef.current;
+      flightRef.current = null;
+      retireFlight(
+        retiringFlightRef.current,
+        motionDuration(120, slowRef.current, reducedRef.current),
+      );
+    }
+
+    flickRef.current = same ? -speed : 0;
+    resumeRef.current = resume;
+    document.documentElement.style.setProperty("--ombra-pull-live", "0");
+    openAt(nextIndex, true);
+
+    return true;
+  }
+
+  function openAt(nextIndex: number, handoff = false) {
     const trigger = triggers.current[nextIndex];
     const thumb = trigger ? imageChild(trigger) : null;
 
@@ -899,7 +1048,7 @@ export function OmbraGallery({
     driverRef.current = reducedRef.current ? "fade" : engineRef.current;
     originRef.current = boxFromRect(thumb.getBoundingClientRect());
 
-    if (driverRef.current === "vt" && supportsViewTransitions() && !flightRef.current) {
+    if (!handoff && driverRef.current === "vt" && supportsViewTransitions() && !flightRef.current) {
       openWithViewTransition(nextIndex, thumb);
 
       return;
@@ -1009,6 +1158,8 @@ export function OmbraGallery({
 
     const from = hero ? boxFromRect(hero.getBoundingClientRect()) : null;
 
+    vtClosingRef.current = true;
+
     const velocity = from
       ? releaseVelocity(flick, from, boxFromRect(thumb.getBoundingClientRect()))
       : 0;
@@ -1034,6 +1185,7 @@ export function OmbraGallery({
     });
 
     vtRef.current = transition;
+    armCloseInput();
 
     void transition?.finished.then(
       () => {
@@ -1041,6 +1193,8 @@ export function OmbraGallery({
 
         if (tokenRef.current !== token) return;
 
+        stopCloseInput();
+        vtClosingRef.current = false;
         endSample();
         vtRef.current = null;
         document.documentElement.style.setProperty("--ombra-pull-live", "0");
@@ -1050,6 +1204,8 @@ export function OmbraGallery({
 
         if (tokenRef.current !== token) return;
 
+        stopCloseInput();
+        vtClosingRef.current = false;
         endSample();
         vtRef.current = null;
       },

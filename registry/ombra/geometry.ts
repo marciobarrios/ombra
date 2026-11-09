@@ -94,6 +94,23 @@ export function poseBetween(target: Box, home: Box, crop: Crop): FlipPose {
   };
 }
 
+/** The full image box whose cover crop is `box`, centered on it. */
+export function uncropBox(box: Box, crop: Crop): Box {
+  const width = box.width / (1 - crop.inline * 2);
+  const height = box.height / (1 - crop.block * 2);
+
+  return {
+    x: box.x - (width - box.width) / 2,
+    y: box.y - (height - box.height) / 2,
+    width,
+    height,
+  };
+}
+
+export function boxContains(box: Box, x: number, y: number): boolean {
+  return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
+}
+
 export function mostlyVisible(element: HTMLElement): boolean {
   const rect = element.getBoundingClientRect();
 

@@ -12,6 +12,7 @@
       "registryDependencies": ["utils"],
       "files": [
         { "path": "registry/ombra/ombra-gallery.tsx", "type": "registry:component" },
+        { "path": "registry/ombra/close-input.ts", "type": "registry:lib" },
         { "path": "registry/ombra/types.ts", "type": "registry:lib" },
         { "path": "registry/ombra/geometry.ts", "type": "registry:lib" },
         { "path": "registry/ombra/morph.ts", "type": "registry:lib" },

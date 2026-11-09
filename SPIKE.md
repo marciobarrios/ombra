@@ -67,6 +67,19 @@ Log the iOS version. Repeat with Low Power Mode on. The readout stays on screen.
 | Zoom and track arbitration    | Pinch during a track fling, pan to the image edge and keep dragging, double-tap, pull while zoomed                                                                                                   | Native scroll and zoom never fight; edge hand-off feels natural; pull is blocked while zoomed           | Stuck gestures, accidental slide change while panning, or page pinch-zoom taking over |
 | Safari quirks                 | Log the iOS version. Check address bar resize, safe areas, `view-transition-name` clashes with other fixed elements, object-fit crop interpolation, first-frame decode flash, rubber-band overscroll | Each quirk is either absent or has a one-line mitigation                                                | A quirk with no workaround                                                            |
 
+### Mid-close input — MAR-60
+
+A running FLIP or VT close accepts input through window capture listeners (`registry/ombra/close-input.ts`), because the popup ignores pointers while closing and a view transition sends every hit to the root:
+
+- **Upward pan anywhere:** 12 px up, more vertical than horizontal, reopens the same photo from its current pose. The gesture's speed seeds the spring.
+- **Tap on the flying photo or its thumbnail:** reopens the same photo from its current pose.
+- **Tap on another thumbnail:** the flying photo fades out in place, and the tapped photo opens from its thumbnail.
+- **Anything else** lets the close finish. Fade closes, including reduced motion and off-screen fallbacks, take no input.
+
+A view transition cannot run backwards, and its dialog has already unmounted. The handoff reads the live `::view-transition-group` box, mounts a FLIP clone at that frame, skips the transition, and reopens with FLIP. The scrim resumes from the `::view-transition-old(root)` opacity.
+
+The reversal starts from the flying photo's position but does not carry its momentum: a tap reverses from rest, and a pan uses the finger's speed. Real-touch verification on an iPhone is still pending.
+
 ### Engine decision — 6 November 2026
 
 - **Default:** WAAPI FLIP. **Optional:** native View Transitions. Both backends ship behind one morph option.

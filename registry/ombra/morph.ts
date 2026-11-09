@@ -81,6 +81,82 @@ export function mountFlight(home: Box, pose: FlipPose, src: string): Flight {
   return flight;
 }
 
+/** Moves a flight onto a new home box without moving it on screen. */
+export function rebaseFlight(flight: Flight, home: Box): FlipPose {
+  const pose = flight.hold();
+  const previous = flight.home;
+
+  if (
+    Math.abs(previous.x - home.x) < 0.5 &&
+    Math.abs(previous.y - home.y) < 0.5 &&
+    Math.abs(previous.width - home.width) < 0.5 &&
+    Math.abs(previous.height - home.height) < 0.5
+  ) {
+    return pose;
+  }
+
+  const matrix = new DOMMatrixReadOnly(pose.transform);
+  const ratio = previous.width / home.width;
+  const dx = previous.x + previous.width / 2 + matrix.e - (home.x + home.width / 2);
+  const dy = previous.y + previous.height / 2 + matrix.f - (home.y + home.height / 2);
+
+  // The clip radius is in the flight's own space, which changes size here.
+  const clipPath = pose.clipPath.replace(/round .*\)$/, (radii) =>
+    radii.replace(/[\d.]+px/g, (radius) => `${Number.parseFloat(radius) * ratio}px`),
+  );
+
+  const next: FlipPose = {
+    transform: `translate(${dx}px, ${dy}px) scale(${matrix.a * ratio})`,
+    clipPath,
+  };
+
+  const { style } = flight.element;
+
+  style.left = `${home.x}px`;
+  style.top = `${home.y}px`;
+  style.width = `${home.width}px`;
+  style.height = `${home.height}px`;
+  style.transform = next.transform;
+  style.clipPath = next.clipPath;
+  flight.home = home;
+
+  return next;
+}
+
+/** The on-screen box of a flight, which is its transformed box minus the crop. */
+export function flightVisibleBox(flight: Flight): Box {
+  const rect = flight.element.getBoundingClientRect();
+  const inset = /inset\(([\d.]+)%(?: ([\d.]+)%)?/.exec(getComputedStyle(flight.element).clipPath);
+  const block = Number.parseFloat(inset?.[1] ?? "0") / 100;
+  const inline = Number.parseFloat(inset?.[2] ?? inset?.[1] ?? "0") / 100;
+
+  return {
+    x: rect.x + rect.width * inline,
+    y: rect.y + rect.height * block,
+    width: rect.width * (1 - inline * 2),
+    height: rect.height * (1 - block * 2),
+  };
+}
+
+/** Fades a flight out where it is, then removes it. */
+export function retireFlight(flight: Flight, duration: number): void {
+  flight.hold();
+
+  if (duration <= 0) {
+    flight.destroy();
+
+    return;
+  }
+
+  const animation = flight.element.animate([{ opacity: 1 }, { opacity: 0 }], {
+    duration,
+    easing: "ease-out",
+    fill: "forwards",
+  });
+
+  void animation.finished.then(flight.destroy, flight.destroy);
+}
+
 export function playFlight(
   flight: Flight,
   from: FlipPose,
@@ -118,6 +194,27 @@ export function supportsViewTransitions(): boolean {
   if (!("startViewTransition" in document)) return false;
 
   return document.startViewTransition instanceof Function;
+}
+
+/**
+ * The live box of the shared image, or null before the pseudo-elements exist.
+ * A running view transition has no element to measure, but the group's computed
+ * size and transform are the frame on screen.
+ */
+export function readViewTransitionBox(): Box | null {
+  const style = getComputedStyle(
+    document.documentElement,
+    `::view-transition-group(${VIEW_TRANSITION_NAME})`,
+  );
+
+  const width = Number.parseFloat(style.width);
+  const height = Number.parseFloat(style.height);
+
+  if (!(width > 0) || !(height > 0)) return null;
+
+  const matrix = new DOMMatrixReadOnly(style.transform === "none" ? undefined : style.transform);
+
+  return { x: matrix.e, y: matrix.f, width: width * matrix.a, height: height * matrix.d };
 }
 
 export function runViewTransition(update: () => void): ViewTransition | null {
