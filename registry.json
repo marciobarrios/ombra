@@ -19,6 +19,7 @@
         { "path": "registry/ombra/spring.ts", "type": "registry:lib" },
         { "path": "registry/ombra/frame-sampler.ts", "type": "registry:lib" },
         { "path": "registry/ombra/use-reduced-motion.ts", "type": "registry:hook" },
+        { "path": "registry/ombra/use-page-zoom-guard.ts", "type": "registry:hook" },
         { "path": "registry/ombra/use-pull.ts", "type": "registry:hook" },
         { "path": "registry/ombra/use-zoom.ts", "type": "registry:hook" }
       ]

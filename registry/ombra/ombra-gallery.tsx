@@ -44,6 +44,7 @@ import type { Flight } from "./morph";
 import { MORPH_SPRING, normalizeVelocity, springCurve } from "./spring";
 import type { Box, FlipPose, FrameSample, MorphEngine, OmbraItem } from "./types";
 import { motionDuration } from "./types";
+import { fitToVisualViewport, usePageZoomGuard } from "./use-page-zoom-guard";
 import { usePull } from "./use-pull";
 import { useReducedMotion } from "./use-reduced-motion";
 import { useZoom } from "./use-zoom";
@@ -257,7 +258,7 @@ function IconButton({
 }) {
   const classes = cn(
     // Repeated toolbar taps must not invoke Safari's native double-tap zoom.
-    // manipulation retains native pinch zoom on controls and outside the image track.
+    // The viewer's pan-x pan-y ancestor also removes native pinch here (MAR-80).
     "inline-flex size-11 touch-manipulation items-center justify-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-30",
     className,
   );
@@ -378,6 +379,9 @@ export function OmbraGallery({
     reduced,
     zoomGestureRef,
   );
+
+  // Before the morph layout effects, so FLIP measures the viewer where it is shown.
+  usePageZoomGuard(open, popupRef);
 
   const pulling = usePull(
     trackRef,
@@ -503,6 +507,8 @@ export function OmbraGallery({
 
   const bindPopup = useCallback((node: HTMLDivElement | null) => {
     popupRef.current = node;
+
+    if (node) fitToVisualViewport(node);
 
     const opacity = openingOpacity("popup");
 
@@ -1665,7 +1671,8 @@ export function OmbraGallery({
             ref={bindBackdrop}
             data-slot="ombra-backdrop"
             className={cn(
-              "fixed inset-0 z-50 bg-black",
+              // No page pinch on the backdrop; page zoom returns after close.
+              "fixed inset-0 z-50 touch-pan-x touch-pan-y bg-black",
               phase === "closing" && "pointer-events-none",
             )}
           />
@@ -1680,14 +1687,16 @@ export function OmbraGallery({
             finalFocus={() => triggers.current[indexRef.current] ?? true}
             onKeyDown={onKeyDown}
             className={cn(
-              "fixed inset-0 z-50 flex h-dvh w-full flex-col overflow-hidden bg-transparent text-white outline-none",
+              // pan-x pan-y without pinch-zoom: the page under the viewer cannot pinch-zoom.
+              // Descendants intersect with it; the track narrows it to pan-x for its own pinch.
+              "fixed inset-0 z-50 flex h-dvh w-full touch-pan-x touch-pan-y flex-col overflow-hidden bg-transparent text-white outline-none",
               phase === "closing" && "pointer-events-none",
             )}
           >
             <Dialog.Title className="sr-only">{active?.alt ?? "Photo"}</Dialog.Title>
             <Dialog.Description className="sr-only">{active?.caption ?? ""}</Dialog.Description>
             <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
-              <header className="flex flex-col gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+              <header className="flex touch-none flex-col gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 flex-col items-start gap-2">
                     <p
@@ -1805,7 +1814,10 @@ export function OmbraGallery({
               </div>
 
               <footer className="px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-                <p data-slot="ombra-caption" className="mb-3 text-center text-sm text-white/80">
+                <p
+                  data-slot="ombra-caption"
+                  className="mb-3 touch-none text-center text-sm text-white/80"
+                >
                   {active?.caption}
                 </p>
                 <div
@@ -1813,7 +1825,7 @@ export function OmbraGallery({
                   data-slot="ombra-thumbnails"
                   data-overflowing={stripOverflows ? "true" : "false"}
                   className={cn(
-                    "overflow-x-auto overflow-y-hidden py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                    "touch-pan-x overflow-x-auto overflow-y-hidden py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
                     stripOverflows && "snap-x snap-mandatory",
                   )}
                 >
