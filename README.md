@@ -35,7 +35,7 @@ The docs app serves the home page and the spike at <http://127.0.0.1:3000/spike>
 
 - `ombra` — gallery, morph, pull, and zoom used by the spike. The compound API is not final.
 - `ombra-morph` — geometry, FLIP / View Transition helpers, and the frame sampler.
-- `ombra-zoom` — pinch, double-tap, and ctrl+wheel zoom.
+- `ombra-zoom` — pinch, double-tap, ctrl+wheel, and Safari trackpad-pinch zoom.
 
 ## Deploying the docs app
 

@@ -16,6 +16,10 @@ type Point = {
   y: number;
 };
 
+// WebKit's GestureEvent, not in lib.dom. macOS Safari sends it for a trackpad pinch
+// instead of ctrl+wheel; iOS Safari sends it alongside the touch pointers.
+type GestureEvent = UIEvent & { scale: number; clientX: number; clientY: number };
+
 const MIN_SCALE = 1;
 const MAX_SCALE = 4;
 const TAP_SCALE = 2.5;
@@ -686,6 +690,48 @@ export function useZoom(
       );
     };
 
+    let gestureBase: number | null = null;
+
+    const onGesture = (event: Event) => {
+      // SAFETY: only registered for gesturestart/change/end, which WebKit dispatches as GestureEvent.
+      const gesture = event as GestureEvent;
+
+      // The page zoom guard cancels the default; touch pinch already runs on pointers.
+      if (!enabledRef.current || pointers.current.size > 0) {
+        gestureBase = null;
+
+        return;
+      }
+
+      const layer = layerRef.current;
+
+      if (!layer) return;
+
+      if (event.type === "gesturestart" || gestureBase === null) {
+        stopRef.current();
+        gestureBase = pose.current.scale;
+      }
+
+      if (event.type === "gestureend") {
+        gestureBase = null;
+
+        return;
+      }
+
+      const rect = layoutRect(layer, pose.current);
+
+      rectRef.current = rect;
+      apply(
+        zoomAt(
+          pose.current,
+          clampScale(gestureBase * gesture.scale),
+          { x: gesture.clientX, y: gesture.clientY },
+          rect,
+        ),
+        false,
+      );
+    };
+
     const onResize = () => {
       const layer = layerRef.current;
 
@@ -710,6 +756,9 @@ export function useZoom(
     window.addEventListener("pointercancel", onPointerUp);
     track.addEventListener("dblclick", onDoubleClick);
     track.addEventListener("wheel", onWheel, { passive: false });
+    track.addEventListener("gesturestart", onGesture);
+    track.addEventListener("gesturechange", onGesture);
+    track.addEventListener("gestureend", onGesture);
     window.addEventListener("resize", onResize);
 
     return () => {
@@ -721,6 +770,9 @@ export function useZoom(
       window.removeEventListener("pointercancel", onPointerUp);
       track.removeEventListener("dblclick", onDoubleClick);
       track.removeEventListener("wheel", onWheel);
+      track.removeEventListener("gesturestart", onGesture);
+      track.removeEventListener("gesturechange", onGesture);
+      track.removeEventListener("gestureend", onGesture);
       window.removeEventListener("resize", onResize);
 
       if (frame.current !== 0) cancelAnimationFrame(frame.current);
