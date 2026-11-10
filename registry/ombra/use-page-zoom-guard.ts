@@ -5,6 +5,28 @@ import { type RefObject, useLayoutEffect } from "react";
 const FIT_PROPERTIES = ["left", "top", "width", "height"] as const;
 
 /**
+ * `position: fixed` follows the layout viewport, so a page zoomed before
+ * opening would leave part of the viewer off-screen. Pin the popup to the
+ * visual viewport instead. The backdrop stays on the layout viewport, which
+ * also covers what iOS Safari shows under its bars. Also call it when the
+ * popup mounts: the dialog portal can mount after the guard's effect runs.
+ */
+export function fitToVisualViewport(node: HTMLElement) {
+  const viewport = window.visualViewport;
+
+  if (!viewport || viewport.scale <= 1.001) {
+    for (const property of FIT_PROPERTIES) node.style.removeProperty(property);
+
+    return;
+  }
+
+  node.style.left = `${viewport.offsetLeft}px`;
+  node.style.top = `${viewport.offsetTop}px`;
+  node.style.width = `${viewport.width}px`;
+  node.style.height = `${viewport.height}px`;
+}
+
+/**
  * Keeps the page under an open viewer from zooming, and keeps the viewer on
  * the visible area when the page was already pinch-zoomed before it opened.
  *
@@ -14,15 +36,9 @@ const FIT_PROPERTIES = ["left", "top", "width", "height"] as const;
  * ctrl+wheel. Both are cancelled while `active` and released after close, so
  * the page stays zoomable. The viewport meta tag is left alone.
  */
-export function usePageZoomGuard(
-  active: boolean,
-  popupRef: RefObject<HTMLElement | null>,
-  backdropRef: RefObject<HTMLElement | null>,
-) {
+export function usePageZoomGuard(active: boolean, popupRef: RefObject<HTMLElement | null>) {
   useLayoutEffect(() => {
     if (!active) return;
-
-    const surfaces = [popupRef, backdropRef];
 
     const cancel = (event: Event) => {
       if (event.cancelable) event.preventDefault();
@@ -41,29 +57,9 @@ export function usePageZoomGuard(
 
     const viewport = window.visualViewport;
 
-    // `position: fixed` follows the layout viewport, so a page zoomed before
-    // opening would leave part of the viewer off-screen. Pin each surface to
-    // the visual viewport instead. Pinch is blocked while open, so this only
-    // follows the visual viewport's pan.
+    // Pinch is blocked while open, so this only follows the visual viewport's pan.
     const fit = () => {
-      const zoomed = viewport !== null && viewport !== undefined && viewport.scale > 1.001;
-
-      for (const surface of surfaces) {
-        const node = surface.current;
-
-        if (!node) continue;
-
-        if (!zoomed) {
-          for (const property of FIT_PROPERTIES) node.style.removeProperty(property);
-
-          continue;
-        }
-
-        node.style.left = `${viewport.offsetLeft}px`;
-        node.style.top = `${viewport.offsetTop}px`;
-        node.style.width = `${viewport.width}px`;
-        node.style.height = `${viewport.height}px`;
-      }
+      if (popupRef.current) fitToVisualViewport(popupRef.current);
     };
 
     fit();
@@ -78,13 +74,9 @@ export function usePageZoomGuard(
       viewport?.removeEventListener("resize", fit);
       viewport?.removeEventListener("scroll", fit);
 
-      for (const surface of surfaces) {
-        const node = surface.current;
+      const node = popupRef.current;
 
-        if (!node) continue;
-
-        for (const property of FIT_PROPERTIES) node.style.removeProperty(property);
-      }
+      if (node) for (const property of FIT_PROPERTIES) node.style.removeProperty(property);
     };
-  }, [active, popupRef, backdropRef]);
+  }, [active, popupRef]);
 }

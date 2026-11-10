@@ -157,7 +157,11 @@ for (const engine of engines) {
     await trigger.scrollIntoViewIfNeeded();
     await nativePinch(page, await center(trigger), 2);
     await expect.poll(() => scale(page)).toBeGreaterThan(1.5);
-    await trigger.click();
+    // A plain tap: click() would scroll the visual viewport, and that scroll
+    // event alone would refit the viewer and hide a missed fit on mount.
+    const tap = await center(trigger);
+
+    await page.touchscreen.tap(tap.x, tap.y);
 
     const viewer = page.locator("[data-slot=ombra-viewer]");
 

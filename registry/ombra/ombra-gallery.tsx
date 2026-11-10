@@ -44,7 +44,7 @@ import type { Flight } from "./morph";
 import { MORPH_SPRING, normalizeVelocity, springCurve } from "./spring";
 import type { Box, FlipPose, FrameSample, MorphEngine, OmbraItem } from "./types";
 import { motionDuration } from "./types";
-import { usePageZoomGuard } from "./use-page-zoom-guard";
+import { fitToVisualViewport, usePageZoomGuard } from "./use-page-zoom-guard";
 import { usePull } from "./use-pull";
 import { useReducedMotion } from "./use-reduced-motion";
 import { useZoom } from "./use-zoom";
@@ -381,7 +381,7 @@ export function OmbraGallery({
   );
 
   // Before the morph layout effects, so FLIP measures the viewer where it is shown.
-  usePageZoomGuard(open, popupRef, backdropRef);
+  usePageZoomGuard(open, popupRef);
 
   const pulling = usePull(
     trackRef,
@@ -507,6 +507,8 @@ export function OmbraGallery({
 
   const bindPopup = useCallback((node: HTMLDivElement | null) => {
     popupRef.current = node;
+
+    if (node) fitToVisualViewport(node);
 
     const opacity = openingOpacity("popup");
 
