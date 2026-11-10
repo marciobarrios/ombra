@@ -137,6 +137,7 @@ export function useZoom(
   const pinchStart = useRef<{ distance: number; pose: Pose; mid: Point } | null>(null);
   const panStart = useRef<{ pointer: Point; pose: Pose } | null>(null);
   const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
+  const pointerType = useRef<string | null>(null);
   const moved = useRef(0);
   const handedOff = useRef(false);
   const frame = useRef(0);
@@ -345,6 +346,8 @@ export function useZoom(
     pinchStart.current = null;
     panStart.current = null;
     handedOff.current = false;
+    lastTap.current = null;
+    pointerType.current = null;
     zoomedRef.current = false;
     setZoomed(false);
     clearLayers(trackRef.current);
@@ -489,6 +492,8 @@ export function useZoom(
 
       if (event.pointerType === "mouse" && event.button !== 0) return;
 
+      pointerType.current = event.pointerType;
+
       stopRef.current();
 
       pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -622,6 +627,11 @@ export function useZoom(
       if (!enabledRef.current) return;
 
       event.preventDefault();
+
+      // Safari emits a compatibility dblclick after our touch pointerup handler.
+      // It can arrive after the browser's tap delay. Touch owns that gesture;
+      // the next mouse/pen pointerdown restores independent dblclick handling.
+      if (pointerType.current === "touch") return;
 
       const layer = layerRef.current;
 

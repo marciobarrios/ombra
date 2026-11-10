@@ -117,11 +117,16 @@ test.describe("spike navigation", () => {
         }[] = JSON.parse((await track.getAttribute("data-navigation-frames"))!);
 
         const start = frames[0];
-        const end = frames.at(-1)!;
-        const distance = end.left - start.left;
+        const distance = (await track.evaluate((node) => node.scrollLeft)) - start.left;
 
         expect(Math.abs(distance)).toBeGreaterThan(100);
-        expect(Math.abs(end.left - destination)).toBeLessThan(3);
+        // The recorder measures image stability, not the native scroll duration.
+        // A busy runner can still be scrolling when its sampling window ends.
+        await expect
+          .poll(() =>
+            track.evaluate((node, target) => Math.abs(node.scrollLeft - target), destination),
+          )
+          .toBeLessThan(3);
 
         for (const [photoIndex, photo] of start.photos.entries()) {
           expect(photo.width).toBeGreaterThan(100);

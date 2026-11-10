@@ -256,7 +256,9 @@ function IconButton({
   close?: boolean;
 }) {
   const classes = cn(
-    "inline-flex size-11 items-center justify-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-30",
+    // Repeated toolbar taps must not invoke Safari's native double-tap zoom.
+    // manipulation retains native pinch zoom on controls and outside the image track.
+    "inline-flex size-11 touch-manipulation items-center justify-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-30",
     className,
   );
 
@@ -1738,10 +1740,12 @@ export function OmbraGallery({
                           aria-label={`${itemIndex + 1} of ${count}`}
                           className="flex h-full min-h-0 w-[86cqi] shrink-0 snap-center snap-always items-center justify-center"
                         >
+                          {/* Keep Safari's native double-tap zoom off this surface.
+                              The ancestor track still owns horizontal scrolling. */}
                           <div
                             ref={itemIndex === index ? layerRef : undefined}
                             data-slot="ombra-zoom"
-                            className="flex h-full min-h-0 w-full min-w-0 items-center justify-center"
+                            className="flex h-full min-h-0 w-full min-w-0 touch-manipulation items-center justify-center"
                           >
                             <img
                               ref={(node) => {
