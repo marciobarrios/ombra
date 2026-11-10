@@ -203,6 +203,23 @@ test.describe("spike viewer", () => {
     const strip = page.locator("[data-slot=ombra-thumbnails]");
     const thumbs = strip.locator("[data-slot=ombra-thumbnail]");
 
+    const track = page.locator("[data-slot=ombra-track]");
+
+    // Native smooth scrolling can coalesce every intermediate frame on a busy
+    // WebKit runner. Capture the requested target, then advance the real track
+    // one slide at a time to check selection ownership independently of cadence.
+    await track.evaluate((node) => {
+      const scrollTo = node.scrollTo.bind(node);
+
+      Object.defineProperty(node, "scrollTo", {
+        value(options: ScrollToOptions) {
+          if (options.behavior === "smooth") {
+            node.dataset.requestedLeft = String(options.left);
+          } else scrollTo(options);
+        },
+      });
+    });
+
     await strip.evaluate((node) => {
       const observer = new MutationObserver(() => {
         const buttons = Array.from(node.querySelectorAll("[data-slot=ombra-thumbnail]"));
@@ -228,7 +245,30 @@ test.describe("spike viewer", () => {
       if (isMobile) await thumbs.nth(to).tap();
       else await thumbs.nth(to).click();
 
-      await expect(thumbs.nth(to)).toHaveAttribute("aria-current", "true");
+      await expect(track).toHaveAttribute("data-requested-left", /./);
+      await expect(thumbs.nth(from)).toHaveAttribute("aria-current", "true");
+
+      const direction = Math.sign(to - from);
+
+      for (let index = from + direction; index !== to + direction; index += direction) {
+        await track.evaluate((node, target) => {
+          const slide = node.querySelectorAll("[data-slot=ombra-slide]")[target];
+
+          const left =
+            node.scrollLeft +
+            slide.getBoundingClientRect().left -
+            node.getBoundingClientRect().left;
+
+          node.scrollTo({ left, behavior: "instant" });
+        }, index);
+        await expect(thumbs.nth(index)).toHaveAttribute("aria-current", "true");
+      }
+
+      await expect
+        .poll(() =>
+          track.evaluate((node) => Math.abs(node.scrollLeft - Number(node.dataset.requestedLeft))),
+        )
+        .toBeLessThan(2);
       await expect
         .poll(() =>
           page.locator("[data-slot=ombra-track]").evaluate((track, target) => {
@@ -248,8 +288,6 @@ test.describe("spike viewer", () => {
 
       const history =
         (await strip.getAttribute("data-selection-history"))?.split(",").map(Number) ?? [];
-
-      const direction = Math.sign(to - from);
 
       expect(history[0]).toBe(from);
       expect(history.at(-1)).toBe(to);

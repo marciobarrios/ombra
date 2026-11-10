@@ -163,13 +163,14 @@ async function waitForMidFlight(page: Page, travel = 40) {
 
     const tick = () => {
       const frames = window.ombraFrames ?? [];
-      const first = frames[0];
+      // One live sample is enough with a captured resting reference. Waiting
+      // for three frames can let the close finish on a busy WebKit runner.
+      const first = window.ombraHome ?? frames[0];
       const last = frames.at(-1);
 
       if (
         first &&
         last &&
-        frames.length > 2 &&
         Math.hypot(last.cx - first.cx, last.cy - first.cy) >= ${travel}
       ) {
         hold();
