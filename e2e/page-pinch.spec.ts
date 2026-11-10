@@ -36,6 +36,29 @@ async function nativePinch(page: Page, point: { x: number; y: number }, scaleFac
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
 }
 
+const NO_PAGE_PINCH =
+  "This Chromium build does not pinch-zoom the page from synthetic touch (Linux CI); " +
+  "the touch-action and gesture event checks still run";
+
+/**
+ * Skips unless this project can pinch-zoom the page natively. Synthetic touch pinch
+ * zooms the page in macOS Chromium but not in the Linux CI build, so probe the plain
+ * page first: a regression in the viewer cannot make this probe skip.
+ */
+async function requireNativePagePinch(page: Page, projectName: string) {
+  test.skip(
+    projectName !== "chromium-mobile",
+    "Needs Chromium's native touch pinch; WebKit is covered by the gesture event test",
+  );
+
+  await page.goto("/spike");
+  await nativePinch(page, { x: 100, y: 200 });
+
+  const supported = (await scale(page)) > 1.2;
+
+  test.skip(!supported, NO_PAGE_PINCH);
+}
+
 /** Dispatches Safari's gesture event and a ctrl+wheel; returns which defaults were cancelled. */
 function pageZoomInputs(locator: Locator) {
   return locator.evaluate((node) => {
@@ -107,11 +130,7 @@ for (const engine of engines) {
   test(`native pinch leaves the page scale at 1 inside the viewer with ${engine}`, async ({
     page,
   }, testInfo) => {
-    test.skip(
-      testInfo.project.name !== "chromium-mobile",
-      "Needs Chromium's native touch pinch; WebKit is covered by the gesture event test",
-    );
-
+    await requireNativePagePinch(page, testInfo.project.name);
     await openViewer(page, engine);
 
     for (const selector of Object.values(chrome)) {
@@ -126,11 +145,7 @@ for (const engine of engines) {
   });
 
   test(`native page pinch works again after close with ${engine}`, async ({ page }, testInfo) => {
-    test.skip(
-      testInfo.project.name !== "chromium-mobile",
-      "Needs Chromium's native touch pinch; WebKit is covered by the gesture event test",
-    );
-
+    await requireNativePagePinch(page, testInfo.project.name);
     // A separate page: Chromium's synthetic pinch near the bottom strip can leave a
     // touch point unreleased, which would block every later synthetic pinch.
     await openViewer(page, engine);
@@ -145,11 +160,7 @@ for (const engine of engines) {
   test(`fits the visible area when the page was zoomed before opening with ${engine}`, async ({
     page,
   }, testInfo) => {
-    test.skip(
-      testInfo.project.name !== "chromium-mobile",
-      "Needs Chromium's native touch pinch to zoom the page first",
-    );
-
+    await requireNativePagePinch(page, testInfo.project.name);
     await page.goto(`/spike?engine=${engine}`);
 
     const trigger = page.locator("[data-slot=ombra-trigger]").nth(2);
