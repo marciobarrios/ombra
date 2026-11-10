@@ -13,6 +13,7 @@ type Frame = { t: number; cx: number; cy: number; width: number; height: number;
 declare global {
   interface Window {
     ombraFrames?: Frame[];
+    ombraHome?: Frame;
     ombraHold?: () => void;
   }
 }
@@ -27,7 +28,7 @@ async function openViewer(page: Page, query: string) {
   await expect(page.locator(flightSelector)).toHaveCount(0);
 }
 
-/** Records the flying photo's frame on every animation frame, from either engine. */
+/** Records the flight on every animation frame and captures its resting reference separately. */
 async function recordFrames(page: Page) {
   await page.evaluate(() => {
     const frames: Frame[] = [];
@@ -110,6 +111,27 @@ async function recordFrames(page: Page) {
       afterPaint.port2.postMessage(0);
       requestAnimationFrame(tick);
     };
+
+    // The first flight frame can already be displaced in Linux WebKit. Keep the
+    // resting reference separate: input helpers must still wait for a live flight,
+    // and rapid-cycle tests can start recording after a VT has removed the viewer.
+    const hero = document.querySelector("[data-slot=ombra-image][data-active=true]");
+    const viewer = document.querySelector("[data-slot=ombra-viewer]");
+
+    window.ombraHome = undefined;
+
+    if (hero && viewer?.getAttribute("data-phase") === "open") {
+      const home = hero.getBoundingClientRect();
+
+      window.ombraHome = {
+        t: performance.now(),
+        cx: home.x + home.width / 2,
+        cy: home.y + home.height / 2,
+        width: home.width,
+        height: home.height,
+        scrim: readScrim(),
+      };
+    }
 
     requestAnimationFrame(tick);
   });
@@ -199,7 +221,13 @@ async function pressCloseWithPointerReady(page: Page) {
 
 /** Checks a frame trace for the snap this issue is about: no large single-frame move. */
 async function expectNoJump(page: Page) {
-  const frames = await page.evaluate(() => window.ombraFrames ?? []);
+  const frames = await page.evaluate(() => {
+    const home = window.ombraHome;
+
+    if (!home) throw new Error("the resting photo was not recorded");
+
+    return [home, ...(window.ombraFrames ?? [])];
+  });
 
   expect(frames.length).toBeGreaterThan(10);
 
