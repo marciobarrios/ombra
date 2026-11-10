@@ -20,13 +20,13 @@ Keep the primitive count small. Each part must own a distinct behavior or a surf
 
 This decision preserves Ombra's shadcn distribution and dependency boundary. Base UI is the dialog foundation; Tailwind supplies editable styling. No additional dialog, carousel, gesture, or animation runtime is required. Broader layout recipes, registry packaging, and public docs should build on this shared composition contract through their existing implementation issues.
 
-## Reference and current gap
+## Principle and current gap
 
-Reviewed [Ramka's introduction](https://ramka.dev/docs), [composition guide](https://ramka.dev/docs/lightbox/composition), and [API reference](https://ramka.dev/docs/lightbox/api) on 6 November 2026. Its useful design principle is that consumers arrange headless parts and supply their own presentation. Controls and alternate layouts are compositions of those parts.
+The guiding principle is that consumers arrange headless parts and supply their own presentation. Controls and alternate layouts are compositions of those parts.
 
 Ombra currently exposes `OmbraGallery` with an `items` schema and required engine, slow-motion, spring, and change-handler props. It also owns the thumbnail grid, dialog layout, image rendering, caption, controls, and diagnostics. The consumer can change the data but cannot rearrange those pieces.
 
-Adopt the composition principle using Ombra's existing Base UI dialog and motion implementation. Ramka is a design reference only; its source, styles, and documentation are not implementation inputs.
+Adopt the composition principle using Ombra's existing Base UI dialog and motion implementation.
 
 ## Intended usage
 
