@@ -18,6 +18,12 @@ Ombra is a shadcn registry, not an npm component library. Users copy files. Do n
 - Keep a real-device check in a feature issue only when the issue cannot be judged at all without it, and say why in the issue.
 - A failed gate check gets its own bug issue, linked from the gate.
 
+## Simulators and emulators
+
+- When you finish testing on an iOS Simulator or Android Emulator, release it before your final reply: close every device you opened (in T3 Code, `device_close`). An open device keeps its claim, and other threads get `DEVICE_IN_USE` until it is released.
+- Release only devices you opened. Never close another thread's session unless the user asks.
+- Also stop any dev server you started for device testing.
+
 ## Stack
 
 - pnpm 10, Node.js 24 (`.nvmrc`). This VM’s `/exec-daemon/node` is Node 22 and sits earlier on `PATH`. Put the Node 24 bin first before `pnpm`, `next`, `oxlint`, or Playwright.
