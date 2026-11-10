@@ -10,6 +10,14 @@ Ombra is a shadcn registry, not an npm component library. Users copy files. Do n
 - Before handing off a PR, verify its saved description contains the intended closing lines and the issues are linked in Linear. Automatic completion requires the team's GitHub integration to map **On PR or commit merge** to **Done**; when multiple PRs implement one issue, completion waits for the final linked PR. See [Linear's GitHub integration docs](https://linear.app/docs/github).
 - When reconciling stale issues, verify the implementing PRs have merged and the issue's acceptance criteria are satisfied, then mark the issue Done with links to the merged PRs. Keep issues open when implementation or required validation remains.
 
+## Real-iPhone verification
+
+- Feature issues must not wait on a physical iPhone. Accept them on automated evidence: the Playwright projects and, where useful, the iOS Simulator.
+- Each milestone has one gate issue that collects every device-only check (feel, frame time, VoiceOver, Low Power Mode), run in one session near the end of the milestone: Spike is MAR-12, v0.1 MVP is MAR-81, v1 is MAR-82.
+- When an issue has a check only a real device can judge, add it to its milestone's gate checklist and relate the two issues. Do not add "confirm on a real iPhone" to the feature issue's acceptance criteria.
+- Keep a real-device check in a feature issue only when the issue cannot be judged at all without it, and say why in the issue.
+- A failed gate check gets its own bug issue, linked from the gate.
+
 ## Stack
 
 - pnpm 10, Node.js 24 (`.nvmrc`). This VM’s `/exec-daemon/node` is Node 22 and sits earlier on `PATH`. Put the Node 24 bin first before `pnpm`, `next`, `oxlint`, or Playwright.
