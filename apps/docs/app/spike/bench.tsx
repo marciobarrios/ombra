@@ -38,6 +38,9 @@ export function Bench({
     if (runningRef.current) return;
 
     runningRef.current = true;
+
+    // Low Power Mode forces a 30-second auto-lock, shorter than a full run.
+    const wakeLock = await navigator.wakeLock?.request("screen").catch(() => null);
     setResults({});
 
     const waiters: { kind: MorphKind; resolve: (sample: FrameSample) => void }[] = [];
@@ -102,6 +105,7 @@ export function Bench({
       setStatus(`stopped: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       listen(null);
+      void wakeLock?.release();
       runningRef.current = false;
     }
   }
@@ -124,7 +128,7 @@ export function Bench({
       </div>
       <p className="mt-2 text-white/70">
         clean: runs with no dropped frame. mid: runs with no drop between the first and last frame.
-        Keep the screen on and do not touch it while it runs.
+        The page keeps the screen awake while it runs. Do not touch it.
       </p>
       <div className="mt-2 overflow-x-auto">
         <table className="w-max border-separate border-spacing-x-3">
