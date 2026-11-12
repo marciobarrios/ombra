@@ -32,6 +32,27 @@ test.describe("spike viewer", () => {
     await expect(page.locator("[data-slot=ombra-trigger]").last()).toBeFocused();
   });
 
+  test("keeps separate frame readouts for the last open and close", async ({ page }) => {
+    await page.goto("/spike?engine=flip");
+
+    const open = page.locator("[data-slot=ombra-readout-open]");
+    const close = page.locator("[data-slot=ombra-readout-close]");
+
+    await expect(open).toHaveText("Open –");
+    await expect(close).toHaveText("Close –");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await expect(open).toHaveText(/^Open \d+\.\d ms \/ \d+$/);
+    await expect(close).toHaveText("Close –");
+
+    const opened = await open.textContent();
+
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(close).toHaveText(/^Close \d+\.\d ms \/ \d+$/);
+    await expect(open).toHaveText(opened ?? "");
+  });
+
   test("selects the engine from the query string", async ({ page }) => {
     await page.goto("/spike?engine=vt");
     await expect(page.getByRole("radio", { name: "View Transition" })).toBeChecked();

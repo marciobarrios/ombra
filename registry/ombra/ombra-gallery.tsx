@@ -216,13 +216,17 @@ function SpringToggle({
   );
 }
 
+type MorphKind = "open" | "close";
+
+function formatSample(sample: FrameSample | undefined): string {
+  return sample ? `${sample.longestMs.toFixed(1)} ms / ${sample.dropped}` : "–";
+}
+
 function FrameReadout({
-  longest,
-  dropped,
+  samples,
   engine,
 }: {
-  longest: string;
-  dropped: string;
+  samples: Partial<Record<MorphKind, FrameSample>>;
   engine: MorphEngine;
 }) {
   return (
@@ -230,8 +234,9 @@ function FrameReadout({
       data-slot="ombra-readout"
       className="pointer-events-none w-max rounded-md bg-black/80 px-3 py-2 font-mono text-[11px] leading-4 text-white"
     >
-      <div>Longest frame {longest} ms</div>
-      <div>Dropped (&gt;33 ms) {dropped}</div>
+      <div>Longest frame / dropped (&gt;33 ms)</div>
+      <div data-slot="ombra-readout-open">Open {formatSample(samples.open)}</div>
+      <div data-slot="ombra-readout-close">Close {formatSample(samples.close)}</div>
       <div>Engine {engine}</div>
     </div>
   );
@@ -301,7 +306,7 @@ export function OmbraGallery({
   const [phase, setPhase] = useState<Phase>("closed");
   const [index, setIndex] = useState(0);
   const [animEpoch, setAnimEpoch] = useState(0);
-  const [readout, setReadout] = useState<FrameSample | null>(null);
+  const [readout, setReadout] = useState<Partial<Record<MorphKind, FrameSample>>>({});
   const [sharpIds, setSharpIds] = useState<ReadonlySet<string>>(() => new Set());
   const [stripOverflows, setStripOverflows] = useState(false);
   const [releaseScroll, setReleaseScroll] = useState(false);
@@ -342,6 +347,7 @@ export function OmbraGallery({
   const settledRef = useRef(true);
   const zoomGestureRef = useRef(false);
   const samplerRef = useRef<FrameSampler | null>(null);
+  const sampleKindRef = useRef<MorphKind>("open");
   const vtRef = useRef<ViewTransition | null>(null);
   const seenIndex = useRef(index);
   const navigationTarget = useRef<number | null>(null);
@@ -588,7 +594,7 @@ export function OmbraGallery({
     let alive = true;
     let attempts = 0;
 
-    beginSample();
+    beginSample(phase === "opening" ? "open" : "close");
 
     if (phase === "opening") runOpen();
     else runClose();
@@ -847,8 +853,9 @@ export function OmbraGallery({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, animEpoch]);
 
-  function beginSample() {
+  function beginSample(kind: MorphKind) {
     samplerRef.current?.stop();
+    sampleKindRef.current = kind;
     samplerRef.current = startFrameSampler();
   }
 
@@ -857,7 +864,11 @@ export function OmbraGallery({
 
     samplerRef.current = null;
 
-    if (sample && sample.frames > 1) setReadout(sample);
+    if (sample && sample.frames > 1) {
+      const kind = sampleKindRef.current;
+
+      setReadout((current) => ({ ...current, [kind]: sample }));
+    }
   }
 
   function cachedSrc(itemIndex: number): string {
@@ -1386,7 +1397,7 @@ export function OmbraGallery({
     const token = ++tokenRef.current;
     const timing = morphTiming(480, 0);
 
-    beginSample();
+    beginSample("open");
     document.documentElement.style.setProperty("--ombra-vt-duration", `${timing.duration}ms`);
     document.documentElement.style.setProperty("--ombra-vt-easing", timing.easing);
     // The pseudo-elements would otherwise swallow a swipe aimed at the track. iOS Safari
@@ -1502,7 +1513,7 @@ export function OmbraGallery({
 
     const timing = morphTiming(420, velocity);
 
-    beginSample();
+    beginSample("close");
     document.documentElement.style.setProperty("--ombra-vt-duration", `${timing.duration}ms`);
     document.documentElement.style.setProperty("--ombra-vt-easing", timing.easing);
 
@@ -1602,9 +1613,6 @@ export function OmbraGallery({
     }
   }
 
-  const longest = readout ? readout.longestMs.toFixed(1) : "–";
-  const dropped = readout ? String(readout.dropped) : "–";
-
   return (
     <div
       data-slot="ombra-root"
@@ -1614,7 +1622,7 @@ export function OmbraGallery({
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col items-start gap-3">
           <EngineSwitch engine={engine} onEngineChange={onEngineChange} />
-          <FrameReadout longest={longest} dropped={dropped} engine={effective} />
+          <FrameReadout samples={readout} engine={effective} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <SpringToggle spring={spring} onSpringChange={onSpringChange} />

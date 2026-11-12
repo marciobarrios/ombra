@@ -28,7 +28,7 @@ An axe audit of the open viewer on 5 November 2026 flagged the existing track as
 
 `?engine=vt|flip|fade` selects View Transitions, WAAPI FLIP, or a plain fade. The on-screen radios write the same query. `?slow=1` (or the Slow motion button) multiplies open, close, and pull-snap durations by three. `?spring=1` (or the Spring switch beside those controls) replaces the cubic morph easing with a hand-rolled spring. It combines with the engine and with slow motion. When the OS asks for reduced motion, every engine becomes a fade and pull does not scale the sheet.
 
-The fixed readout is the longest frame and the count of frames over 33 ms during the last open or close, sampled with `requestAnimationFrame`. The first frame of a sample is ignored. Safari does not need the long-animation-frame API.
+The readout in the page header shows the longest frame and the count of frames over 33 ms for the last open and, on its own line, the last close, sampled with `requestAnimationFrame`. Close the viewer to read both. The first frame of a sample is ignored. Safari does not need the long-animation-frame API.
 
 ## How to test
 
