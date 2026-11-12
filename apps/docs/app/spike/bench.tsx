@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 
+import { measureIdleInterval, summarizeFrames } from "../../../../registry/ombra/frame-sampler";
 import type { FrameSample, MorphEngine, MorphKind } from "../../../../registry/ombra/types";
 
 const ENGINES: readonly MorphEngine[] = ["flip", "vt", "fade"];
@@ -10,7 +11,8 @@ const ENGINES: readonly MorphEngine[] = ["flip", "vt", "fade"];
 const PAUSE_MS = 500;
 const STEP_TIMEOUT_MS = 8_000;
 
-type Row = Record<MorphKind, FrameSample[]>;
+/** Samples scored against `displayMs`, the idle refresh interval measured before the engine's runs. */
+type Row = Record<MorphKind, FrameSample[]> & { displayMs: number };
 
 type Results = Partial<Record<MorphEngine, Row>>;
 
@@ -39,8 +41,10 @@ export function Bench({
 
     runningRef.current = true;
 
-    // Low Power Mode forces a 30-second auto-lock, shorter than a full run.
-    const wakeLock = await navigator.wakeLock?.request("screen").catch(() => null);
+    // Low Power Mode forces a 30-second auto-lock, shorter than a full run. Not awaited: a
+    // permission prompt must not hold up the run, and a refusal leaves the screen to the user.
+    const wakeLock = navigator.wakeLock?.request("screen").catch(() => null);
+
     setResults({});
 
     const waiters: { kind: MorphKind; resolve: (sample: FrameSample) => void }[] = [];
@@ -67,8 +71,11 @@ export function Bench({
       for (const engine of ENGINES) {
         setEngine(engine);
         await pause(PAUSE_MS);
+        setStatus(`${engine}: measuring the display`);
 
-        const row: Row = { open: [], close: [] };
+        const displayMs = await measureIdleInterval();
+        const row: Row = { open: [], close: [], displayMs };
+        const rescore = (sample: FrameSample) => summarizeFrames(sample.deltas, displayMs);
 
         for (let index = 1; index <= runs; index += 1) {
           setStatus(`${engine} ${index}/${runs}`);
@@ -83,7 +90,7 @@ export function Bench({
           const opened = nextSample("open");
 
           trigger.click();
-          row.open.push(await opened);
+          row.open.push(rescore(await opened));
           await pause(PAUSE_MS);
 
           const closeButton = document.querySelector<HTMLElement>("[data-slot=ombra-close]");
@@ -93,7 +100,7 @@ export function Bench({
           const closed = nextSample("close");
 
           closeButton.click();
-          row.close.push(await closed);
+          row.close.push(rescore(await closed));
           await until(() => !document.querySelector("[data-slot=ombra-viewer]"), "viewer to close");
           await pause(PAUSE_MS);
           setResults((current) => ({ ...current, [engine]: { ...row } }));
@@ -105,7 +112,7 @@ export function Bench({
       setStatus(`stopped: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       listen(null);
-      void wakeLock?.release();
+      void wakeLock?.then((lock) => lock?.release());
       runningRef.current = false;
     }
   }
@@ -128,7 +135,8 @@ export function Bench({
       </div>
       <p className="mt-2 text-white/70">
         clean: runs with no dropped frame. mid: runs with no drop between the first and last frame.
-        The page keeps the screen awake while it runs. Do not touch it.
+        A frame is dropped when it takes 1.5× the display interval, measured idle before each
+        engine. The page keeps the screen awake while it runs. Do not touch it.
       </p>
       <div className="mt-2 overflow-x-auto">
         <table className="w-max border-separate border-spacing-x-3">
@@ -140,7 +148,8 @@ export function Bench({
               <th className="font-normal">close clean</th>
               <th className="font-normal">mid</th>
               <th className="font-normal">longest</th>
-              <th className="font-normal">interval</th>
+              <th className="font-normal">median</th>
+              <th className="font-normal">display</th>
             </tr>
           </thead>
           <tbody>
@@ -159,7 +168,7 @@ function BenchRow({ engine, row }: { engine: MorphEngine; row: Row | undefined }
     return (
       <tr data-slot="spike-bench-row" data-engine={engine}>
         <td>{engine}</td>
-        <td colSpan={6} className="text-white/50">
+        <td colSpan={7} className="text-white/50">
           –
         </td>
       </tr>
@@ -179,6 +188,7 @@ function BenchRow({ engine, row }: { engine: MorphEngine; row: Row | undefined }
       <td>{count(row.close, (sample) => sample.midDropped === 0)}</td>
       <td>{longest.toFixed(1)} ms</td>
       <td>{interval.toFixed(1)} ms</td>
+      <td>{row.displayMs.toFixed(1)} ms</td>
     </tr>
   );
 }

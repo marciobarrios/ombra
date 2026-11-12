@@ -32,7 +32,7 @@ The readout in the page header shows, for the last open and on its own line the 
 
 ### Benchmark: `?bench=1`
 
-Open `/spike?bench=1` on the phone and tap **Run 10× per engine**. The page opens and closes the first photo ten times with FLIP, then View Transitions, then fade, using synthetic clicks, and fills a table with the open and close `clean` and `mid` counts, the longest frame, and the frame interval. `&runs=n` changes the count (1–50). Run it once with Low Power Mode off and once with it on, and screenshot the table. Don't touch the screen while it runs. It measures rendering only: the gesture checks below still need real fingers.
+Open `/spike?bench=1` on the phone and tap **Run 10× per engine**. The page opens and closes the first photo ten times with FLIP, then View Transitions, then fade, using synthetic clicks, and fills a table with the open and close `clean` and `mid` counts, the longest frame, the median frame, and the display interval. Before each engine it measures the display's idle refresh interval and counts a frame as dropped at 1.5× that interval, not 1.5× the run's own median: a run that is slow throughout, like View Transitions and fade in Low Power Mode, would otherwise look clean. `&runs=n` changes the count (1–50). Run it once with Low Power Mode off and once with it on, and screenshot the table. Don't touch the screen while it runs. It measures rendering only: the gesture checks below still need real fingers.
 
 ## How to test
 

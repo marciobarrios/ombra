@@ -127,7 +127,7 @@ test.describe("spike viewer", () => {
     for (const engine of ["flip", "vt", "fade"]) {
       const cells = page.locator(`[data-slot=spike-bench-row][data-engine=${engine}] td`);
 
-      await expect(cells).toHaveCount(7);
+      await expect(cells).toHaveCount(8);
       await expect(cells.nth(1)).toHaveText(/^[0-2]\/2$/);
       await expect(cells.nth(3)).toHaveText(/^[0-2]\/2$/);
       await expect(cells.nth(5)).toHaveText(/^\d+\.\d ms$/);

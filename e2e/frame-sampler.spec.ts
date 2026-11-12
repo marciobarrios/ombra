@@ -31,7 +31,16 @@ test.describe("frame summary", () => {
       intervalMs: 0,
       droppedAt: [],
       midDropped: 0,
+      deltas: [],
     });
+  });
+
+  test("scores a run that is slow throughout against the display interval", () => {
+    const deltas = [50, 50, 50, 50, 50];
+
+    expect(summarizeFrames(deltas).dropped).toBe(0);
+    expect(summarizeFrames(deltas, 33.3).dropped).toBe(5);
+    expect(summarizeFrames(deltas, 33.3).midDropped).toBe(3);
   });
 
   test("leaves first and last frame drops out of the mid-flight count", () => {

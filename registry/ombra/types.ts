@@ -42,6 +42,8 @@ export type FrameSample = {
   droppedAt: number[];
   /** Drops other than the first and last frame: start-up and settle cost sit at the ends, jank in between. */
   midDropped: number;
+  /** Raw frame times, so a caller can score the run again against another baseline. */
+  deltas: number[];
 };
 
 export type MorphKind = "open" | "close";
