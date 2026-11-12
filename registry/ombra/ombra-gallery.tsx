@@ -42,7 +42,7 @@ import {
 } from "./morph";
 import type { Flight } from "./morph";
 import { MORPH_SPRING, normalizeVelocity, springCurve } from "./spring";
-import type { Box, FlipPose, FrameSample, MorphEngine, OmbraItem } from "./types";
+import type { Box, FlipPose, FrameSample, MorphEngine, MorphKind, OmbraItem } from "./types";
 import { motionDuration } from "./types";
 import { fitToVisualViewport, usePageZoomGuard } from "./use-page-zoom-guard";
 import { usePull } from "./use-pull";
@@ -129,6 +129,8 @@ export type OmbraGalleryProps = {
   onEngineChange: (engine: MorphEngine) => void;
   onSlowChange: (slow: boolean) => void;
   onSpringChange: (spring: boolean) => void;
+  /** Called after each open or close with its frame timing. The spike's benchmark collects these. */
+  onFrameSample?: (kind: MorphKind, sample: FrameSample) => void;
   className?: string;
 };
 
@@ -216,39 +218,39 @@ function SpringToggle({
   );
 }
 
-type MorphKind = "open" | "close";
-
 /** The last sample of one morph kind, and how many runs since the last reset had no dropped frame. */
-type FrameTally = { last: FrameSample; runs: number; clean: number };
+type FrameTally = { last: FrameSample; runs: number; clean: number; mid: number };
 
 /** Tallies restart when `condition` (engine, slow motion, spring) changes, so each test row starts at zero. */
 type FrameReadoutState = { condition: string } & Partial<Record<MorphKind, FrameTally>>;
 
-function formatTally(tally: FrameTally | undefined): string {
+function formatLast(tally: FrameTally | undefined): string {
   if (!tally) return "–";
 
-  const { last, runs, clean } = tally;
+  const { last } = tally;
 
-  return `${last.longestMs.toFixed(1)} ms / ${last.dropped} @ ${last.intervalMs.toFixed(1)} ms · clean ${clean}/${runs}`;
+  return `${last.longestMs.toFixed(1)} ms / ${last.dropped} @ ${last.intervalMs.toFixed(1)} ms`;
 }
 
 /** Where the last run's drops fell, e.g. "drops at 1, 29 of 30", to tell start-up and settle cost from mid-flight jank. */
-function formatDrops(tally: FrameTally | undefined): string | null {
-  if (!tally || tally.last.dropped === 0) return null;
-
-  const { droppedAt, frames } = tally.last;
-
-  return `drops at ${droppedAt.join(", ")} of ${frames - 1}`;
+function formatDrops(sample: FrameSample): string {
+  return `drops at ${sample.droppedAt.join(", ")} of ${sample.frames - 1}`;
 }
 
-function DropLine({ slot, tally }: { slot: string; tally: FrameTally | undefined }) {
-  const drops = formatDrops(tally);
+function TallyLine({ kind, tally }: { kind: MorphKind; tally: FrameTally | undefined }) {
+  if (!tally) return null;
 
-  if (!drops) return null;
+  const { last, runs, clean, mid } = tally;
 
   return (
-    <div data-slot={slot} className="pl-4 text-white/70">
-      {drops}
+    <div data-slot={`ombra-readout-${kind}-tally`} className="pl-4 text-white/70">
+      clean {clean}/{runs} · mid {mid}/{runs}
+      {last.dropped > 0 && (
+        <>
+          {" · "}
+          <span data-slot={`ombra-readout-${kind}-drops`}>{formatDrops(last)}</span>
+        </>
+      )}
     </div>
   );
 }
@@ -263,13 +265,13 @@ function FrameReadout({
   return (
     <div
       data-slot="ombra-readout"
-      className="pointer-events-none w-max rounded-md bg-black/80 px-3 py-2 font-mono text-[11px] leading-4 text-white"
+      className="pointer-events-none w-max max-w-full rounded-md bg-black/80 px-3 py-2 font-mono text-[11px] leading-4 text-white"
     >
       <div>Longest frame / dropped @ frame interval</div>
-      <div data-slot="ombra-readout-open">Open {formatTally(samples.open)}</div>
-      <DropLine slot="ombra-readout-open-drops" tally={samples.open} />
-      <div data-slot="ombra-readout-close">Close {formatTally(samples.close)}</div>
-      <DropLine slot="ombra-readout-close-drops" tally={samples.close} />
+      <div data-slot="ombra-readout-open">Open {formatLast(samples.open)}</div>
+      <TallyLine kind="open" tally={samples.open} />
+      <div data-slot="ombra-readout-close">Close {formatLast(samples.close)}</div>
+      <TallyLine kind="close" tally={samples.close} />
       <div>Engine {engine}</div>
     </div>
   );
@@ -332,6 +334,7 @@ export function OmbraGallery({
   onEngineChange,
   onSlowChange,
   onSpringChange,
+  onFrameSample,
   className,
 }: OmbraGalleryProps) {
   const reduced = useReducedMotion();
@@ -397,6 +400,10 @@ export function OmbraGallery({
   const readoutConditionRef = useRef(readoutCondition);
 
   readoutConditionRef.current = readoutCondition;
+
+  const onFrameSampleRef = useRef(onFrameSample);
+
+  onFrameSampleRef.current = onFrameSample;
   const count = items.length;
   const active = items[index];
 
@@ -906,6 +913,8 @@ export function OmbraGallery({
       const kind = sampleKindRef.current;
       const condition = readoutConditionRef.current;
 
+      onFrameSampleRef.current?.(kind, sample);
+
       setReadout((current) => {
         const base = current.condition === condition ? current : { condition };
         const previous = base[kind];
@@ -916,6 +925,7 @@ export function OmbraGallery({
             last: sample,
             runs: (previous?.runs ?? 0) + 1,
             clean: (previous?.clean ?? 0) + (sample.dropped === 0 ? 1 : 0),
+            mid: (previous?.mid ?? 0) + (sample.midDropped === 0 ? 1 : 0),
           },
         };
       });

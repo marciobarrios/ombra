@@ -30,6 +30,14 @@ test.describe("frame summary", () => {
       frames: 0,
       intervalMs: 0,
       droppedAt: [],
+      midDropped: 0,
     });
+  });
+
+  test("leaves first and last frame drops out of the mid-flight count", () => {
+    const sample = summarizeFrames([40, 16.7, 16.6, 40, 16.7, 16.7, 40]);
+
+    expect(sample.droppedAt).toEqual([1, 4, 7]);
+    expect(sample.midDropped).toBe(1);
   });
 });

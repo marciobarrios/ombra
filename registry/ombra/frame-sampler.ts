@@ -14,7 +14,7 @@ export type FrameSampler = {
  */
 export function summarizeFrames(deltas: readonly number[]): FrameSample {
   if (deltas.length === 0) {
-    return { longestMs: 0, dropped: 0, frames: 0, intervalMs: 0, droppedAt: [] };
+    return { longestMs: 0, dropped: 0, frames: 0, intervalMs: 0, droppedAt: [], midDropped: 0 };
   }
 
   const sorted = deltas.toSorted((a, b) => a - b);
@@ -34,6 +34,7 @@ export function summarizeFrames(deltas: readonly number[]): FrameSample {
     longestMs: sorted[sorted.length - 1],
     dropped: droppedAt.length,
     droppedAt,
+    midDropped: droppedAt.filter((at) => at !== 1 && at !== deltas.length).length,
     frames: deltas.length + 1,
     intervalMs,
   };

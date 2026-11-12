@@ -40,7 +40,11 @@ export type FrameSample = {
   intervalMs: number;
   /** 1-based positions of the dropped frames among `frames - 1` measured frames. */
   droppedAt: number[];
+  /** Drops other than the first and last frame: start-up and settle cost sit at the ends, jank in between. */
+  midDropped: number;
 };
+
+export type MorphKind = "open" | "close";
 
 export function parseMorphEngine(value: string | null | undefined): MorphEngine {
   if (value === "vt" || value === "flip" || value === "fade") return value;

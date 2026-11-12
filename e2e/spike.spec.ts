@@ -42,14 +42,14 @@ test.describe("spike viewer", () => {
     await expect(close).toHaveText("Close –");
     await page.getByRole("button", { name: firstPhoto }).click();
     await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
-    await expect(open).toHaveText(/^Open \d+\.\d ms \/ \d+ @ \d+\.\d ms · clean [01]\/1$/);
+    await expect(open).toHaveText(/^Open \d+\.\d ms \/ \d+ @ \d+\.\d ms$/);
     await expect(close).toHaveText("Close –");
 
     const opened = await open.textContent();
 
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toBeHidden();
-    await expect(close).toHaveText(/^Close \d+\.\d ms \/ \d+ @ \d+\.\d ms · clean [01]\/1$/);
+    await expect(close).toHaveText(/^Close \d+\.\d ms \/ \d+ @ \d+\.\d ms$/);
     await expect(open).toHaveText(opened ?? "");
   });
 
@@ -94,6 +94,8 @@ test.describe("spike viewer", () => {
 
     const open = page.locator("[data-slot=ombra-readout-open]");
     const close = page.locator("[data-slot=ombra-readout-close]");
+    const openTally = page.locator("[data-slot=ombra-readout-open-tally]");
+    const closeTally = page.locator("[data-slot=ombra-readout-close-tally]");
     const viewer = page.locator("[data-slot=ombra-viewer]");
 
     for (let run = 1; run <= 2; run += 1) {
@@ -101,13 +103,35 @@ test.describe("spike viewer", () => {
       await expect(viewer).toHaveAttribute("data-phase", "open");
       await page.keyboard.press("Escape");
       await expect(page.getByRole("dialog")).toBeHidden();
-      await expect(open).toHaveText(new RegExp(`clean [0-${run}]/${run}$`));
-      await expect(close).toHaveText(new RegExp(`clean [0-${run}]/${run}$`));
+      const tally = new RegExp(`^clean [0-${run}]/${run} · mid [0-${run}]/${run}`);
+
+      await expect(openTally).toHaveText(tally);
+      await expect(closeTally).toHaveText(tally);
     }
 
     await page.getByRole("radio", { name: "Fade" }).check();
     await expect(open).toHaveText("Open –");
     await expect(close).toHaveText("Close –");
+    await expect(openTally).toHaveCount(0);
+  });
+
+  test("benchmarks every engine without a finger", async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?bench=1&runs=2");
+    await page.getByRole("button", { name: "Run 2× per engine" }).click();
+    await expect(page.locator("[data-slot=spike-bench-status]")).toHaveText("done", {
+      timeout: 80_000,
+    });
+
+    for (const engine of ["flip", "vt", "fade"]) {
+      const cells = page.locator(`[data-slot=spike-bench-row][data-engine=${engine}] td`);
+
+      await expect(cells).toHaveCount(7);
+      await expect(cells.nth(1)).toHaveText(/^[0-2]\/2$/);
+      await expect(cells.nth(3)).toHaveText(/^[0-2]\/2$/);
+      await expect(cells.nth(5)).toHaveText(/^\d+\.\d ms$/);
+    }
   });
 
   test("reports an open that a close cuts short", async ({ page }) => {
