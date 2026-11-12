@@ -38,6 +38,8 @@ export type FrameSample = {
   frames: number;
   /** Median frame delta: the display's effective refresh interval during the sample. */
   intervalMs: number;
+  /** 1-based positions of the dropped frames among `frames - 1` measured frames. */
+  droppedAt: number[];
 };
 
 export function parseMorphEngine(value: string | null | undefined): MorphEngine {

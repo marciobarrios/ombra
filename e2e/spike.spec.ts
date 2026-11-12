@@ -53,6 +53,42 @@ test.describe("spike viewer", () => {
     await expect(open).toHaveText(opened ?? "");
   });
 
+  test("says where a run dropped frames", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip&slow=1");
+    await page.locator("[data-slot=ombra-trigger]").first().waitFor();
+    // Stall the main thread a few frames into the open, so the drop lands mid-flight every time.
+    await page.evaluate(() => {
+      document.querySelector<HTMLElement>("[data-slot=ombra-trigger]")?.click();
+
+      let frames = 0;
+
+      const stall = () => {
+        frames += 1;
+
+        if (frames < 5) {
+          requestAnimationFrame(stall);
+
+          return;
+        }
+
+        const until = performance.now() + 200;
+
+        while (performance.now() < until) {
+          // Busy-wait: nothing else may run.
+        }
+      };
+
+      requestAnimationFrame(stall);
+    });
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open", {
+      timeout: 8_000,
+    });
+    await expect(page.locator("[data-slot=ombra-readout-open-drops]")).toHaveText(
+      /^drops at \d+(, \d+)* of \d+$/,
+    );
+  });
+
   test("tallies clean runs until the engine changes", async ({ page }) => {
     await page.goto("/spike?engine=flip");
 

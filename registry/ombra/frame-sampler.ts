@@ -13,7 +13,9 @@ export type FrameSampler = {
  * 120 Hz (ProMotion).
  */
 export function summarizeFrames(deltas: readonly number[]): FrameSample {
-  if (deltas.length === 0) return { longestMs: 0, dropped: 0, frames: 0, intervalMs: 0 };
+  if (deltas.length === 0) {
+    return { longestMs: 0, dropped: 0, frames: 0, intervalMs: 0, droppedAt: [] };
+  }
 
   const sorted = deltas.toSorted((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
@@ -22,10 +24,16 @@ export function summarizeFrames(deltas: readonly number[]): FrameSample {
     sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 
   const limit = intervalMs * DROPPED_FRAME_RATIO;
+  const droppedAt: number[] = [];
+
+  for (const [index, delta] of deltas.entries()) {
+    if (delta >= limit) droppedAt.push(index + 1);
+  }
 
   return {
     longestMs: sorted[sorted.length - 1],
-    dropped: deltas.filter((delta) => delta >= limit).length,
+    dropped: droppedAt.length,
+    droppedAt,
     frames: deltas.length + 1,
     intervalMs,
   };

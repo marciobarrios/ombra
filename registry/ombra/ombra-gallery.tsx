@@ -232,6 +232,27 @@ function formatTally(tally: FrameTally | undefined): string {
   return `${last.longestMs.toFixed(1)} ms / ${last.dropped} @ ${last.intervalMs.toFixed(1)} ms · clean ${clean}/${runs}`;
 }
 
+/** Where the last run's drops fell, e.g. "drops at 1, 29 of 30", to tell start-up and settle cost from mid-flight jank. */
+function formatDrops(tally: FrameTally | undefined): string | null {
+  if (!tally || tally.last.dropped === 0) return null;
+
+  const { droppedAt, frames } = tally.last;
+
+  return `drops at ${droppedAt.join(", ")} of ${frames - 1}`;
+}
+
+function DropLine({ slot, tally }: { slot: string; tally: FrameTally | undefined }) {
+  const drops = formatDrops(tally);
+
+  if (!drops) return null;
+
+  return (
+    <div data-slot={slot} className="pl-4 text-white/70">
+      {drops}
+    </div>
+  );
+}
+
 function FrameReadout({
   samples,
   engine,
@@ -246,7 +267,9 @@ function FrameReadout({
     >
       <div>Longest frame / dropped @ frame interval</div>
       <div data-slot="ombra-readout-open">Open {formatTally(samples.open)}</div>
+      <DropLine slot="ombra-readout-open-drops" tally={samples.open} />
       <div data-slot="ombra-readout-close">Close {formatTally(samples.close)}</div>
+      <DropLine slot="ombra-readout-close-drops" tally={samples.close} />
       <div>Engine {engine}</div>
     </div>
   );

@@ -8,6 +8,7 @@ test.describe("frame summary", () => {
 
     expect(sample.intervalMs).toBeCloseTo(33.35, 2);
     expect(sample.dropped).toBe(1);
+    expect(sample.droppedAt).toEqual([4]);
     expect(sample.longestMs).toBe(66.6);
   });
 
@@ -23,6 +24,12 @@ test.describe("frame summary", () => {
   });
 
   test("returns an empty sample with no frames", () => {
-    expect(summarizeFrames([])).toEqual({ longestMs: 0, dropped: 0, frames: 0, intervalMs: 0 });
+    expect(summarizeFrames([])).toEqual({
+      longestMs: 0,
+      dropped: 0,
+      frames: 0,
+      intervalMs: 0,
+      droppedAt: [],
+    });
   });
 });
