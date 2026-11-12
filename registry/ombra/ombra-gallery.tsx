@@ -657,6 +657,9 @@ export function OmbraGallery({
 
       placeTrack(itemIndex);
 
+      // Measure the slide at rest, not at the pose a reversed pull close still holds:
+      // the photo would land offset by the drag and jump when the hero replaces it.
+      const animateSheetBack = releaseSheetHold();
       const home = containBox(boxFromRect(slide.getBoundingClientRect()), item.width / item.height);
       const fadeDuration = motionDuration(480, slowRef.current, reducedRef.current);
       const existing = flightRef.current;
@@ -675,7 +678,7 @@ export function OmbraGallery({
           ? { duration: fadeDuration, easing: MORPH_EASING }
           : morphTiming(480, velocity);
 
-      releaseSheetHold(timing.duration, timing.easing);
+      animateSheetBack(timing.duration, timing.easing);
       fadeBackdrop(resume?.backdrop ?? 0, 1, timing.duration, timing.easing);
 
       if (driverRef.current === "fade") {
@@ -927,14 +930,30 @@ export function OmbraGallery({
     sheet.style.borderRadius = "";
   }
 
-  // A reversed pull dismissal starts with the sheet still held at the drag pose.
-  function releaseSheetHold(duration: number, easing: string) {
+  /**
+   * A reversed pull dismissal starts with the sheet still held at the drag pose.
+   * Clears the hold so the caller can measure the resting layout, and returns the
+   * animation back from that pose for the caller to start once it has.
+   */
+  function releaseSheetHold(): (duration: number, easing: string) => void {
     const sheet = sheetElement();
     const transform = sheet?.style.transform;
     const borderRadius = sheet?.style.borderRadius;
 
     clearSheetHold();
 
+    return (duration, easing) => {
+      animateSheetFrom(sheet, transform, borderRadius, duration, easing);
+    };
+  }
+
+  function animateSheetFrom(
+    sheet: HTMLElement | null,
+    transform: string | undefined,
+    borderRadius: string | undefined,
+    duration: number,
+    easing: string,
+  ) {
     if (!sheet || !transform || duration <= 0) return;
 
     sheetAnimationRef.current?.cancel();
