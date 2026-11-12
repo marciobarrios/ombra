@@ -856,7 +856,8 @@ export function OmbraGallery({
   }, [phase, animEpoch]);
 
   function beginSample(kind: MorphKind) {
-    samplerRef.current?.stop();
+    // A close that cuts an open short still reports the open's frames so far.
+    endSample();
     sampleKindRef.current = kind;
     samplerRef.current = startFrameSampler();
   }

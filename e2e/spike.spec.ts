@@ -53,6 +53,21 @@ test.describe("spike viewer", () => {
     await expect(open).toHaveText(opened ?? "");
   });
 
+  test("reports an open that a close cuts short", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip&slow=1");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute(
+      "data-phase",
+      "opening",
+    );
+    await page.waitForTimeout(300);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toBeHidden({ timeout: 8_000 });
+    await expect(page.locator("[data-slot=ombra-readout-open]")).toHaveText(/^Open \d+\.\d ms/);
+    await expect(page.locator("[data-slot=ombra-readout-close]")).toHaveText(/^Close \d+\.\d ms/);
+  });
+
   test("selects the engine from the query string", async ({ page }) => {
     await page.goto("/spike?engine=vt");
     await expect(page.getByRole("radio", { name: "View Transition" })).toBeChecked();
