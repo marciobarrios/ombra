@@ -42,14 +42,14 @@ test.describe("spike viewer", () => {
     await expect(close).toHaveText("Close –");
     await page.getByRole("button", { name: firstPhoto }).click();
     await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
-    await expect(open).toHaveText(/^Open \d+\.\d ms \/ \d+$/);
+    await expect(open).toHaveText(/^Open \d+\.\d ms \/ \d+ @ \d+\.\d ms$/);
     await expect(close).toHaveText("Close –");
 
     const opened = await open.textContent();
 
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toBeHidden();
-    await expect(close).toHaveText(/^Close \d+\.\d ms \/ \d+$/);
+    await expect(close).toHaveText(/^Close \d+\.\d ms \/ \d+ @ \d+\.\d ms$/);
     await expect(open).toHaveText(opened ?? "");
   });
 

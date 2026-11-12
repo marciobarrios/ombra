@@ -219,7 +219,9 @@ function SpringToggle({
 type MorphKind = "open" | "close";
 
 function formatSample(sample: FrameSample | undefined): string {
-  return sample ? `${sample.longestMs.toFixed(1)} ms / ${sample.dropped}` : "–";
+  if (!sample) return "–";
+
+  return `${sample.longestMs.toFixed(1)} ms / ${sample.dropped} @ ${sample.intervalMs.toFixed(1)} ms`;
 }
 
 function FrameReadout({
@@ -234,7 +236,7 @@ function FrameReadout({
       data-slot="ombra-readout"
       className="pointer-events-none w-max rounded-md bg-black/80 px-3 py-2 font-mono text-[11px] leading-4 text-white"
     >
-      <div>Longest frame / dropped (&gt;33 ms)</div>
+      <div>Longest frame / dropped @ frame interval</div>
       <div data-slot="ombra-readout-open">Open {formatSample(samples.open)}</div>
       <div data-slot="ombra-readout-close">Close {formatSample(samples.close)}</div>
       <div>Engine {engine}</div>
