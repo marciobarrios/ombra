@@ -16,9 +16,14 @@ type Sample = {
   t: number;
 };
 
+/**
+ * Takes the track element rather than a ref: an opening enables the pull before
+ * the dialog portal has mounted the track, and the listeners must bind once it has.
+ */
 export function usePull(
-  trackRef: RefObject<HTMLElement | null>,
+  track: HTMLElement | null,
   enabled: boolean,
+  opening: boolean,
   readyRef: RefObject<boolean>,
   reduced: boolean,
   slow: boolean,
@@ -26,6 +31,7 @@ export function usePull(
   onDismiss: (velocity: number) => void,
 ): boolean {
   const enabledRef = useRef(enabled);
+  const openingRef = useRef(opening);
   const reducedRef = useRef(reduced);
   const slowRef = useRef(slow);
   const springRef = useRef(spring);
@@ -33,14 +39,13 @@ export function usePull(
   const [pulling, setPulling] = useState(false);
 
   enabledRef.current = enabled;
+  openingRef.current = opening;
   reducedRef.current = reduced;
   slowRef.current = slow;
   springRef.current = spring;
   onDismissRef.current = onDismiss;
 
   useEffect(() => {
-    const track = trackRef.current;
-
     if (!track) return;
 
     let tracking = false;
@@ -135,6 +140,21 @@ export function usePull(
 
         if (axis === "x") return;
 
+        // While the photo is still flying in, a downward drag cuts the opening and
+        // closes from wherever the photo is. The sheet cannot follow the finger yet,
+        // because the visible photo is the clone outside it.
+        if (openingRef.current) {
+          tracking = false;
+          axis = null;
+
+          if (dy <= 0) return;
+
+          samples.push({ y: event.clientY, t: event.timeStamp });
+          onDismissRef.current(downwardSpeed(samples));
+
+          return;
+        }
+
         try {
           track.setPointerCapture(event.pointerId);
         } catch (error) {
@@ -175,13 +195,7 @@ export function usePull(
       if (!vertical) return;
 
       const dy = lastY - startY;
-      const oldest = samples[0];
-      const newest = samples[samples.length - 1];
-      let velocity = 0;
-
-      if (oldest && newest && newest.t > oldest.t) {
-        velocity = ((newest.y - oldest.y) / (newest.t - oldest.t)) * 1000;
-      }
+      const velocity = downwardSpeed(samples);
 
       const dismiss = dy > DISMISS_DISTANCE || velocity > DISMISS_VELOCITY;
 
@@ -213,7 +227,16 @@ export function usePull(
       cancelSnap();
       document.documentElement.style.setProperty("--ombra-pull-live", "0");
     };
-  }, [trackRef, enabled]);
+  }, [track, enabled]);
 
   return pulling;
+}
+
+function downwardSpeed(samples: readonly Sample[]): number {
+  const oldest = samples[0];
+  const newest = samples[samples.length - 1];
+
+  if (!oldest || !newest || newest.t <= oldest.t) return 0;
+
+  return ((newest.y - oldest.y) / (newest.t - oldest.t)) * 1000;
 }
