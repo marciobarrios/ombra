@@ -218,17 +218,25 @@ function SpringToggle({
 
 type MorphKind = "open" | "close";
 
-function formatSample(sample: FrameSample | undefined): string {
-  if (!sample) return "–";
+/** The last sample of one morph kind, and how many runs since the last reset had no dropped frame. */
+type FrameTally = { last: FrameSample; runs: number; clean: number };
 
-  return `${sample.longestMs.toFixed(1)} ms / ${sample.dropped} @ ${sample.intervalMs.toFixed(1)} ms`;
+/** Tallies restart when `condition` (engine, slow motion, spring) changes, so each test row starts at zero. */
+type FrameReadoutState = { condition: string } & Partial<Record<MorphKind, FrameTally>>;
+
+function formatTally(tally: FrameTally | undefined): string {
+  if (!tally) return "–";
+
+  const { last, runs, clean } = tally;
+
+  return `${last.longestMs.toFixed(1)} ms / ${last.dropped} @ ${last.intervalMs.toFixed(1)} ms · clean ${clean}/${runs}`;
 }
 
 function FrameReadout({
   samples,
   engine,
 }: {
-  samples: Partial<Record<MorphKind, FrameSample>>;
+  samples: Partial<Record<MorphKind, FrameTally>>;
   engine: MorphEngine;
 }) {
   return (
@@ -237,8 +245,8 @@ function FrameReadout({
       className="pointer-events-none w-max rounded-md bg-black/80 px-3 py-2 font-mono text-[11px] leading-4 text-white"
     >
       <div>Longest frame / dropped @ frame interval</div>
-      <div data-slot="ombra-readout-open">Open {formatSample(samples.open)}</div>
-      <div data-slot="ombra-readout-close">Close {formatSample(samples.close)}</div>
+      <div data-slot="ombra-readout-open">Open {formatTally(samples.open)}</div>
+      <div data-slot="ombra-readout-close">Close {formatTally(samples.close)}</div>
       <div>Engine {engine}</div>
     </div>
   );
@@ -308,7 +316,7 @@ export function OmbraGallery({
   const [phase, setPhase] = useState<Phase>("closed");
   const [index, setIndex] = useState(0);
   const [animEpoch, setAnimEpoch] = useState(0);
-  const [readout, setReadout] = useState<Partial<Record<MorphKind, FrameSample>>>({});
+  const [readout, setReadout] = useState<FrameReadoutState>({ condition: "" });
   const [sharpIds, setSharpIds] = useState<ReadonlySet<string>>(() => new Set());
   const [stripOverflows, setStripOverflows] = useState(false);
   const [releaseScroll, setReleaseScroll] = useState(false);
@@ -362,6 +370,10 @@ export function OmbraGallery({
   reducedRef.current = reduced;
 
   const effective: MorphEngine = reduced ? "fade" : engine;
+  const readoutCondition = `${effective}|${slow}|${spring}`;
+  const readoutConditionRef = useRef(readoutCondition);
+
+  readoutConditionRef.current = readoutCondition;
   const count = items.length;
   const active = items[index];
 
@@ -869,8 +881,21 @@ export function OmbraGallery({
 
     if (sample && sample.frames > 1) {
       const kind = sampleKindRef.current;
+      const condition = readoutConditionRef.current;
 
-      setReadout((current) => ({ ...current, [kind]: sample }));
+      setReadout((current) => {
+        const base = current.condition === condition ? current : { condition };
+        const previous = base[kind];
+
+        return {
+          ...base,
+          [kind]: {
+            last: sample,
+            runs: (previous?.runs ?? 0) + 1,
+            clean: (previous?.clean ?? 0) + (sample.dropped === 0 ? 1 : 0),
+          },
+        };
+      });
     }
   }
 
@@ -1625,7 +1650,10 @@ export function OmbraGallery({
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col items-start gap-3">
           <EngineSwitch engine={engine} onEngineChange={onEngineChange} />
-          <FrameReadout samples={readout} engine={effective} />
+          <FrameReadout
+            samples={readout.condition === readoutCondition ? readout : {}}
+            engine={effective}
+          />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <SpringToggle spring={spring} onSpringChange={onSpringChange} />

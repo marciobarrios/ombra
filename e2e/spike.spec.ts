@@ -42,25 +42,43 @@ test.describe("spike viewer", () => {
     await expect(close).toHaveText("Close –");
     await page.getByRole("button", { name: firstPhoto }).click();
     await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
-    await expect(open).toHaveText(/^Open \d+\.\d ms \/ \d+ @ \d+\.\d ms$/);
+    await expect(open).toHaveText(/^Open \d+\.\d ms \/ \d+ @ \d+\.\d ms · clean [01]\/1$/);
     await expect(close).toHaveText("Close –");
 
     const opened = await open.textContent();
 
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toBeHidden();
-    await expect(close).toHaveText(/^Close \d+\.\d ms \/ \d+ @ \d+\.\d ms$/);
+    await expect(close).toHaveText(/^Close \d+\.\d ms \/ \d+ @ \d+\.\d ms · clean [01]\/1$/);
     await expect(open).toHaveText(opened ?? "");
+  });
+
+  test("tallies clean runs until the engine changes", async ({ page }) => {
+    await page.goto("/spike?engine=flip");
+
+    const open = page.locator("[data-slot=ombra-readout-open]");
+    const close = page.locator("[data-slot=ombra-readout-close]");
+    const viewer = page.locator("[data-slot=ombra-viewer]");
+
+    for (let run = 1; run <= 2; run += 1) {
+      await page.getByRole("button", { name: firstPhoto }).click();
+      await expect(viewer).toHaveAttribute("data-phase", "open");
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toBeHidden();
+      await expect(open).toHaveText(new RegExp(`clean [0-${run}]/${run}$`));
+      await expect(close).toHaveText(new RegExp(`clean [0-${run}]/${run}$`));
+    }
+
+    await page.getByRole("radio", { name: "Fade" }).check();
+    await expect(open).toHaveText("Open –");
+    await expect(close).toHaveText("Close –");
   });
 
   test("reports an open that a close cuts short", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/spike?engine=flip&slow=1");
     await page.getByRole("button", { name: firstPhoto }).click();
-    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute(
-      "data-phase",
-      "opening",
-    );
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "opening");
     await page.waitForTimeout(300);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toBeHidden({ timeout: 8_000 });
