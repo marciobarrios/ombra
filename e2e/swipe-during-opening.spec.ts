@@ -292,6 +292,54 @@ test.describe("swiping while a photo opens", () => {
     await expectOneImageLeft(page);
   });
 
+  for (const query of ["engine=flip&slow=1", "engine=flip&slow=1&spring=1"]) {
+    test(`a downward drag cuts the opening and closes: ${query}`, async ({ page }) => {
+      await openFrozen(page, query, "flip");
+
+      const box = await page.locator("[data-slot=ombra-track]").boundingBox();
+
+      if (!box) throw new Error("no track");
+
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+
+      for (let step = 1; step <= 6; step += 1) await page.mouse.move(x, y + step * 10);
+
+      await expect(viewer(page)).toHaveAttribute("data-phase", "closing");
+      // The close reverses the clone that was flying in, not a fresh one.
+      await expect(page.locator("[data-slot=ombra-flight]")).toHaveCount(1);
+      await page.mouse.up();
+      await finishEverything(page);
+      await expect(page.getByRole("dialog")).toBeHidden();
+      await expectOneImageLeft(page);
+    });
+  }
+
+  test("an upward drag leaves the opening alone", async ({ page }) => {
+    await openFrozen(page, "engine=flip&slow=1", "flip");
+
+    const box = await page.locator("[data-slot=ombra-track]").boundingBox();
+
+    if (!box) throw new Error("no track");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+
+    for (let step = 1; step <= 6; step += 1) await page.mouse.move(x, y - step * 10);
+
+    await page.mouse.up();
+    await expect(viewer(page)).toHaveAttribute("data-phase", "opening");
+    await finishEverything(page);
+    await expect(viewer(page)).toHaveAttribute("data-phase", "open");
+    await expectOneImageLeft(page);
+  });
+
   test("a swipe after reversing a close still hands off", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/spike?engine=flip&slow=1");
@@ -403,6 +451,40 @@ test.describe("swiping while a photo opens", () => {
       "visibility",
       "visible",
     );
+    await expectOneImageLeft(page);
+  });
+
+  test("a real touch drag down cuts a FLIP opening", async ({ page, context, browserName }) => {
+    test.skip(
+      browserName !== "chromium" || !test.info().project.name.includes("mobile"),
+      "Needs CDP touch input",
+    );
+
+    await page.goto("/spike?engine=flip&slow=1");
+    await page.waitForLoadState("networkidle");
+    await freezeMorph(page, "flip");
+    await page.locator("[data-slot=ombra-trigger]").first().tap();
+    await page.waitForFunction(() => window.ombraFrozen === true);
+
+    const cdp = await context.newCDPSession(page);
+    const y = (page.viewportSize()?.height ?? 800) / 2;
+
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: 200, y }],
+    });
+
+    for (let step = 1; step <= 10; step += 1) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: 200, y: y + step * 15 }],
+      });
+    }
+
+    await expect(viewer(page)).toHaveAttribute("data-phase", "closing");
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await finishEverything(page);
+    await expect(page.getByRole("dialog")).toBeHidden();
     await expectOneImageLeft(page);
   });
 

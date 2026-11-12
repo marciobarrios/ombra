@@ -310,6 +310,7 @@ export function OmbraGallery({
   const images = useRef<Array<HTMLImageElement | null>>([]);
   const slides = useRef<Array<HTMLDivElement | null>>([]);
   const trackRef = useRef<HTMLDivElement>(null);
+  const [trackNode, setTrackNode] = useState<HTMLDivElement | null>(null);
   const trackCleanup = useRef<(() => void) | null>(null);
   const layerRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -383,9 +384,14 @@ export function OmbraGallery({
   // Before the morph layout effects, so FLIP measures the viewer where it is shown.
   usePageZoomGuard(open, popupRef);
 
+  // A FLIP or fade opening can be cut by a downward drag. A view transition opening
+  // hands its presses to the root, which already dismisses as an outside press.
+  const pullCutsOpening = phase === "opening" && driverRef.current !== "vt";
+
   const pulling = usePull(
-    trackRef,
-    open && phase === "open" && !zoom.zoomed,
+    trackNode,
+    open && (phase === "open" || pullCutsOpening) && !zoom.zoomed,
+    pullCutsOpening,
     settledRef,
     reduced,
     slow,
@@ -517,6 +523,7 @@ export function OmbraGallery({
 
   const bindTrack = useCallback((node: HTMLDivElement | null) => {
     trackRef.current = node;
+    setTrackNode(node);
     navigationTarget.current = null;
     const previous = trackCleanup.current;
 
