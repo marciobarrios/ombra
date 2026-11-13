@@ -86,12 +86,12 @@ const stripEdgeStyles = `@media (prefers-reduced-motion: no-preference) {
 
     [data-slot="ombra-viewer"] footer [data-slot="ombra-strip-edge-start"] {
       left: 1rem;
-      background: linear-gradient(to right, black, transparent);
+      background: linear-gradient(to right, var(--ombra-surface), transparent);
     }
 
     [data-slot="ombra-viewer"] footer:has([data-overflowing="true"]) [data-slot="ombra-strip-edge-end"] {
       right: 1rem;
-      background: linear-gradient(to left, black, transparent);
+      background: linear-gradient(to left, var(--ombra-surface), transparent);
       animation-name: ombra-strip-edge-out;
       animation-range: calc(100% - 20px) 100%;
     }
@@ -142,6 +142,15 @@ function releaseVelocity(pixelsPerSecond: number, from: Box, to: Box): number {
   return normalizeVelocity((pixelsPerSecond * dy) / distance, distance);
 }
 
+/**
+ * The viewer takes the page's background and foreground, so it is light on a
+ * light theme and dark on a dark one. iOS Safari picks its bar colour while the
+ * backdrop is still fading in and falls back to the page's own surface, so any
+ * other backdrop colour leaves mismatched bars around the viewer (MAR-105).
+ */
+const VIEWER_THEME =
+  "[--ombra-surface:var(--color-background,white)] [--ombra-ink:var(--color-foreground,black)]";
+
 function opacityOf(element: HTMLElement | null): number {
   return element ? Number.parseFloat(getComputedStyle(element).opacity) : 0;
 }
@@ -166,7 +175,7 @@ function EngineSwitch({
       role="radiogroup"
       aria-label="Morph engine"
       data-slot="ombra-engine"
-      className="flex flex-wrap rounded-full bg-black/5 p-1"
+      className="flex flex-wrap rounded-full bg-foreground/5 p-1"
     >
       {ENGINE_OPTIONS.map((option) => {
         const selected = option.id === engine;
@@ -181,8 +190,8 @@ function EngineSwitch({
             className={cn(
               "min-h-11 rounded-full px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2",
               selected
-                ? "bg-[#241e18] text-[#f6f1ea]"
-                : "text-[#241e18] focus-visible:outline-[#8f3d2b]",
+                ? "bg-foreground text-background"
+                : "text-foreground focus-visible:outline-foreground",
             )}
           >
             {option.label}
@@ -207,8 +216,8 @@ function SpringToggle({
       data-slot="ombra-spring"
       onClick={() => onSpringChange(!spring)}
       className={cn(
-        "min-h-11 rounded-full px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3d2b]",
-        spring ? "bg-[#241e18] text-[#f6f1ea]" : "text-[#241e18]",
+        "min-h-11 rounded-full px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground",
+        spring ? "bg-foreground text-background" : "text-foreground",
       )}
     >
       Spring
@@ -259,7 +268,7 @@ function IconButton({
   const classes = cn(
     // Repeated toolbar taps must not invoke Safari's native double-tap zoom.
     // The viewer's pan-x pan-y ancestor also removes native pinch here (MAR-80).
-    "inline-flex size-11 touch-manipulation items-center justify-center rounded-full text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-30",
+    "inline-flex size-11 touch-manipulation items-center justify-center rounded-full text-current focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-30",
     className,
   );
 
@@ -1609,7 +1618,7 @@ export function OmbraGallery({
     <div
       data-slot="ombra-root"
       data-spring={spring ? "on" : "off"}
-      className={cn("text-[#241e18]", className)}
+      className={cn("text-foreground", className)}
     >
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col items-start gap-3">
@@ -1623,7 +1632,7 @@ export function OmbraGallery({
             aria-pressed={slow}
             data-slot="ombra-slow"
             onClick={() => onSlowChange(!slow)}
-            className="min-h-11 rounded-full px-3 text-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3d2b]"
+            className="min-h-11 rounded-full px-3 text-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
           >
             {slow ? "Slow motion on" : "Slow motion"}
           </button>
@@ -1641,7 +1650,7 @@ export function OmbraGallery({
             data-slot="ombra-trigger"
             aria-haspopup="dialog"
             onClick={() => openAt(itemIndex)}
-            className="relative mb-3 block w-full break-inside-avoid overflow-hidden rounded-[6px] after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:inset-ring after:inset-ring-black/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8f3d2b]"
+            className="relative mb-3 block w-full break-inside-avoid overflow-hidden rounded-[6px] after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:inset-ring after:inset-ring-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
             style={{ aspectRatio: item.frame }}
           >
             <img
@@ -1657,7 +1666,7 @@ export function OmbraGallery({
         ))}
       </div>
 
-      <p className="mt-10 max-w-xl text-sm leading-6 text-[#241e18]/70">
+      <p className="mt-10 max-w-xl text-sm leading-6 text-foreground/70">
         Photographs from Unsplash, used under the Unsplash License. Thumbnails are cover crops; the
         viewer shows the full frame.
       </p>
@@ -1679,7 +1688,8 @@ export function OmbraGallery({
             data-slot="ombra-backdrop"
             className={cn(
               // No page pinch on the backdrop; page zoom returns after close.
-              "fixed inset-0 z-50 touch-pan-x touch-pan-y bg-black",
+              VIEWER_THEME,
+              "fixed inset-0 z-50 touch-pan-x touch-pan-y bg-(--ombra-surface)",
               phase === "closing" && "pointer-events-none",
             )}
           />
@@ -1696,7 +1706,8 @@ export function OmbraGallery({
             className={cn(
               // pan-x pan-y without pinch-zoom: the page under the viewer cannot pinch-zoom.
               // Descendants intersect with it; the track narrows it to pan-x for its own pinch.
-              "fixed inset-0 z-50 flex h-dvh w-full touch-pan-x touch-pan-y flex-col overflow-hidden bg-transparent text-white outline-none",
+              VIEWER_THEME,
+              "fixed inset-0 z-50 flex h-dvh w-full touch-pan-x touch-pan-y flex-col overflow-hidden bg-transparent text-(--ombra-ink) outline-none",
               phase === "closing" && "pointer-events-none",
             )}
           >
@@ -1708,7 +1719,7 @@ export function OmbraGallery({
                   <div className="flex min-w-0 flex-col items-start gap-2">
                     <p
                       data-slot="ombra-counter"
-                      className="font-mono text-xs tracking-wide text-white/80"
+                      className="font-mono text-xs tracking-wide text-(--ombra-ink)/80"
                     >
                       {index + 1} / {count}
                     </p>
@@ -1777,7 +1788,7 @@ export function OmbraGallery({
                               height={item.height}
                               draggable={false}
                               fetchPriority={itemIndex === index ? "high" : "low"}
-                              className="h-auto max-h-full min-h-0 w-auto max-w-full min-w-0 rounded-[6px] object-contain outline outline-1 -outline-offset-1 outline-white/10"
+                              className="h-auto max-h-full min-h-0 w-auto max-w-full min-w-0 rounded-[6px] object-contain outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
                             />
                           </div>
                         </div>
@@ -1793,7 +1804,7 @@ export function OmbraGallery({
                   <IconButton
                     label="Previous photo"
                     slot="ombra-prev"
-                    className="pointer-events-auto bg-black/40"
+                    className="pointer-events-auto bg-(--ombra-surface)/40"
                     disabled={index === 0}
                     onClick={() =>
                       goTo((navigationTarget.current ?? index) - 1, reduced ? "auto" : "smooth")
@@ -1809,7 +1820,7 @@ export function OmbraGallery({
                   <IconButton
                     label="Next photo"
                     slot="ombra-next"
-                    className="pointer-events-auto bg-black/40"
+                    className="pointer-events-auto bg-(--ombra-surface)/40"
                     disabled={index === count - 1}
                     onClick={() =>
                       goTo((navigationTarget.current ?? index) + 1, reduced ? "auto" : "smooth")
@@ -1823,7 +1834,7 @@ export function OmbraGallery({
               <footer className="px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                 <p
                   data-slot="ombra-caption"
-                  className="mb-3 touch-none text-center text-sm text-white/80"
+                  className="mb-3 touch-none text-center text-sm text-(--ombra-ink)/80"
                 >
                   {active?.caption}
                 </p>
@@ -1856,14 +1867,14 @@ export function OmbraGallery({
                           aria-label={item.alt}
                           onClick={() => goTo(itemIndex, reduced ? "auto" : "smooth")}
                           className={cn(
-                            "size-11 shrink-0 snap-center overflow-hidden rounded-lg border-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
-                            selected ? "border-white" : "border-transparent opacity-60",
+                            "size-11 shrink-0 snap-center overflow-hidden rounded-lg border-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current",
+                            selected ? "border-current" : "border-transparent opacity-60",
                           )}
                         >
                           <img
                             src={item.thumbSrc}
                             alt=""
-                            className="h-full w-full rounded-[6px] object-cover outline outline-1 -outline-offset-1 outline-white/10"
+                            className="h-full w-full rounded-[6px] object-cover outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
                           />
                         </button>
                       );

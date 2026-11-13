@@ -39,11 +39,11 @@ export function SpikeApp({
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-8 sm:py-16">
-      <p className="font-display text-sm tracking-[0.22em] text-[#8f3d2b]">OMBRA</p>
-      <h1 className="font-display mt-3 max-w-xl text-5xl leading-none text-[#241e18] sm:text-7xl">
+      <p className="font-display text-sm tracking-[0.22em] text-brand">OMBRA</p>
+      <h1 className="font-display mt-3 max-w-xl text-5xl leading-none text-foreground sm:text-7xl">
         A shadow of the picture.
       </h1>
-      <p className="mt-6 max-w-xl text-lg leading-8 text-[#241e18]/80">
+      <p className="mt-6 max-w-xl text-lg leading-8 text-foreground/80">
         Open a photograph. It should leave its place in the grid and come back to the same one.
         Switch the morph engine, including from the address bar, and watch the frame-time readout.
         Nothing here is the final component API.
@@ -67,7 +67,7 @@ export function SpikeApp({
 
 function reducedNote() {
   return (
-    <p className="mt-4 max-w-xl text-sm leading-6 text-[#241e18]/70">
+    <p className="mt-4 max-w-xl text-sm leading-6 text-foreground/70">
       Add <span className="font-mono">?engine=vt</span>, <span className="font-mono">flip</span>, or{" "}
       <span className="font-mono">fade</span>, <span className="font-mono">?slow=1</span>, and{" "}
       <span className="font-mono">?spring=1</span> to inspect. When the system asks for reduced
