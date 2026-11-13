@@ -1,12 +1,20 @@
 "use client";
 
-import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "cn";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { flushSync } from "react-dom";
 
 import { listenForCloseInput } from "./close-input";
+import {
+  OmbraDialog,
+  OmbraDialogBackdrop,
+  OmbraDialogClose,
+  OmbraDialogDescription,
+  OmbraDialogPopup,
+  OmbraDialogTitle,
+} from "./ombra-dialog";
+import type { DialogActions } from "./ombra-dialog";
 import {
   boxContains,
   boxDistance,
@@ -42,7 +50,7 @@ import {
 } from "./morph";
 import type { Flight } from "./morph";
 import { MORPH_SPRING, normalizeVelocity, springCurve } from "./spring";
-import type { Box, FlipPose, FrameSample, MorphEngine, OmbraItem } from "./types";
+import type { Box, DialogKit, FlipPose, FrameSample, MorphEngine, OmbraItem } from "./types";
 import { motionDuration } from "./types";
 import { fitToVisualViewport, usePageZoomGuard } from "./use-page-zoom-guard";
 import { usePull } from "./use-pull";
@@ -129,6 +137,8 @@ export type OmbraGalleryProps = {
   onEngineChange: (engine: MorphEngine) => void;
   onSlowChange: (slow: boolean) => void;
   onSpringChange: (spring: boolean) => void;
+  /** Spike: which dialog primitive hosts the viewer. */
+  dialogKit?: DialogKit;
   className?: string;
 };
 
@@ -265,9 +275,9 @@ function IconButton({
 
   if (close) {
     return (
-      <Dialog.Close ref={buttonRef} data-slot={slot} aria-label={label} className={classes}>
+      <OmbraDialogClose ref={buttonRef} data-slot={slot} aria-label={label} className={classes}>
         {children}
-      </Dialog.Close>
+      </OmbraDialogClose>
     );
   }
 
@@ -294,6 +304,7 @@ export function OmbraGallery({
   onEngineChange,
   onSlowChange,
   onSpringChange,
+  dialogKit = "base-ui",
   className,
 }: OmbraGalleryProps) {
   const reduced = useReducedMotion();
@@ -320,7 +331,7 @@ export function OmbraGallery({
   const sheetAnimationRef = useRef<Animation | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
-  const actionsRef = useRef<{ unmount: () => void; close: () => void } | null>(null);
+  const actionsRef = useRef<DialogActions>(null);
   const flightRef = useRef<Flight | null>(null);
   const retiringFlightRef = useRef<Flight | null>(null);
   const closeInputRef = useRef<(() => void) | null>(null);
@@ -1662,225 +1673,221 @@ export function OmbraGallery({
         viewer shows the full frame.
       </p>
 
-      <Dialog.Root
+      <OmbraDialog
+        kit={dialogKit}
         open={open}
         modal={phase === "closing" && releaseScroll ? false : true}
         actionsRef={actionsRef}
-        onOpenChange={(next, details) => {
-          if (next) return;
-
-          details.preventUnmountOnClose();
-          requestClose();
-        }}
+        onDismiss={requestClose}
       >
-        <Dialog.Portal>
-          <Dialog.Backdrop
-            ref={bindBackdrop}
-            data-slot="ombra-backdrop"
-            className={cn(
-              // No page pinch on the backdrop; page zoom returns after close.
-              "fixed inset-0 z-50 touch-pan-x touch-pan-y bg-black",
-              phase === "closing" && "pointer-events-none",
-            )}
-          />
-          <Dialog.Popup
-            ref={bindPopup}
-            data-slot="ombra-viewer"
-            data-engine={effective}
-            data-phase={phase}
-            data-zoomed={zoom.zoomed ? "true" : "false"}
-            data-pulling={pulling ? "true" : "false"}
-            initialFocus={closeRef}
-            finalFocus={() => triggers.current[indexRef.current] ?? true}
-            onKeyDown={onKeyDown}
-            className={cn(
-              // pan-x pan-y without pinch-zoom: the page under the viewer cannot pinch-zoom.
-              // Descendants intersect with it; the track narrows it to pan-x for its own pinch.
-              "fixed inset-0 z-50 flex h-dvh w-full touch-pan-x touch-pan-y flex-col overflow-hidden bg-transparent text-white outline-none",
-              phase === "closing" && "pointer-events-none",
-            )}
-          >
-            <Dialog.Title className="sr-only">{active?.alt ?? "Photo"}</Dialog.Title>
-            <Dialog.Description className="sr-only">{active?.caption ?? ""}</Dialog.Description>
-            <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
-              <header className="flex touch-none flex-col gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 flex-col items-start gap-2">
-                    <p
-                      data-slot="ombra-counter"
-                      className="font-mono text-xs tracking-wide text-white/80"
-                    >
-                      {index + 1} / {count}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <IconButton
-                      label="Zoom out"
-                      slot="ombra-zoom-out"
-                      onClick={() => zoom.zoomOut()}
-                      disabled={!zoom.zoomed}
-                    >
-                      <MinusIcon />
-                    </IconButton>
-                    <IconButton label="Zoom in" slot="ombra-zoom-in" onClick={() => zoom.zoomIn()}>
-                      <PlusIcon />
-                    </IconButton>
-                    <IconButton label="Close" slot="ombra-close" buttonRef={closeRef} close>
-                      <CloseIcon />
-                    </IconButton>
-                  </div>
-                </div>
-              </header>
-
-              <div className="relative min-h-0 min-w-0 flex-1">
-                <div className="@container h-full min-w-0">
-                  <div
-                    ref={bindTrack}
-                    data-slot="ombra-track"
-                    className="flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        <OmbraDialogBackdrop
+          ref={bindBackdrop}
+          data-slot="ombra-backdrop"
+          className={cn(
+            // No page pinch on the backdrop; page zoom returns after close.
+            "fixed inset-0 z-50 touch-pan-x touch-pan-y bg-black",
+            phase === "closing" && "pointer-events-none",
+          )}
+        />
+        <OmbraDialogPopup
+          ref={bindPopup}
+          data-slot="ombra-viewer"
+          data-engine={effective}
+          data-phase={phase}
+          data-zoomed={zoom.zoomed ? "true" : "false"}
+          data-pulling={pulling ? "true" : "false"}
+          initialFocus={closeRef}
+          finalFocus={() => triggers.current[indexRef.current] ?? null}
+          onKeyDown={onKeyDown}
+          className={cn(
+            // pan-x pan-y without pinch-zoom: the page under the viewer cannot pinch-zoom.
+            // Descendants intersect with it; the track narrows it to pan-x for its own pinch.
+            "fixed inset-0 z-50 flex h-dvh w-full touch-pan-x touch-pan-y flex-col overflow-hidden bg-transparent text-white outline-none",
+            phase === "closing" && "pointer-events-none",
+          )}
+        >
+          <OmbraDialogTitle className="sr-only">{active?.alt ?? "Photo"}</OmbraDialogTitle>
+          <OmbraDialogDescription className="sr-only">
+            {active?.caption ?? ""}
+          </OmbraDialogDescription>
+          <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <header className="flex touch-none flex-col gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 flex-col items-start gap-2">
+                  <p
+                    data-slot="ombra-counter"
+                    className="font-mono text-xs tracking-wide text-white/80"
                   >
-                    <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
-                    {items.map((item, itemIndex) => {
-                      const sharp = sharpIds.has(item.id);
-
-                      return (
-                        <div
-                          key={item.id}
-                          ref={(node) => {
-                            slides.current[itemIndex] = node;
-                          }}
-                          data-slot="ombra-slide"
-                          data-active={itemIndex === index ? "true" : "false"}
-                          role="group"
-                          aria-roledescription="slide"
-                          aria-label={`${itemIndex + 1} of ${count}`}
-                          className="flex h-full min-h-0 w-[86cqi] shrink-0 snap-center snap-always items-center justify-center"
-                        >
-                          {/* Keep Safari's native double-tap zoom off this surface.
-                              The ancestor track still owns horizontal scrolling. */}
-                          <div
-                            ref={itemIndex === index ? layerRef : undefined}
-                            data-slot="ombra-zoom"
-                            className="flex h-full min-h-0 w-full min-w-0 touch-manipulation items-center justify-center"
-                          >
-                            <img
-                              ref={(node) => {
-                                images.current[itemIndex] = node;
-                              }}
-                              data-slot="ombra-image"
-                              data-active={itemIndex === index ? "true" : "false"}
-                              src={sharp ? item.src : item.thumbSrc}
-                              srcSet={sharp ? item.srcSet : undefined}
-                              sizes="100vw"
-                              alt=""
-                              width={item.width}
-                              height={item.height}
-                              draggable={false}
-                              fetchPriority={itemIndex === index ? "high" : "low"}
-                              className="h-auto max-h-full min-h-0 w-auto max-w-full min-w-0 rounded-[6px] object-contain outline outline-1 -outline-offset-1 outline-white/10"
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
-                  </div>
+                    {index + 1} / {count}
+                  </p>
                 </div>
-                <div
-                  data-slot="ombra-nav"
-                  className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2"
-                >
+                <div className="flex items-center gap-1">
                   <IconButton
-                    label="Previous photo"
-                    slot="ombra-prev"
-                    className="pointer-events-auto bg-black/40"
-                    disabled={index === 0}
-                    onClick={() =>
-                      goTo((navigationTarget.current ?? index) - 1, reduced ? "auto" : "smooth")
-                    }
+                    label="Zoom out"
+                    slot="ombra-zoom-out"
+                    onClick={() => zoom.zoomOut()}
+                    disabled={!zoom.zoomed}
                   >
-                    <Chevron direction="left" />
+                    <MinusIcon />
                   </IconButton>
-                </div>
-                <div
-                  data-slot="ombra-nav"
-                  className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2"
-                >
-                  <IconButton
-                    label="Next photo"
-                    slot="ombra-next"
-                    className="pointer-events-auto bg-black/40"
-                    disabled={index === count - 1}
-                    onClick={() =>
-                      goTo((navigationTarget.current ?? index) + 1, reduced ? "auto" : "smooth")
-                    }
-                  >
-                    <Chevron direction="right" />
+                  <IconButton label="Zoom in" slot="ombra-zoom-in" onClick={() => zoom.zoomIn()}>
+                    <PlusIcon />
+                  </IconButton>
+                  <IconButton label="Close" slot="ombra-close" buttonRef={closeRef} close>
+                    <CloseIcon />
                   </IconButton>
                 </div>
               </div>
+            </header>
 
-              <footer className="px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-                <p
-                  data-slot="ombra-caption"
-                  className="mb-3 touch-none text-center text-sm text-white/80"
-                >
-                  {active?.caption}
-                </p>
+            <div className="relative min-h-0 min-w-0 flex-1">
+              <div className="@container h-full min-w-0">
                 <div
-                  ref={stripRef}
-                  data-slot="ombra-thumbnails"
-                  data-overflowing={stripOverflows ? "true" : "false"}
-                  className={cn(
-                    "touch-pan-x overflow-x-auto overflow-y-hidden py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-                    stripOverflows && "snap-x snap-mandatory",
-                  )}
+                  ref={bindTrack}
+                  data-slot="ombra-track"
+                  className="flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
-                  <div
-                    data-slot="ombra-thumbnails-row"
-                    className={cn(
-                      "mx-auto flex w-max gap-2",
-                      stripOverflows ? "px-[max(0.25rem,calc(50%-1.375rem))]" : "px-1",
-                    )}
-                  >
-                    {items.map((item, itemIndex) => {
-                      const selected = itemIndex === index;
+                  <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
+                  {items.map((item, itemIndex) => {
+                    const sharp = sharpIds.has(item.id);
 
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          data-slot="ombra-thumbnail"
-                          data-active={selected ? "true" : "false"}
-                          aria-current={selected ? "true" : undefined}
-                          aria-label={item.alt}
-                          onClick={() => goTo(itemIndex, reduced ? "auto" : "smooth")}
-                          className={cn(
-                            "size-11 shrink-0 snap-center overflow-hidden rounded-lg border-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
-                            selected ? "border-white" : "border-transparent opacity-60",
-                          )}
+                    return (
+                      <div
+                        key={item.id}
+                        ref={(node) => {
+                          slides.current[itemIndex] = node;
+                        }}
+                        data-slot="ombra-slide"
+                        data-active={itemIndex === index ? "true" : "false"}
+                        role="group"
+                        aria-roledescription="slide"
+                        aria-label={`${itemIndex + 1} of ${count}`}
+                        className="flex h-full min-h-0 w-[86cqi] shrink-0 snap-center snap-always items-center justify-center"
+                      >
+                        {/* Keep Safari's native double-tap zoom off this surface.
+                              The ancestor track still owns horizontal scrolling. */}
+                        <div
+                          ref={itemIndex === index ? layerRef : undefined}
+                          data-slot="ombra-zoom"
+                          className="flex h-full min-h-0 w-full min-w-0 touch-manipulation items-center justify-center"
                         >
                           <img
-                            src={item.thumbSrc}
+                            ref={(node) => {
+                              images.current[itemIndex] = node;
+                            }}
+                            data-slot="ombra-image"
+                            data-active={itemIndex === index ? "true" : "false"}
+                            src={sharp ? item.src : item.thumbSrc}
+                            srcSet={sharp ? item.srcSet : undefined}
+                            sizes="100vw"
                             alt=""
-                            className="h-full w-full rounded-[6px] object-cover outline outline-1 -outline-offset-1 outline-white/10"
+                            width={item.width}
+                            height={item.height}
+                            draggable={false}
+                            fetchPriority={itemIndex === index ? "high" : "low"}
+                            className="h-auto max-h-full min-h-0 w-auto max-w-full min-w-0 rounded-[6px] object-contain outline outline-1 -outline-offset-1 outline-white/10"
                           />
-                        </button>
-                      );
-                    })}
-                  </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
                 </div>
-                <span data-slot="ombra-strip-edge-start" aria-hidden="true" className="hidden" />
-                <span data-slot="ombra-strip-edge-end" aria-hidden="true" className="hidden" />
-                <style data-slot="ombra-strip-edge-styles">{stripEdgeStyles}</style>
-              </footer>
+              </div>
+              <div
+                data-slot="ombra-nav"
+                className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2"
+              >
+                <IconButton
+                  label="Previous photo"
+                  slot="ombra-prev"
+                  className="pointer-events-auto bg-black/40"
+                  disabled={index === 0}
+                  onClick={() =>
+                    goTo((navigationTarget.current ?? index) - 1, reduced ? "auto" : "smooth")
+                  }
+                >
+                  <Chevron direction="left" />
+                </IconButton>
+              </div>
+              <div
+                data-slot="ombra-nav"
+                className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2"
+              >
+                <IconButton
+                  label="Next photo"
+                  slot="ombra-next"
+                  className="pointer-events-auto bg-black/40"
+                  disabled={index === count - 1}
+                  onClick={() =>
+                    goTo((navigationTarget.current ?? index) + 1, reduced ? "auto" : "smooth")
+                  }
+                >
+                  <Chevron direction="right" />
+                </IconButton>
+              </div>
             </div>
-            <p role="status" data-slot="ombra-live" className="sr-only">
-              {open ? `${index + 1} of ${count}. ${active?.caption ?? ""}` : ""}
-            </p>
-          </Dialog.Popup>
-        </Dialog.Portal>
-      </Dialog.Root>
+
+            <footer className="px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <p
+                data-slot="ombra-caption"
+                className="mb-3 touch-none text-center text-sm text-white/80"
+              >
+                {active?.caption}
+              </p>
+              <div
+                ref={stripRef}
+                data-slot="ombra-thumbnails"
+                data-overflowing={stripOverflows ? "true" : "false"}
+                className={cn(
+                  "touch-pan-x overflow-x-auto overflow-y-hidden py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                  stripOverflows && "snap-x snap-mandatory",
+                )}
+              >
+                <div
+                  data-slot="ombra-thumbnails-row"
+                  className={cn(
+                    "mx-auto flex w-max gap-2",
+                    stripOverflows ? "px-[max(0.25rem,calc(50%-1.375rem))]" : "px-1",
+                  )}
+                >
+                  {items.map((item, itemIndex) => {
+                    const selected = itemIndex === index;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        data-slot="ombra-thumbnail"
+                        data-active={selected ? "true" : "false"}
+                        aria-current={selected ? "true" : undefined}
+                        aria-label={item.alt}
+                        onClick={() => goTo(itemIndex, reduced ? "auto" : "smooth")}
+                        className={cn(
+                          "size-11 shrink-0 snap-center overflow-hidden rounded-lg border-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
+                          selected ? "border-white" : "border-transparent opacity-60",
+                        )}
+                      >
+                        <img
+                          src={item.thumbSrc}
+                          alt=""
+                          className="h-full w-full rounded-[6px] object-cover outline outline-1 -outline-offset-1 outline-white/10"
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <span data-slot="ombra-strip-edge-start" aria-hidden="true" className="hidden" />
+              <span data-slot="ombra-strip-edge-end" aria-hidden="true" className="hidden" />
+              <style data-slot="ombra-strip-edge-styles">{stripEdgeStyles}</style>
+            </footer>
+          </div>
+          <p role="status" data-slot="ombra-live" className="sr-only">
+            {open ? `${index + 1} of ${count}. ${active?.caption ?? ""}` : ""}
+          </p>
+        </OmbraDialogPopup>
+      </OmbraDialog>
     </div>
   );
 }

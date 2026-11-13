@@ -45,6 +45,7 @@ export function mountFlight(home: Box, pose: FlipPose, src: string): Flight {
   element.style.transform = pose.transform;
   element.style.clipPath = pose.clipPath;
   document.body.append(element);
+  promoteAboveTopLayer(element);
 
   const flight: Flight = {
     element,
@@ -82,6 +83,25 @@ export function mountFlight(home: Box, pose: FlipPose, src: string): Flight {
 }
 
 /** Moves a flight onto a new home box without moving it on screen. */
+// A dialog in the top layer (UI SDK shows its parts as manual popovers) paints over
+// everything on body, z-index or not. The clone joins the top layer after it, so it
+// stacks above. A portal-based dialog (Base UI) leaves nothing open there.
+function promoteAboveTopLayer(element: HTMLElement): void {
+  if (!("popover" in HTMLElement.prototype)) return;
+
+  if (!document.querySelector(":popover-open, dialog:modal")) return;
+
+  element.popover = "manual";
+  // Undo the UA popover box; left, top, width and height are already inline.
+  element.style.right = "auto";
+  element.style.bottom = "auto";
+  element.style.border = "0";
+  element.style.padding = "0";
+  element.style.background = "transparent";
+  element.style.overflow = "visible";
+  element.showPopover();
+}
+
 export function rebaseFlight(flight: Flight, home: Box): FlipPose {
   const pose = flight.hold();
   const previous = flight.home;

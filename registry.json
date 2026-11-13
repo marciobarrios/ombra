@@ -8,10 +8,11 @@
       "type": "registry:component",
       "title": "Ombra",
       "description": "Spike-stage lightbox: morph engines, scroll-snap slides, pull to dismiss, and zoom. The compound API is not final.",
-      "dependencies": ["@base-ui/react", "cn"],
+      "dependencies": ["@base-ui/react", "@ui-sdk/react", "@ui-sdk/core", "cn"],
       "registryDependencies": ["utils"],
       "files": [
         { "path": "registry/ombra/ombra-gallery.tsx", "type": "registry:component" },
+        { "path": "registry/ombra/ombra-dialog.tsx", "type": "registry:component" },
         { "path": "registry/ombra/close-input.ts", "type": "registry:lib" },
         { "path": "registry/ombra/types.ts", "type": "registry:lib" },
         { "path": "registry/ombra/geometry.ts", "type": "registry:lib" },

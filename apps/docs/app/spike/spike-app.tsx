@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { OmbraGallery } from "../../../../registry/ombra/ombra-gallery";
-import type { MorphEngine } from "../../../../registry/ombra/types";
+import type { DialogKit, MorphEngine } from "../../../../registry/ombra/types";
 
 import { photos } from "./photos";
 import { ZoomDiagnostics } from "./zoom-diagnostics";
@@ -13,11 +13,13 @@ export function SpikeApp({
   initialSlow,
   initialSpring,
   debugZoom,
+  dialogKit,
 }: {
   initialEngine: MorphEngine;
   initialSlow: boolean;
   initialSpring: boolean;
   debugZoom: boolean;
+  dialogKit: DialogKit;
 }) {
   const [engine, setEngine] = useState(initialEngine);
   const [slow, setSlow] = useState(initialSlow);
@@ -59,6 +61,7 @@ export function SpikeApp({
           onEngineChange={setEngine}
           onSlowChange={setSlow}
           onSpringChange={setSpring}
+          dialogKit={dialogKit}
         />
       </div>
     </main>
@@ -70,8 +73,9 @@ function reducedNote() {
     <p className="mt-4 max-w-xl text-sm leading-6 text-[#241e18]/70">
       Add <span className="font-mono">?engine=vt</span>, <span className="font-mono">flip</span>, or{" "}
       <span className="font-mono">fade</span>, <span className="font-mono">?slow=1</span>, and{" "}
-      <span className="font-mono">?spring=1</span> to inspect. When the system asks for reduced
-      motion, movement falls back to a fade.
+      <span className="font-mono">?spring=1</span> to inspect, and{" "}
+      <span className="font-mono">?dialog=ui-sdk</span> to host the viewer in UI SDK instead of Base
+      UI. When the system asks for reduced motion, movement falls back to a fade.
     </p>
   );
 }

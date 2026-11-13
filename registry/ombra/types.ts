@@ -51,3 +51,10 @@ export function motionDuration(baseMs: number, slow: boolean, reduced: boolean):
 
   return baseMs;
 }
+
+/** Spike: which dialog primitive hosts the viewer. */
+export type DialogKit = "base-ui" | "ui-sdk";
+
+export function parseDialogKit(value: string | undefined): DialogKit {
+  return value === "ui-sdk" ? "ui-sdk" : "base-ui";
+}

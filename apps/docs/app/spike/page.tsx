@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 
-import { parseMorphEngine } from "../../../../registry/ombra/types";
+import { parseDialogKit, parseMorphEngine } from "../../../../registry/ombra/types";
 
 import { SpikeApp } from "./spike-app";
 
@@ -21,6 +21,8 @@ async function SpikeRoute({ searchParams }: { searchParams: PageProps<"/spike">[
       initialSlow={firstString(query.slow) === "1"}
       initialSpring={firstString(query.spring) === "1"}
       debugZoom={firstString(query.debug) === "zoom"}
+      // OMBRA_DIALOG lets the e2e suite run unchanged against either dialog (spike only).
+      dialogKit={parseDialogKit(firstString(query.dialog) ?? process.env.OMBRA_DIALOG)}
     />
   );
 }
