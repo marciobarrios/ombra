@@ -45,7 +45,7 @@ Open <http://127.0.0.1:3000/spike>. The grid is thirty mixed-aspect photographs.
 
 - Arrow keys, Home, and End move the scroll-snap track. Escape closes. Focus returns to the thumbnail of the current slide.
 - The bottom strip follows the current slide. Click a strip thumbnail to move there.
-- Zoom in / out, `+`, `-`, and `0`. Double-click or double-tap the photo. Pinch, and ctrl+wheel, zoom toward the pointer. While zoomed, horizontal wheel pans the photo and the track does not change slides. Dragging past the edge hands the extra movement to the track.
+- Zoom in / out, `+`, `-`, and `0`. Double-click or double-tap the photo. Pinch, and ctrl+wheel, zoom toward the pointer. While zoomed, a drag or horizontal wheel pans the photo. Past the photo's edge the extra movement moves the track 1:1, as in Photos. On release (or when the wheel stops) the track pages if it has moved 30% of a slide or the finger flicked faster than 400 px/s, otherwise it glides back and the photo stays zoomed. The photo you leave resets to fit once it is off screen.
 - Drag down on the photo. A short drag springs back. Past about 110 px, or a flick faster than about 700 px/s, the drag hands off into the close morph. Pull is ignored while zoomed and while the track is still settling. With `?spring=1`, the snap-back and the close morph take the release velocity.
 - Compare spring on and off: pull flick (snap-back versus dismiss), zoom button / double-tap / pinch past the maximum then release, and open/close on both FLIP and View Transitions.
 - Close returns to the current slide’s thumbnail. If that thumbnail is off screen, the page scrolls it into view first. If it is still mostly hidden, the close is a fade.
