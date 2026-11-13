@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { OmbraGallery } from "../../../../registry/ombra/ombra-gallery";
 import type { MorphEngine } from "../../../../registry/ombra/types";
+
+import { Bench } from "./bench";
+import type { BenchSampleListener } from "./bench";
 
 import { photos } from "./photos";
 import { ZoomDiagnostics } from "./zoom-diagnostics";
@@ -13,15 +16,19 @@ export function SpikeApp({
   initialSlow,
   initialSpring,
   debugZoom,
+  benchRuns,
 }: {
   initialEngine: MorphEngine;
   initialSlow: boolean;
   initialSpring: boolean;
   debugZoom: boolean;
+  /** Runs per engine for the `?bench=1` benchmark, or null when it is off. */
+  benchRuns: number | null;
 }) {
   const [engine, setEngine] = useState(initialEngine);
   const [slow, setSlow] = useState(initialSlow);
   const [spring, setSpring] = useState(initialSpring);
+  const benchListener = useRef<BenchSampleListener | null>(null);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -50,6 +57,15 @@ export function SpikeApp({
       </p>
       {reducedNote()}
       {debugZoom && <ZoomDiagnostics />}
+      {benchRuns !== null && (
+        <Bench
+          runs={benchRuns}
+          setEngine={setEngine}
+          listen={(listener) => {
+            benchListener.current = listener;
+          }}
+        />
+      )}
       <div className="mt-12">
         <OmbraGallery
           items={photos}
@@ -59,6 +75,7 @@ export function SpikeApp({
           onEngineChange={setEngine}
           onSlowChange={setSlow}
           onSpringChange={setSpring}
+          onFrameSample={(kind, sample) => benchListener.current?.(kind, sample)}
         />
       </div>
     </main>

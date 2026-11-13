@@ -42,7 +42,7 @@ import {
 } from "./morph";
 import type { Flight } from "./morph";
 import { MORPH_SPRING, normalizeVelocity, springCurve } from "./spring";
-import type { Box, FlipPose, FrameSample, MorphEngine, OmbraItem } from "./types";
+import type { Box, FlipPose, FrameSample, MorphEngine, MorphKind, OmbraItem } from "./types";
 import { motionDuration } from "./types";
 import { fitToVisualViewport, usePageZoomGuard } from "./use-page-zoom-guard";
 import { usePull } from "./use-pull";
@@ -129,6 +129,8 @@ export type OmbraGalleryProps = {
   onEngineChange: (engine: MorphEngine) => void;
   onSlowChange: (slow: boolean) => void;
   onSpringChange: (spring: boolean) => void;
+  /** Called after each open or close with its frame timing. The spike's benchmark collects these. */
+  onFrameSample?: (kind: MorphKind, sample: FrameSample) => void;
   className?: string;
 };
 
@@ -225,22 +227,60 @@ function SpringToggle({
   );
 }
 
+/** The last sample of one morph kind, and how many runs since the last reset had no dropped frame. */
+type FrameTally = { last: FrameSample; runs: number; clean: number; mid: number };
+
+/** Tallies restart when `condition` (engine, slow motion, spring) changes, so each test row starts at zero. */
+type FrameReadoutState = { condition: string } & Partial<Record<MorphKind, FrameTally>>;
+
+function formatLast(tally: FrameTally | undefined): string {
+  if (!tally) return "–";
+
+  const { last } = tally;
+
+  return `${last.longestMs.toFixed(1)} ms / ${last.dropped} @ ${last.intervalMs.toFixed(1)} ms`;
+}
+
+/** Where the last run's drops fell, e.g. "drops at 1, 29 of 30", to tell start-up and settle cost from mid-flight jank. */
+function formatDrops(sample: FrameSample): string {
+  return `drops at ${sample.droppedAt.join(", ")} of ${sample.frames - 1}`;
+}
+
+function TallyLine({ kind, tally }: { kind: MorphKind; tally: FrameTally | undefined }) {
+  if (!tally) return null;
+
+  const { last, runs, clean, mid } = tally;
+
+  return (
+    <div data-slot={`ombra-readout-${kind}-tally`} className="pl-4 text-white/70">
+      clean {clean}/{runs} · mid {mid}/{runs}
+      {last.dropped > 0 && (
+        <>
+          {" · "}
+          <span data-slot={`ombra-readout-${kind}-drops`}>{formatDrops(last)}</span>
+        </>
+      )}
+    </div>
+  );
+}
+
 function FrameReadout({
-  longest,
-  dropped,
+  samples,
   engine,
 }: {
-  longest: string;
-  dropped: string;
+  samples: Partial<Record<MorphKind, FrameTally>>;
   engine: MorphEngine;
 }) {
   return (
     <div
       data-slot="ombra-readout"
-      className="pointer-events-none w-max rounded-md bg-black/80 px-3 py-2 font-mono text-[11px] leading-4 text-white"
+      className="pointer-events-none w-max max-w-full rounded-md bg-black/80 px-3 py-2 font-mono text-[11px] leading-4 text-white"
     >
-      <div>Longest frame {longest} ms</div>
-      <div>Dropped (&gt;33 ms) {dropped}</div>
+      <div>Longest frame / dropped @ frame interval</div>
+      <div data-slot="ombra-readout-open">Open {formatLast(samples.open)}</div>
+      <TallyLine kind="open" tally={samples.open} />
+      <div data-slot="ombra-readout-close">Close {formatLast(samples.close)}</div>
+      <TallyLine kind="close" tally={samples.close} />
       <div>Engine {engine}</div>
     </div>
   );
@@ -303,6 +343,7 @@ export function OmbraGallery({
   onEngineChange,
   onSlowChange,
   onSpringChange,
+  onFrameSample,
   className,
 }: OmbraGalleryProps) {
   const reduced = useReducedMotion();
@@ -310,7 +351,7 @@ export function OmbraGallery({
   const [phase, setPhase] = useState<Phase>("closed");
   const [index, setIndex] = useState(0);
   const [animEpoch, setAnimEpoch] = useState(0);
-  const [readout, setReadout] = useState<FrameSample | null>(null);
+  const [readout, setReadout] = useState<FrameReadoutState>({ condition: "" });
   const [sharpIds, setSharpIds] = useState<ReadonlySet<string>>(() => new Set());
   const [stripOverflows, setStripOverflows] = useState(false);
   const [releaseScroll, setReleaseScroll] = useState(false);
@@ -351,6 +392,7 @@ export function OmbraGallery({
   const settledRef = useRef(true);
   const zoomGestureRef = useRef(false);
   const samplerRef = useRef<FrameSampler | null>(null);
+  const sampleKindRef = useRef<MorphKind>("open");
   const vtRef = useRef<ViewTransition | null>(null);
   const seenIndex = useRef(index);
   const navigationTarget = useRef<number | null>(null);
@@ -363,6 +405,14 @@ export function OmbraGallery({
   reducedRef.current = reduced;
 
   const effective: MorphEngine = reduced ? "fade" : engine;
+  const readoutCondition = `${effective}|${slow}|${spring}`;
+  const readoutConditionRef = useRef(readoutCondition);
+
+  readoutConditionRef.current = readoutCondition;
+
+  const onFrameSampleRef = useRef(onFrameSample);
+
+  onFrameSampleRef.current = onFrameSample;
   const count = items.length;
   const active = items[index];
 
@@ -597,7 +647,7 @@ export function OmbraGallery({
     let alive = true;
     let attempts = 0;
 
-    beginSample();
+    beginSample(phase === "opening" ? "open" : "close");
 
     if (phase === "opening") runOpen();
     else runClose();
@@ -859,8 +909,10 @@ export function OmbraGallery({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, animEpoch]);
 
-  function beginSample() {
-    samplerRef.current?.stop();
+  function beginSample(kind: MorphKind) {
+    // A close that cuts an open short still reports the open's frames so far.
+    endSample();
+    sampleKindRef.current = kind;
     samplerRef.current = startFrameSampler();
   }
 
@@ -869,7 +921,27 @@ export function OmbraGallery({
 
     samplerRef.current = null;
 
-    if (sample && sample.frames > 1) setReadout(sample);
+    if (sample && sample.frames > 1) {
+      const kind = sampleKindRef.current;
+      const condition = readoutConditionRef.current;
+
+      onFrameSampleRef.current?.(kind, sample);
+
+      setReadout((current) => {
+        const base = current.condition === condition ? current : { condition };
+        const previous = base[kind];
+
+        return {
+          ...base,
+          [kind]: {
+            last: sample,
+            runs: (previous?.runs ?? 0) + 1,
+            clean: (previous?.clean ?? 0) + (sample.dropped === 0 ? 1 : 0),
+            mid: (previous?.mid ?? 0) + (sample.midDropped === 0 ? 1 : 0),
+          },
+        };
+      });
+    }
   }
 
   function cachedSrc(itemIndex: number): string {
@@ -1414,7 +1486,7 @@ export function OmbraGallery({
     const token = ++tokenRef.current;
     const timing = morphTiming(480, 0);
 
-    beginSample();
+    beginSample("open");
     document.documentElement.style.setProperty("--ombra-vt-duration", `${timing.duration}ms`);
     document.documentElement.style.setProperty("--ombra-vt-easing", timing.easing);
     // The pseudo-elements would otherwise swallow a swipe aimed at the track. iOS Safari
@@ -1530,7 +1602,7 @@ export function OmbraGallery({
 
     const timing = morphTiming(420, velocity);
 
-    beginSample();
+    beginSample("close");
     document.documentElement.style.setProperty("--ombra-vt-duration", `${timing.duration}ms`);
     document.documentElement.style.setProperty("--ombra-vt-easing", timing.easing);
 
@@ -1630,9 +1702,6 @@ export function OmbraGallery({
     }
   }
 
-  const longest = readout ? readout.longestMs.toFixed(1) : "–";
-  const dropped = readout ? String(readout.dropped) : "–";
-
   return (
     <div
       data-slot="ombra-root"
@@ -1642,7 +1711,10 @@ export function OmbraGallery({
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col items-start gap-3">
           <EngineSwitch engine={engine} onEngineChange={onEngineChange} />
-          <FrameReadout longest={longest} dropped={dropped} engine={effective} />
+          <FrameReadout
+            samples={readout.condition === readoutCondition ? readout : {}}
+            engine={effective}
+          />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <SpringToggle spring={spring} onSpringChange={onSpringChange} />

@@ -36,7 +36,17 @@ export type FrameSample = {
   longestMs: number;
   dropped: number;
   frames: number;
+  /** Median frame delta: the display's effective refresh interval during the sample. */
+  intervalMs: number;
+  /** 1-based positions of the dropped frames among `frames - 1` measured frames. */
+  droppedAt: number[];
+  /** Drops other than the first and last frame: start-up and settle cost sit at the ends, jank in between. */
+  midDropped: number;
+  /** Raw frame times, so a caller can score the run again against another baseline. */
+  deltas: number[];
 };
+
+export type MorphKind = "open" | "close";
 
 export function parseMorphEngine(value: string | null | undefined): MorphEngine {
   if (value === "vt" || value === "flip" || value === "fade") return value;

@@ -21,8 +21,15 @@ async function SpikeRoute({ searchParams }: { searchParams: PageProps<"/spike">[
       initialSlow={firstString(query.slow) === "1"}
       initialSpring={firstString(query.spring) === "1"}
       debugZoom={firstString(query.debug) === "zoom"}
+      benchRuns={firstString(query.bench) === "1" ? benchRuns(firstString(query.runs)) : null}
     />
   );
+}
+
+function benchRuns(value: string | undefined): number {
+  const runs = Number(value);
+
+  return Number.isInteger(runs) && runs >= 1 && runs <= 50 ? runs : 10;
 }
 
 function firstString(value: string | string[] | undefined): string | undefined {
