@@ -483,7 +483,7 @@ test.describe("spike viewer", () => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/spike?engine=flip");
     await page.evaluate(() => {
-      const prototype = HTMLImageElement.prototype;
+      const prototype = HTMLElement.prototype;
       const original = prototype.animate;
 
       // A dropped frame can remove the flight between animation frames, so a rAF
@@ -493,7 +493,7 @@ test.describe("spike viewer", () => {
         configurable: true,
         writable: true,
         value(
-          this: HTMLImageElement,
+          this: HTMLElement,
           keyframes: Keyframe[] | PropertyIndexedKeyframes | null,
           options?: number | KeyframeAnimationOptions,
         ) {

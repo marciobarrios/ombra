@@ -5,12 +5,33 @@ export const MORPH_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 export const VIEW_TRANSITION_NAME = "ombra-shared";
 
 export type Flight = {
-  element: HTMLImageElement;
+  /** The clip box: `transform` places and crops the photo, `overflow: hidden` clips it. */
+  element: HTMLDivElement;
+  image: HTMLImageElement;
+  /** The clip box's animation. The image's runs beside it on the same timing. */
   animation: Animation | null;
+  /** The flight as one `transform` and `clip-path` animation, for a hand-off onto the real photo. */
+  keyframes: Keyframe[];
   home: Box;
   destroy: () => void;
   hold: () => FlipPose;
+  finish: () => void;
+  play: (from: FlipPose, to: FlipPose, timing: KeyframeAnimationOptions) => Animation;
 };
+
+/**
+ * A pose as numbers: the image's translate and uniform scale from its home box, and
+ * the symmetric crop as a share of each side.
+ */
+type PoseParts = { x: number; y: number; scale: number; inline: number; block: number };
+
+// The clip box's corner radius, in its own space. It is 6px on screen at rest and
+// shrinks with the box towards a thumbnail.
+const FLIGHT_RADIUS = 6;
+
+// Keyframes sampled along the path. The clip box and the image scale in opposite
+// directions, and two linear interpolations only cancel out at the samples.
+const FLIGHT_SAMPLES = 16;
 
 export function readPose(element: HTMLElement): FlipPose {
   const style = getComputedStyle(element);
@@ -22,61 +43,177 @@ export function readPose(element: HTMLElement): FlipPose {
   };
 }
 
-export function mountFlight(home: Box, pose: FlipPose, src: string): Flight {
-  const element = document.createElement("img");
+function partsOf(pose: FlipPose): PoseParts {
+  const matrix = new DOMMatrixReadOnly(pose.transform);
+  const inset = /inset\(([\d.]+)%(?: ([\d.]+)%)?/.exec(pose.clipPath);
+  const block = Number.parseFloat(inset?.[1] ?? "0") / 100;
+  const inline = Number.parseFloat(inset?.[2] ?? inset?.[1] ?? "0") / 100;
 
-  element.alt = "";
+  return { x: matrix.e, y: matrix.f, scale: matrix.a, inline, block };
+}
+
+function poseOf(parts: PoseParts): FlipPose {
+  const scale = Math.abs(parts.scale) > 0.0001 ? parts.scale : 1;
+
+  return {
+    transform: `translate(${parts.x}px, ${parts.y}px) scale(${scale})`,
+    clipPath: `inset(${parts.block * 100}% ${parts.inline * 100}% round ${FLIGHT_RADIUS / scale}px)`,
+  };
+}
+
+function between(from: PoseParts, to: PoseParts, progress: number): PoseParts {
+  const lerp = (a: number, b: number) => a + (b - a) * progress;
+
+  return {
+    x: lerp(from.x, to.x),
+    y: lerp(from.y, to.y),
+    scale: lerp(from.scale, to.scale),
+    inline: lerp(from.inline, to.inline),
+    block: lerp(from.block, to.block),
+  };
+}
+
+/** The visible share of each axis. Kept above zero so the counter-scale stays finite. */
+function visibleShare(crop: number): number {
+  return Math.max(0.01, 1 - crop * 2);
+}
+
+function clipTransform(parts: PoseParts): string {
+  const width = parts.scale * visibleShare(parts.inline);
+  const height = parts.scale * visibleShare(parts.block);
+
+  return `translate(${parts.x}px, ${parts.y}px) scale(${width}, ${height})`;
+}
+
+function imageTransform(parts: PoseParts): string {
+  return `scale(${1 / visibleShare(parts.inline)}, ${1 / visibleShare(parts.block)})`;
+}
+
+function placeFlight(flight: Pick<Flight, "element" | "image">, parts: PoseParts) {
+  flight.element.style.transform = clipTransform(parts);
+  flight.image.style.transform = imageTransform(parts);
+}
+
+/** The pose on screen now, read back from the clip box and the image. */
+function livePose(flight: Pick<Flight, "element" | "image">): FlipPose {
+  const read = (element: HTMLElement) => {
+    const { transform } = getComputedStyle(element);
+
+    return new DOMMatrixReadOnly(transform === "none" ? undefined : transform);
+  };
+
+  const clip = read(flight.element);
+  const image = read(flight.image);
+  const width = image.a > 0 ? 1 / image.a : 1;
+  const height = image.d > 0 ? 1 / image.d : 1;
+
+  return poseOf({
+    x: clip.e,
+    y: clip.f,
+    scale: clip.a / width,
+    inline: (1 - width) / 2,
+    block: (1 - height) / 2,
+  });
+}
+
+/**
+ * The FLIP clone. WebKit runs a `clip-path` animation on the main thread, and with it
+ * the `transform` in the same effect, so a busy main thread stalled the whole flight in
+ * Low Power Mode (MAR-96). The crop is a clip box instead: both elements animate only
+ * `transform`, which the compositor runs.
+ */
+export function mountFlight(home: Box, pose: FlipPose, src: string): Flight {
+  const element = document.createElement("div");
+  const image = document.createElement("img");
+
   element.setAttribute("aria-hidden", "true");
   element.dataset.slot = "ombra-flight";
-  element.src = src;
-  element.draggable = false;
-  element.style.position = "fixed";
-  element.style.left = `${home.x}px`;
-  element.style.top = `${home.y}px`;
-  element.style.width = `${home.width}px`;
-  element.style.height = `${home.height}px`;
-  element.style.margin = "0";
-  element.style.maxWidth = "none";
-  element.style.objectFit = "fill";
-  element.style.transformOrigin = "center center";
-  element.style.zIndex = "80";
-  element.style.pointerEvents = "none";
-  element.style.willChange = "transform, clip-path";
-  element.style.transform = pose.transform;
-  element.style.clipPath = pose.clipPath;
-  document.body.append(element);
+  Object.assign(element.style, {
+    position: "fixed",
+    left: `${home.x}px`,
+    top: `${home.y}px`,
+    width: `${home.width}px`,
+    height: `${home.height}px`,
+    margin: "0",
+    overflow: "hidden",
+    borderRadius: `${FLIGHT_RADIUS}px`,
+    transformOrigin: "center center",
+    zIndex: "80",
+    pointerEvents: "none",
+    willChange: "transform",
+  });
+
+  image.alt = "";
+  image.src = src;
+  image.draggable = false;
+  Object.assign(image.style, {
+    display: "block",
+    width: "100%",
+    height: "100%",
+    maxWidth: "none",
+    objectFit: "fill",
+    transformOrigin: "center center",
+    willChange: "transform",
+  });
+
+  element.append(image);
+
+  let imageAnimation: Animation | null = null;
 
   const flight: Flight = {
     element,
+    image,
     animation: null,
+    keyframes: [],
     home,
     destroy() {
       flight.animation?.cancel();
+      imageAnimation?.cancel();
       element.remove();
     },
     hold() {
-      const animation = flight.animation;
+      const poseNow = livePose(flight);
 
-      if (!animation) return readPose(element);
-
-      try {
-        animation.commitStyles();
-      } catch (error) {
-        // commitStyles throws InvalidStateError when the effect has no target.
-        // The computed style still has the in-flight frame until cancel.
-        if (!(error instanceof DOMException)) throw error;
-      }
-
-      const poseNow = readPose(element);
-
-      animation.cancel();
+      flight.animation?.cancel();
+      imageAnimation?.cancel();
       flight.animation = null;
-      element.style.transform = poseNow.transform;
-      element.style.clipPath = poseNow.clipPath;
+      imageAnimation = null;
+      placeFlight(flight, partsOf(poseNow));
 
       return poseNow;
     },
+    finish() {
+      imageAnimation?.finish();
+      flight.animation?.finish();
+    },
+    play(fromPose, toPose, timing) {
+      const from = partsOf(fromPose);
+      const to = partsOf(toPose);
+
+      flight.animation?.cancel();
+      imageAnimation?.cancel();
+
+      const clipFrames: Keyframe[] = [];
+      const imageFrames: Keyframe[] = [];
+
+      for (let sample = 0; sample <= FLIGHT_SAMPLES; sample += 1) {
+        const offset = sample / FLIGHT_SAMPLES;
+        const parts = between(from, to, offset);
+
+        clipFrames.push({ offset, transform: clipTransform(parts) });
+        imageFrames.push({ offset, transform: imageTransform(parts) });
+      }
+
+      // Started in the same task, so both share a start time and stay in step.
+      imageAnimation = image.animate(imageFrames, timing);
+      flight.animation = element.animate(clipFrames, timing);
+
+      return flight.animation;
+    },
   };
+
+  placeFlight(flight, partsOf(pose));
+  document.body.append(element);
 
   return flight;
 }
@@ -95,19 +232,14 @@ export function rebaseFlight(flight: Flight, home: Box): FlipPose {
     return pose;
   }
 
-  const matrix = new DOMMatrixReadOnly(pose.transform);
+  const parts = partsOf(pose);
   const ratio = previous.width / home.width;
-  const dx = previous.x + previous.width / 2 + matrix.e - (home.x + home.width / 2);
-  const dy = previous.y + previous.height / 2 + matrix.f - (home.y + home.height / 2);
 
-  // The clip radius is in the flight's own space, which changes size here.
-  const clipPath = pose.clipPath.replace(/round .*\)$/, (radii) =>
-    radii.replace(/[\d.]+px/g, (radius) => `${Number.parseFloat(radius) * ratio}px`),
-  );
-
-  const next: FlipPose = {
-    transform: `translate(${dx}px, ${dy}px) scale(${matrix.a * ratio})`,
-    clipPath,
+  const next: PoseParts = {
+    ...parts,
+    x: previous.x + previous.width / 2 + parts.x - (home.x + home.width / 2),
+    y: previous.y + previous.height / 2 + parts.y - (home.y + home.height / 2),
+    scale: parts.scale * ratio,
   };
 
   const { style } = flight.element;
@@ -116,26 +248,17 @@ export function rebaseFlight(flight: Flight, home: Box): FlipPose {
   style.top = `${home.y}px`;
   style.width = `${home.width}px`;
   style.height = `${home.height}px`;
-  style.transform = next.transform;
-  style.clipPath = next.clipPath;
+  placeFlight(flight, next);
   flight.home = home;
 
-  return next;
+  return poseOf(next);
 }
 
-/** The on-screen box of a flight, which is its transformed box minus the crop. */
+/** The on-screen box of a flight: the clip box is exactly the visible photo. */
 export function flightVisibleBox(flight: Flight): Box {
   const rect = flight.element.getBoundingClientRect();
-  const inset = /inset\(([\d.]+)%(?: ([\d.]+)%)?/.exec(getComputedStyle(flight.element).clipPath);
-  const block = Number.parseFloat(inset?.[1] ?? "0") / 100;
-  const inline = Number.parseFloat(inset?.[2] ?? inset?.[1] ?? "0") / 100;
 
-  return {
-    x: rect.x + rect.width * inline,
-    y: rect.y + rect.height * block,
-    width: rect.width * (1 - inline * 2),
-    height: rect.height * (1 - block * 2),
-  };
+  return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
 }
 
 /** Fades a flight out where it is, then removes it. */
@@ -164,30 +287,39 @@ export function playFlight(
   duration: number,
   easing: string = MORPH_EASING,
 ): Promise<boolean> {
-  flight.animation?.cancel();
   flight.element.dataset.easing = easing;
+  flight.keyframes = [
+    { transform: from.transform, clipPath: from.clipPath },
+    { transform: to.transform, clipPath: to.clipPath },
+  ];
 
   if (duration <= 0) {
-    flight.element.style.transform = to.transform;
-    flight.element.style.clipPath = to.clipPath;
+    flight.hold();
+    placeFlight(flight, partsOf(to));
 
     return Promise.resolve(true);
   }
 
-  const animation = flight.element.animate(
-    [
-      { transform: from.transform, clipPath: from.clipPath },
-      { transform: to.transform, clipPath: to.clipPath },
-    ],
-    { duration, easing, fill: "forwards" },
-  );
-
-  flight.animation = animation;
+  const animation = flight.play(from, to, { duration, easing, fill: "forwards" });
 
   return animation.finished.then(
     () => true,
     () => false,
   );
+}
+
+/** Runs the rest of a flight on the real photo, from the same moment and on the same curve. */
+export function continueFlight(flight: Flight, target: Element): Animation | null {
+  const source = flight.animation;
+  const effect = source?.effect;
+
+  if (!source || !(effect instanceof KeyframeEffect)) return null;
+
+  const copy = target.animate(flight.keyframes, { ...effect.getTiming(), fill: "none" });
+
+  copy.currentTime = source.currentTime;
+
+  return copy;
 }
 
 /** Runs the rest of an animation on another element, from the same moment and on the same curve. */

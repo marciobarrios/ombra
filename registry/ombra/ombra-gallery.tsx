@@ -27,6 +27,7 @@ import {
   MORPH_EASING,
   VIEW_TRANSITION_NAME,
   continueAnimation,
+  continueFlight,
   flightVisibleBox,
   mountFlight,
   playFlight,
@@ -901,7 +902,7 @@ export function OmbraGallery({
         () => {
           backdropAnimationRef.current?.finish();
           popupAnimationRef.current?.finish();
-          flight.animation?.finish();
+          flight.finish();
         },
       );
     }
@@ -1107,11 +1108,10 @@ export function OmbraGallery({
   function handOffFlight(itemIndex: number): Animation | null {
     const flight = flightRef.current;
     const hero = images.current[itemIndex];
-    const flying = flight?.animation;
 
-    if (!flight || !hero || !flying) return null;
+    if (!flight || !hero) return null;
 
-    const morph = continueAnimation(flying, hero);
+    const morph = continueFlight(flight, hero);
 
     if (!morph) return null;
 
@@ -1127,7 +1127,7 @@ export function OmbraGallery({
       fade.cancel();
     }
 
-    revealHero(hero, flight.element.src);
+    revealHero(hero, flight.image.src);
     flight.destroy();
     flightRef.current = null;
     heroMorphRef.current = { index: itemIndex, hero, animations };
