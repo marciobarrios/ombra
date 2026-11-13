@@ -211,6 +211,43 @@ async function swipeUp(page: Page) {
   await page.mouse.up();
 }
 
+/** Drags the photo down past the dismiss distance, then parks the pointer for `swipeUp`. */
+async function pullToClose(page: Page) {
+  const box = await page.locator("[data-slot=ombra-track]").boundingBox();
+
+  if (!box) throw new Error("no track");
+
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height * 0.4;
+
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y + 60, { steps: 4 });
+  await page.mouse.move(x, y + 200, { steps: 6 });
+  await page.mouse.up();
+
+  const start = swipeStart(page);
+
+  await page.mouse.move(start.x, start.y);
+}
+
+/**
+ * The last flight frame must sit on the resting photo. A reopen that measured
+ * home while the sheet still held the pull pose lands offset and jumps when the
+ * hero replaces the clone, which the per-frame check cannot see.
+ */
+async function expectLandedHome(page: Page) {
+  const { home, last } = await page.evaluate(() => ({
+    home: window.ombraHome,
+    last: window.ombraFrames?.at(-1),
+  }));
+
+  if (!home || !last) throw new Error("no frames");
+
+  expect(Math.hypot(last.cx - home.cx, last.cy - home.cy)).toBeLessThan(6);
+  expect(Math.abs(last.width - home.width)).toBeLessThan(6);
+}
+
 async function pressCloseWithPointerReady(page: Page) {
   const { x, y } = swipeStart(page);
 
@@ -322,6 +359,21 @@ for (const engine of ["flip", "vt"] as const) {
       await expectCleanlyOpen(page);
       await expectNoJump(page);
     });
+
+    for (const spring of [true, false]) {
+      test(`reversing a pull close lands on the resting photo${spring ? " with the spring" : ""}`, async ({
+        page,
+      }) => {
+        await openViewer(page, `engine=${engine}&slow=1${spring ? "&spring=1" : ""}`);
+        await recordFrames(page);
+        await pullToClose(page);
+        await waitForMidFlight(page);
+        await swipeUp(page);
+        await expectCleanlyOpen(page);
+        await expectNoJump(page);
+        await expectLandedHome(page);
+      });
+    }
 
     test("tapping the target thumbnail reverses the close", async ({ page }) => {
       await openViewer(page, `engine=${engine}&slow=1`);
