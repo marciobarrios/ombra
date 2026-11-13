@@ -173,7 +173,7 @@ export function ZoomDiagnostics() {
   }, []);
 
   return (
-    <p className="mt-4 text-sm text-[#241e18]/80">
+    <p className="mt-4 text-sm text-foreground/80">
       Zoom diagnostics are recording locally. Close the viewer, then{" "}
       <button type="button" className="min-h-11 touch-manipulation underline" onClick={download}>
         Download zoom diagnostics
