@@ -32,6 +32,14 @@ export default defineConfig({
             message:
               "Use useReducer with actions named after events, or useSyncExternalStore for an external source. See the State section in AGENTS.md.",
           },
+          {
+            // A namespace import is already caught by the rule above. A default import would let
+            // `React.useState` through, and Oxlint has no rule for member access, so ban it.
+            name: "react",
+            importNames: ["default"],
+            message:
+              "Import React's hooks by name, so the useState ban can see them. See the State section in AGENTS.md.",
+          },
         ],
       },
     ],

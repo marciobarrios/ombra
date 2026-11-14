@@ -43,11 +43,11 @@ Ombra is a shadcn registry, not an npm component library. Users copy files. Do n
 
 ## State
 
-- Never use `useState`, in the registry or the docs app. Oxlint enforces this with `no-restricted-imports`, and there is no exception or disable comment. If the rule ever seems wrong, change it here first.
-- Use `useReducer` with actions named after events (`opened`, `pull-started`), not setters (`set-index`). A new piece of state means a new action and a transition, not another loose flag.
+- Never use `useState`, in the registry or the docs app. Oxlint enforces this with `no-restricted-imports`, which also bans the default `react` import so `React.useState` cannot slip through. Import hooks by name. There is no exception or disable comment. If the rule ever seems wrong, change it here first.
+- Use `useReducer` with actions named after events (`open-requested`, `opened`, `pull-started`), not commands or setters (`open`, `set-index`). A new piece of state means a new action and a transition, not another loose flag.
 - For an external source (matchMedia, a store), use `useSyncExternalStore`.
 - The gallery's core state lives in `registry/ombra/gallery-state.ts` with no React import, so other variants can reuse the reducer (MAR-40). Keep DOM nodes and `Animation` objects out of it. DOM-derived state (decoded photos, strip overflow, the track node) stays in a local reducer in the component.
-- `useReducer` does not bail out early: dispatching an action that changes nothing still re-runs the component. Before dispatching from a hot path (scroll, resize, pointer move), compare with the current value, through a ref or the gallery's `useReducerWithBailout`.
+- `useReducer` does not bail out early: dispatching an action that changes nothing still re-runs the component. Before dispatching from a hot path (scroll, resize, pointer move), use `useReducerWithBailout` from `registry/ombra/use-reducer-with-bailout.ts`, which drops actions that change nothing. The reducer must return the same state object when nothing changes.
 - Values that change every frame stay out of React state, in refs or CSS variables such as `--ombra-pull-live`.
 
 ## Spike behaviour
