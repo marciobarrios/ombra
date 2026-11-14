@@ -33,7 +33,8 @@ test.describe("spike viewer", () => {
   });
 
   test("keeps separate frame readouts for the last open and close", async ({ page }) => {
-    await page.goto("/spike?engine=flip");
+    // Slow motion gives the close enough frames for a readout where rAF runs slowly (CI WebKit).
+    await page.goto("/spike?engine=flip&slow=1");
 
     const open = page.locator("[data-slot=ombra-readout-open]");
     const close = page.locator("[data-slot=ombra-readout-close]");
@@ -90,7 +91,8 @@ test.describe("spike viewer", () => {
   });
 
   test("tallies clean runs until the engine changes", async ({ page }) => {
-    await page.goto("/spike?engine=flip");
+    // Slow motion gives the close enough frames for a sample where rAF runs slowly (CI WebKit).
+    await page.goto("/spike?engine=flip&slow=1");
 
     const open = page.locator("[data-slot=ombra-readout-open]");
     const close = page.locator("[data-slot=ombra-readout-close]");
@@ -483,7 +485,7 @@ test.describe("spike viewer", () => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/spike?engine=flip");
     await page.evaluate(() => {
-      const prototype = HTMLImageElement.prototype;
+      const prototype = HTMLElement.prototype;
       const original = prototype.animate;
 
       // A dropped frame can remove the flight between animation frames, so a rAF
@@ -493,7 +495,7 @@ test.describe("spike viewer", () => {
         configurable: true,
         writable: true,
         value(
-          this: HTMLImageElement,
+          this: HTMLElement,
           keyframes: Keyframe[] | PropertyIndexedKeyframes | null,
           options?: number | KeyframeAnimationOptions,
         ) {
