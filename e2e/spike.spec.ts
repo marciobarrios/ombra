@@ -91,7 +91,8 @@ test.describe("spike viewer", () => {
   });
 
   test("tallies clean runs until the engine changes", async ({ page }) => {
-    await page.goto("/spike?engine=flip");
+    // Slow motion gives the close enough frames for a sample where rAF runs slowly (CI WebKit).
+    await page.goto("/spike?engine=flip&slow=1");
 
     const open = page.locator("[data-slot=ombra-readout-open]");
     const close = page.locator("[data-slot=ombra-readout-close]");
