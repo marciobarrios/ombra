@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef } from "react";
 
 import { OmbraGallery } from "../../../../registry/ombra/ombra-gallery";
 import type { MorphEngine } from "../../../../registry/ombra/types";
@@ -10,6 +10,26 @@ import type { BenchSampleListener } from "./bench";
 
 import { photos } from "./photos";
 import { ZoomDiagnostics } from "./zoom-diagnostics";
+
+type Settings = { engine: MorphEngine; slow: boolean; spring: boolean };
+
+type SettingsAction =
+  | { type: "engine-changed"; engine: MorphEngine }
+  | { type: "slow-changed"; slow: boolean }
+  | { type: "spring-changed"; spring: boolean };
+
+function settingsReducer(state: Settings, action: SettingsAction): Settings {
+  switch (action.type) {
+    case "engine-changed":
+      return state.engine === action.engine ? state : { ...state, engine: action.engine };
+
+    case "slow-changed":
+      return state.slow === action.slow ? state : { ...state, slow: action.slow };
+
+    case "spring-changed":
+      return state.spring === action.spring ? state : { ...state, spring: action.spring };
+  }
+}
 
 export function SpikeApp({
   initialEngine,
@@ -25,9 +45,16 @@ export function SpikeApp({
   /** Runs per engine for the `?bench=1` benchmark, or null when it is off. */
   benchRuns: number | null;
 }) {
-  const [engine, setEngine] = useState(initialEngine);
-  const [slow, setSlow] = useState(initialSlow);
-  const [spring, setSpring] = useState(initialSpring);
+  const [{ engine, slow, spring }, dispatch] = useReducer(settingsReducer, {
+    engine: initialEngine,
+    slow: initialSlow,
+    spring: initialSpring,
+  });
+
+  const setEngine = (next: MorphEngine) => {
+    dispatch({ type: "engine-changed", engine: next });
+  };
+
   const benchListener = useRef<BenchSampleListener | null>(null);
 
   useEffect(() => {
@@ -73,8 +100,12 @@ export function SpikeApp({
           slow={slow}
           spring={spring}
           onEngineChange={setEngine}
-          onSlowChange={setSlow}
-          onSpringChange={setSpring}
+          onSlowChange={(next) => {
+            dispatch({ type: "slow-changed", slow: next });
+          }}
+          onSpringChange={(next) => {
+            dispatch({ type: "spring-changed", spring: next });
+          }}
           onFrameSample={(kind, sample) => benchListener.current?.(kind, sample)}
         />
       </div>
