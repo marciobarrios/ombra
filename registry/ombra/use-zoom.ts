@@ -1,9 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import type { RefObject } from "react";
 
 import { SNAP_SPRING, springCurve } from "./spring";
+
+type ZoomAction = { type: "zoom-entered" } | { type: "zoom-left" };
+
+/** Whether the photo rests above its fitted size. Only a crossing of that line is an action. */
+function zoomReducer(_zoomed: boolean, action: ZoomAction): boolean {
+  return action.type === "zoom-entered";
+}
 
 type Pose = {
   scale: number;
@@ -153,7 +160,8 @@ export function useZoom(
   const zoomAnim = useRef<Animation | null>(null);
   const scaleSample = useRef<{ scale: number; t: number } | null>(null);
   const scaleVelocity = useRef(0);
-  const [zoomed, setZoomed] = useState(false);
+  const [zoomed, dispatchZoom] = useReducer(zoomReducer, false);
+  // Read before every dispatch, so pan and pinch frames that stay on one side never render.
   const zoomedRef = useRef(false);
 
   enabledRef.current = enabled;
@@ -203,7 +211,7 @@ export function useZoom(
 
       if (nowZoomed !== zoomedRef.current) {
         zoomedRef.current = nowZoomed;
-        setZoomed(nowZoomed);
+        dispatchZoom({ type: nowZoomed ? "zoom-entered" : "zoom-left" });
       }
 
       if (allowHandoff && overflow !== 0 && track) {
@@ -288,7 +296,7 @@ export function useZoom(
 
       if (nowZoomed !== zoomedRef.current) {
         zoomedRef.current = nowZoomed;
-        setZoomed(nowZoomed);
+        dispatchZoom({ type: nowZoomed ? "zoom-entered" : "zoom-left" });
       }
 
       void animation.finished.then(
@@ -328,7 +336,7 @@ export function useZoom(
 
           if (settled !== zoomedRef.current) {
             zoomedRef.current = settled;
-            setZoomed(settled);
+            dispatchZoom({ type: settled ? "zoom-entered" : "zoom-left" });
           }
         },
         () => undefined,
@@ -352,8 +360,12 @@ export function useZoom(
     handedOff.current = false;
     lastTap.current = null;
     pointerType.current = null;
-    zoomedRef.current = false;
-    setZoomed(false);
+
+    if (zoomedRef.current) {
+      zoomedRef.current = false;
+      dispatchZoom({ type: "zoom-left" });
+    }
+
     clearLayers(trackRef.current);
 
     const track = trackRef.current;
