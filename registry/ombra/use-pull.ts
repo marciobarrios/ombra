@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useReducer, useRef } from "react";
 import type { RefObject } from "react";
 
 import { MORPH_EASING } from "./morph";
@@ -15,6 +15,13 @@ type Sample = {
   y: number;
   t: number;
 };
+
+type PullAction = { type: "pull-started" } | { type: "pull-ended" };
+
+/** True from the moment a drag locks to the vertical axis until the finger lifts. */
+function pullReducer(_pulling: boolean, action: PullAction): boolean {
+  return action.type === "pull-started";
+}
 
 /**
  * Takes the track element rather than a ref: an opening enables the pull before
@@ -36,7 +43,7 @@ export function usePull(
   const slowRef = useRef(slow);
   const springRef = useRef(spring);
   const onDismissRef = useRef(onDismiss);
-  const [pulling, setPulling] = useState(false);
+  const [pulling, dispatchPull] = useReducer(pullReducer, false);
 
   enabledRef.current = enabled;
   openingRef.current = opening;
@@ -162,7 +169,7 @@ export function usePull(
           if (!(error instanceof DOMException)) throw error;
         }
 
-        setPulling(true);
+        dispatchPull({ type: "pull-started" });
       }
 
       if (axis !== "y") return;
@@ -190,9 +197,11 @@ export function usePull(
       const vertical = axis === "y";
 
       axis = null;
-      setPulling(false);
 
+      // Only a vertical drag started a pull, so a tap or a swipe ends without a render.
       if (!vertical) return;
+
+      dispatchPull({ type: "pull-ended" });
 
       const dy = lastY - startY;
       const velocity = downwardSpeed(samples);
