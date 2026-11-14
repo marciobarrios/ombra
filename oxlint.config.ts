@@ -22,6 +22,27 @@ export default defineConfig({
   ],
   jsPlugins: [{ name: "anti-slop", specifier: "./tools/oxlint/anti-slop/src/index.ts" }],
   rules: {
+    "no-restricted-imports": [
+      "error",
+      {
+        paths: [
+          {
+            name: "react",
+            importNames: ["useState"],
+            message:
+              "Use useReducer with actions named after events, or useSyncExternalStore for an external source. See the State section in AGENTS.md.",
+          },
+          {
+            // A namespace import is already caught by the rule above. A default import would let
+            // `React.useState` through, and Oxlint has no rule for member access, so ban it.
+            name: "react",
+            importNames: ["default"],
+            message:
+              "Import React's hooks by name, so the useState ban can see them. See the State section in AGENTS.md.",
+          },
+        ],
+      },
+    ],
     "oxc/no-accumulating-spread": "error",
     "anti-slop/no-array-filter-map": "error",
     "anti-slop/no-reduce-accumulator-copy": "error",

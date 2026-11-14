@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 
 import { MORPH_EASING } from "./morph";
 import { SNAP_SPRING, normalizeVelocity, springCurve } from "./spring";
+import { useReducerWithBailout } from "./use-reducer-with-bailout";
 
 const AXIS_LOCK_PX = 8;
 const DISMISS_DISTANCE = 110;
@@ -15,6 +16,13 @@ type Sample = {
   y: number;
   t: number;
 };
+
+type PullAction = { type: "pull-started" } | { type: "pull-ended" };
+
+/** True from the moment a drag locks to the vertical axis until the finger lifts. */
+function pullReducer(_pulling: boolean, action: PullAction): boolean {
+  return action.type === "pull-started";
+}
 
 /**
  * Takes the track element rather than a ref: an opening enables the pull before
@@ -36,7 +44,8 @@ export function usePull(
   const slowRef = useRef(slow);
   const springRef = useRef(spring);
   const onDismissRef = useRef(onDismiss);
-  const [pulling, setPulling] = useState(false);
+  // A tap or swipe ends with `pull-ended` too, and the bail-out keeps it from rendering.
+  const [pulling, dispatchPull] = useReducerWithBailout(pullReducer, false);
 
   enabledRef.current = enabled;
   openingRef.current = opening;
@@ -162,7 +171,7 @@ export function usePull(
           if (!(error instanceof DOMException)) throw error;
         }
 
-        setPulling(true);
+        dispatchPull({ type: "pull-started" });
       }
 
       if (axis !== "y") return;
@@ -190,7 +199,7 @@ export function usePull(
       const vertical = axis === "y";
 
       axis = null;
-      setPulling(false);
+      dispatchPull({ type: "pull-ended" });
 
       if (!vertical) return;
 
@@ -225,6 +234,8 @@ export function usePull(
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
       cancelSnap();
+      // A pinch or a close can unbind the track mid-pull, and the lift never reaches `finish`.
+      dispatchPull({ type: "pull-ended" });
       document.documentElement.style.setProperty("--ombra-pull-live", "0");
     };
   }, [track, enabled]);

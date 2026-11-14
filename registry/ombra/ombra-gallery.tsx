@@ -2,7 +2,7 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "cn";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from "react";
 import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { flushSync } from "react-dom";
 
@@ -21,8 +21,9 @@ import {
   revealElement,
   uncropBox,
 } from "./geometry";
-import { startFrameSampler } from "./frame-sampler";
-import type { FrameSampler } from "./frame-sampler";
+import { frameReadoutReducer, initialFrameReadout, startFrameSampler } from "./frame-sampler";
+import type { FrameSampler, FrameTally } from "./frame-sampler";
+import { galleryReducer, initialGalleryState, isOpen } from "./gallery-state";
 import {
   MORPH_EASING,
   VIEW_TRANSITION_NAME,
@@ -48,6 +49,7 @@ import { motionDuration } from "./types";
 import { fitToVisualViewport, usePageZoomGuard } from "./use-page-zoom-guard";
 import { usePull } from "./use-pull";
 import { useReducedMotion } from "./use-reduced-motion";
+import { useReducerWithBailout } from "./use-reducer-with-bailout";
 import { useZoom } from "./use-zoom";
 
 const ENGINE_OPTIONS: { id: MorphEngine; label: string }[] = [
@@ -109,7 +111,40 @@ const stripEdgeStyles = `@media (prefers-reduced-motion: no-preference) {
   }
 }`;
 
-type Phase = "closed" | "opening" | "open" | "closing";
+/** State that comes from the DOM, so it stays React-side instead of in `gallery-state.ts`. */
+type ViewState = {
+  /** Photos whose full-size source has decoded, so the slide can drop its thumbnail. */
+  sharpIds: ReadonlySet<string>;
+  stripOverflows: boolean;
+  /** The mounted slide track, which the pull hook listens on. */
+  trackNode: HTMLDivElement | null;
+};
+
+type ViewAction =
+  | { type: "decoded"; id: string }
+  | { type: "strip-measured"; overflows: boolean }
+  | { type: "track-bound"; node: HTMLDivElement | null };
+
+const initialViewState: ViewState = { sharpIds: new Set(), stripOverflows: false, trackNode: null };
+
+function viewReducer(state: ViewState, action: ViewAction): ViewState {
+  switch (action.type) {
+    case "decoded":
+      if (state.sharpIds.has(action.id)) return state;
+
+      return { ...state, sharpIds: new Set([...state.sharpIds, action.id]) };
+
+    case "strip-measured":
+      if (state.stripOverflows === action.overflows) return state;
+
+      return { ...state, stripOverflows: action.overflows };
+
+    case "track-bound":
+      if (state.trackNode === action.node) return state;
+
+      return { ...state, trackNode: action.node };
+  }
+}
 
 // The end of a close is a sliver of spring overshoot, moving too little to see. It
 // would keep the page locked and read a swipe as a reversal, so a close ends here.
@@ -228,12 +263,6 @@ function SpringToggle({
   );
 }
 
-/** The last sample of one morph kind, and how many runs since the last reset had no dropped frame. */
-type FrameTally = { last: FrameSample; runs: number; clean: number; mid: number };
-
-/** Tallies restart when `condition` (engine, slow motion, spring) changes, so each test row starts at zero. */
-type FrameReadoutState = { condition: string } & Partial<Record<MorphKind, FrameTally>>;
-
 function formatLast(tally: FrameTally | undefined): string {
   if (!tally) return "–";
 
@@ -348,20 +377,17 @@ export function OmbraGallery({
   className,
 }: OmbraGalleryProps) {
   const reduced = useReducedMotion();
-  const [open, setOpen] = useState(false);
-  const [phase, setPhase] = useState<Phase>("closed");
-  const [index, setIndex] = useState(0);
-  const [animEpoch, setAnimEpoch] = useState(0);
-  const [readout, setReadout] = useState<FrameReadoutState>({ condition: "" });
-  const [sharpIds, setSharpIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [stripOverflows, setStripOverflows] = useState(false);
-  const [releaseScroll, setReleaseScroll] = useState(false);
+  const [gallery, send] = useReducerWithBailout(galleryReducer, initialGalleryState);
+  const { phase, index, epoch: animEpoch, releaseScroll } = gallery;
+  const open = isOpen(gallery);
+  const [view, sendView] = useReducerWithBailout(viewReducer, initialViewState);
+  const { sharpIds, stripOverflows, trackNode } = view;
+  const [readout, sendReadout] = useReducer(frameReadoutReducer, initialFrameReadout);
 
   const triggers = useRef<Array<HTMLButtonElement | null>>([]);
   const images = useRef<Array<HTMLImageElement | null>>([]);
   const slides = useRef<Array<HTMLDivElement | null>>([]);
   const trackRef = useRef<HTMLDivElement>(null);
-  const [trackNode, setTrackNode] = useState<HTMLDivElement | null>(null);
   const trackCleanup = useRef<(() => void) | null>(null);
   const layerRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -427,13 +453,13 @@ export function OmbraGallery({
       block: "nearest",
       behavior: reducedRef.current ? "auto" : "smooth",
     });
-    setIndex((current) => (current === nearest ? current : nearest));
+    send({ type: "index-changed", index: nearest });
   };
 
   const zoom = useZoom(
     trackRef,
     layerRef,
-    open && phase === "open",
+    phase === "open",
     settleTrack,
     spring,
     slow,
@@ -450,7 +476,7 @@ export function OmbraGallery({
 
   const pulling = usePull(
     trackNode,
-    open && (phase === "open" || pullCutsOpening) && !zoom.zoomed,
+    (phase === "open" || pullCutsOpening) && !zoom.zoomed,
     pullCutsOpening,
     settledRef,
     reduced,
@@ -491,11 +517,7 @@ export function OmbraGallery({
         () => {
           if (cancelled) return;
 
-          setSharpIds((current) => {
-            if (current.has(item.id)) return current;
-
-            return new Set([...current, item.id]);
-          });
+          sendView({ type: "decoded", id: item.id });
         },
         () => undefined,
       );
@@ -522,11 +544,7 @@ export function OmbraGallery({
 
       const content = row.scrollWidth - pad;
 
-      setStripOverflows((current) => {
-        const next = content > strip.clientWidth + 1;
-
-        return current === next ? current : next;
-      });
+      sendView({ type: "strip-measured", overflows: content > strip.clientWidth + 1 });
     };
 
     measure();
@@ -583,7 +601,7 @@ export function OmbraGallery({
 
   const bindTrack = useCallback((node: HTMLDivElement | null) => {
     trackRef.current = node;
-    setTrackNode(node);
+    sendView({ type: "track-bound", node });
     navigationTarget.current = null;
     const previous = trackCleanup.current;
 
@@ -601,7 +619,7 @@ export function OmbraGallery({
 
       const next = indexFromScroll(node);
 
-      setIndex((current) => (current === next ? current : next));
+      send({ type: "index-changed", index: next });
     };
 
     const settle = () => {
@@ -686,7 +704,7 @@ export function OmbraGallery({
 
           if (popupRef.current) popupRef.current.style.opacity = "";
 
-          setPhase("open");
+          send({ type: "opened" });
         } else {
           finishClose();
         }
@@ -746,7 +764,7 @@ export function OmbraGallery({
           if (!alive || tokenRef.current !== token) return;
 
           endSample();
-          setPhase("open");
+          send({ type: "opened" });
         });
 
         return;
@@ -928,20 +946,7 @@ export function OmbraGallery({
 
       onFrameSampleRef.current?.(kind, sample);
 
-      setReadout((current) => {
-        const base = current.condition === condition ? current : { condition };
-        const previous = base[kind];
-
-        return {
-          ...base,
-          [kind]: {
-            last: sample,
-            runs: (previous?.runs ?? 0) + 1,
-            clean: (previous?.clean ?? 0) + (sample.dropped === 0 ? 1 : 0),
-            mid: (previous?.mid ?? 0) + (sample.midDropped === 0 ? 1 : 0),
-          },
-        };
-      });
+      sendReadout({ type: "sampled", kind, condition, sample });
     }
   }
 
@@ -1055,7 +1060,7 @@ export function OmbraGallery({
     flightRef.current?.destroy();
     flightRef.current = null;
     endSample();
-    setPhase("open");
+    send({ type: "opened" });
   }
 
   function stopTrackWatch() {
@@ -1342,12 +1347,11 @@ export function OmbraGallery({
     }
 
     restoreFocusRef.current = true;
-    setOpen(false);
-    setPhase("closed");
+    send({ type: "closed" });
   }
 
   useLayoutEffect(() => {
-    if (open || phase !== "closed") return;
+    if (phase !== "closed") return;
 
     actionsRef.current?.unmount();
 
@@ -1359,7 +1363,7 @@ export function OmbraGallery({
     requestAnimationFrame(() => {
       trigger?.focus();
     });
-  }, [open, phase]);
+  }, [phase]);
 
   function stopCloseInput() {
     closeInputRef.current?.();
@@ -1476,10 +1480,7 @@ export function OmbraGallery({
 
     preserveFlightRef.current = flightRef.current !== null;
     tokenRef.current += 1;
-    setAnimEpoch((value) => value + 1);
-    setIndex(nextIndex);
-    setOpen(true);
-    setPhase("opening");
+    send({ type: "open-requested", index: nextIndex, restart: true });
   }
 
   function openWithViewTransition(nextIndex: number, thumb: HTMLImageElement) {
@@ -1497,9 +1498,7 @@ export function OmbraGallery({
     const transition = runViewTransition(() => {
       thumb.style.viewTransitionName = "";
       flushSync(() => {
-        setIndex(nextIndex);
-        setOpen(true);
-        setPhase("opening");
+        send({ type: "open-requested", index: nextIndex, restart: false });
       });
 
       const hero = images.current[nextIndex];
@@ -1535,7 +1534,7 @@ export function OmbraGallery({
         if (hero) hero.style.viewTransitionName = "";
 
         endSample();
-        setPhase("open");
+        send({ type: "opened" });
         vtRef.current = null;
       },
       () => {
@@ -1543,7 +1542,7 @@ export function OmbraGallery({
 
         stopTrackWatch();
         endSample();
-        setPhase("open");
+        send({ type: "opened" });
       },
     );
   }
@@ -1560,8 +1559,6 @@ export function OmbraGallery({
     const trigger = triggers.current[indexRef.current];
     const thumb = trigger ? imageChild(trigger) : null;
     const canMorph = trigger ? mostlyVisible(trigger) : false;
-
-    setReleaseScroll(!canMorph);
 
     if (
       driverRef.current === "vt" &&
@@ -1581,8 +1578,8 @@ export function OmbraGallery({
 
     preserveFlightRef.current = flightRef.current !== null;
     tokenRef.current += 1;
-    setAnimEpoch((value) => value + 1);
-    setPhase("closing");
+    // An off-screen thumbnail cannot be a morph target, so the page may scroll during the fade.
+    send({ type: "close-requested", releaseScroll: !canMorph });
   }
 
   function closeWithViewTransition(thumb: HTMLImageElement) {
@@ -1612,8 +1609,7 @@ export function OmbraGallery({
       if (hero) hero.style.viewTransitionName = "";
 
       flushSync(() => {
-        setOpen(false);
-        setPhase("closed");
+        send({ type: "closed" });
       });
       actionsRef.current?.unmount();
       revealElement(thumb.parentElement instanceof HTMLElement ? thumb.parentElement : thumb);
@@ -1671,7 +1667,7 @@ export function OmbraGallery({
 
     // Smooth scrolling publishes the centered slide as it moves. Selecting the
     // destination now would flash its border before the first scroll event.
-    if (behavior !== "smooth") setIndex(nextIndex);
+    if (behavior !== "smooth") send({ type: "index-changed", index: nextIndex });
     scrollTrackTo(nextIndex, behavior);
   }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useReducer, useRef } from "react";
 
 import { measureIdleInterval, summarizeFrames } from "../../../../registry/ombra/frame-sampler";
 import type { FrameSample, MorphEngine, MorphKind } from "../../../../registry/ombra/types";
@@ -15,6 +15,35 @@ const STEP_TIMEOUT_MS = 8_000;
 type Row = Record<MorphKind, FrameSample[]> & { displayMs: number };
 
 type Results = Partial<Record<MorphEngine, Row>>;
+
+type BenchState = { results: Results; status: string };
+
+type BenchAction =
+  | { type: "started" }
+  | { type: "progressed"; status: string }
+  | { type: "row-recorded"; engine: MorphEngine; row: Row }
+  | { type: "finished" }
+  | { type: "stopped"; message: string };
+
+function benchReducer(state: BenchState, action: BenchAction): BenchState {
+  switch (action.type) {
+    case "started":
+      // The previous status stays until the first engine reports, as the button reads it.
+      return { ...state, results: {} };
+
+    case "progressed":
+      return { ...state, status: action.status };
+
+    case "row-recorded":
+      return { ...state, results: { ...state.results, [action.engine]: action.row } };
+
+    case "finished":
+      return { ...state, status: "done" };
+
+    case "stopped":
+      return { ...state, status: `stopped: ${action.message}` };
+  }
+}
 
 export type BenchSampleListener = (kind: MorphKind, sample: FrameSample) => void;
 
@@ -32,8 +61,7 @@ export function Bench({
   /** Registers the listener the gallery's `onFrameSample` forwards to; null unregisters. */
   listen: (listener: BenchSampleListener | null) => void;
 }) {
-  const [results, setResults] = useState<Results>({});
-  const [status, setStatus] = useState<string>("idle");
+  const [{ results, status }, dispatch] = useReducer(benchReducer, { results: {}, status: "idle" });
   const runningRef = useRef(false);
 
   async function run() {
@@ -45,7 +73,7 @@ export function Bench({
     // permission prompt must not hold up the run, and a refusal leaves the screen to the user.
     const wakeLock = navigator.wakeLock?.request("screen").catch(() => null);
 
-    setResults({});
+    dispatch({ type: "started" });
 
     const waiters: { kind: MorphKind; resolve: (sample: FrameSample) => void }[] = [];
 
@@ -71,14 +99,14 @@ export function Bench({
       for (const engine of ENGINES) {
         setEngine(engine);
         await pause(PAUSE_MS);
-        setStatus(`${engine}: measuring the display`);
+        dispatch({ type: "progressed", status: `${engine}: measuring the display` });
 
         const displayMs = await measureIdleInterval();
         const row: Row = { open: [], close: [], displayMs };
         const rescore = (sample: FrameSample) => summarizeFrames(sample.deltas, displayMs);
 
         for (let index = 1; index <= runs; index += 1) {
-          setStatus(`${engine} ${index}/${runs}`);
+          dispatch({ type: "progressed", status: `${engine} ${index}/${runs}` });
 
           const trigger = document.querySelector<HTMLElement>("[data-slot=ombra-trigger]");
 
@@ -103,13 +131,16 @@ export function Bench({
           row.close.push(rescore(await closed));
           await until(() => !document.querySelector("[data-slot=ombra-viewer]"), "viewer to close");
           await pause(PAUSE_MS);
-          setResults((current) => ({ ...current, [engine]: { ...row } }));
+          dispatch({ type: "row-recorded", engine, row: { ...row } });
         }
       }
 
-      setStatus("done");
+      dispatch({ type: "finished" });
     } catch (error) {
-      setStatus(`stopped: ${error instanceof Error ? error.message : String(error)}`);
+      dispatch({
+        type: "stopped",
+        message: error instanceof Error ? error.message : String(error),
+      });
     } finally {
       listen(null);
       void wakeLock?.then((lock) => lock?.release());

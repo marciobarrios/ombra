@@ -148,3 +148,30 @@ test("edge cues preserve pull-to-dismiss", async ({ page }) => {
   await expect(page.locator('[data-slot="ombra-viewer"]')).toBeHidden();
   await expect(page.locator('[data-slot="ombra-trigger"]').first()).toBeFocused();
 });
+
+test("closing in the middle of a pull does not leave the next opening pulling", async ({
+  page,
+}) => {
+  await openViewer(page, "flip");
+
+  const viewer = page.locator('[data-slot="ombra-viewer"]');
+  const bounds = await page.locator('[data-slot="ombra-track"]').boundingBox();
+
+  if (!bounds) throw new Error("Missing track bounds");
+
+  const x = bounds.x + bounds.width / 2;
+  const y = bounds.y + bounds.height / 3;
+
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y + 60, { steps: 6 });
+  await expect(viewer).toHaveAttribute("data-pulling", "true");
+  // Escape unmounts the track mid-pull, so the release below never reaches the pull's listeners.
+  await page.keyboard.press("Escape");
+  await expect(viewer).toBeHidden();
+  await page.mouse.up();
+
+  await page.locator('[data-slot="ombra-trigger"]').first().click();
+  await expect(viewer).toHaveAttribute("data-phase", "open");
+  await expect(viewer).toHaveAttribute("data-pulling", "false");
+});

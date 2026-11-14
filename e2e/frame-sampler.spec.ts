@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-import { summarizeFrames } from "../registry/ombra/frame-sampler";
+import {
+  frameReadoutReducer,
+  initialFrameReadout,
+  summarizeFrames,
+} from "../registry/ombra/frame-sampler";
 
 test.describe("frame summary", () => {
   test("does not count steady 30 Hz frames as dropped", () => {
@@ -48,5 +52,57 @@ test.describe("frame summary", () => {
 
     expect(sample.droppedAt).toEqual([1, 4, 7]);
     expect(sample.midDropped).toBe(1);
+  });
+});
+
+test.describe("frame readout", () => {
+  const smooth = summarizeFrames([16.7, 16.6, 16.7, 16.7]);
+  const janky = summarizeFrames([16.7, 40, 16.7, 16.7]);
+
+  test("tallies runs per kind under one condition", () => {
+    let state = frameReadoutReducer(initialFrameReadout, {
+      type: "sampled",
+      kind: "open",
+      condition: "flip|false|false",
+      sample: smooth,
+    });
+
+    state = frameReadoutReducer(state, {
+      type: "sampled",
+      kind: "open",
+      condition: "flip|false|false",
+      sample: janky,
+    });
+    state = frameReadoutReducer(state, {
+      type: "sampled",
+      kind: "close",
+      condition: "flip|false|false",
+      sample: smooth,
+    });
+
+    expect(state.condition).toBe("flip|false|false");
+    expect(state.open).toEqual({ last: janky, runs: 2, clean: 1, mid: 1 });
+    expect(state.close).toEqual({ last: smooth, runs: 1, clean: 1, mid: 1 });
+  });
+
+  test("starts over when the condition changes", () => {
+    const flip = frameReadoutReducer(initialFrameReadout, {
+      type: "sampled",
+      kind: "close",
+      condition: "flip|false|false",
+      sample: janky,
+    });
+
+    const fade = frameReadoutReducer(flip, {
+      type: "sampled",
+      kind: "open",
+      condition: "fade|false|false",
+      sample: smooth,
+    });
+
+    expect(fade).toEqual({
+      condition: "fade|false|false",
+      open: { last: smooth, runs: 1, clean: 1, mid: 1 },
+    });
   });
 });
