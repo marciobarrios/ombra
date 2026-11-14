@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 
 import { MORPH_EASING } from "./morph";
 import { SNAP_SPRING, normalizeVelocity, springCurve } from "./spring";
+import { useReducerWithBailout } from "./use-reducer-with-bailout";
 
 const AXIS_LOCK_PX = 8;
 const DISMISS_DISTANCE = 110;
@@ -43,7 +44,8 @@ export function usePull(
   const slowRef = useRef(slow);
   const springRef = useRef(spring);
   const onDismissRef = useRef(onDismiss);
-  const [pulling, dispatchPull] = useReducer(pullReducer, false);
+  // A tap or swipe ends with `pull-ended` too, and the bail-out keeps it from rendering.
+  const [pulling, dispatchPull] = useReducerWithBailout(pullReducer, false);
 
   enabledRef.current = enabled;
   openingRef.current = opening;
@@ -197,11 +199,9 @@ export function usePull(
       const vertical = axis === "y";
 
       axis = null;
-
-      // Only a vertical drag started a pull, so a tap or a swipe ends without a render.
-      if (!vertical) return;
-
       dispatchPull({ type: "pull-ended" });
+
+      if (!vertical) return;
 
       const dy = lastY - startY;
       const velocity = downwardSpeed(samples);
@@ -234,6 +234,8 @@ export function usePull(
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
       cancelSnap();
+      // A pinch or a close can unbind the track mid-pull, and the lift never reaches `finish`.
+      dispatchPull({ type: "pull-ended" });
       document.documentElement.style.setProperty("--ombra-pull-live", "0");
     };
   }, [track, enabled]);

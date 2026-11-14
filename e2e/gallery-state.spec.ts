@@ -17,14 +17,22 @@ test.describe("gallery state", () => {
   });
 
   test("a FLIP or fade open selects the slide and restarts the morph", () => {
-    const next = galleryReducer(initialGalleryState, { type: "open", index: 3, restart: true });
+    const next = galleryReducer(initialGalleryState, {
+      type: "open-requested",
+      index: 3,
+      restart: true,
+    });
 
     expect(next).toEqual({ phase: "opening", index: 3, epoch: 1, releaseScroll: false });
     expect(isOpen(next)).toBe(true);
   });
 
   test("a View Transition open leaves the epoch alone", () => {
-    const next = galleryReducer(initialGalleryState, { type: "open", index: 1, restart: false });
+    const next = galleryReducer(initialGalleryState, {
+      type: "open-requested",
+      index: 1,
+      restart: false,
+    });
 
     expect(next.phase).toBe("opening");
     expect(next.epoch).toBe(0);
@@ -32,10 +40,11 @@ test.describe("gallery state", () => {
 
   test("a reversed close opens again", () => {
     const closing: GalleryState = { ...opened, phase: "closing", epoch: 2, releaseScroll: true };
-    const next = galleryReducer(closing, { type: "open", index: 2, restart: true });
+    const next = galleryReducer(closing, { type: "open-requested", index: 2, restart: true });
 
     expect(next.phase).toBe("opening");
     expect(next.epoch).toBe(3);
+    expect(next.releaseScroll).toBe(false);
   });
 
   test("an opening settles into open, and only an opening does", () => {
@@ -51,7 +60,7 @@ test.describe("gallery state", () => {
   });
 
   test("a close restarts the morph and records whether the page may scroll", () => {
-    const next = galleryReducer(opened, { type: "close", releaseScroll: true });
+    const next = galleryReducer(opened, { type: "close-requested", releaseScroll: true });
 
     expect(next).toEqual({ phase: "closing", index: 2, epoch: 2, releaseScroll: true });
   });
@@ -59,14 +68,16 @@ test.describe("gallery state", () => {
   test("a downward drag can close an opening", () => {
     const opening: GalleryState = { ...opened, phase: "opening" };
 
-    expect(galleryReducer(opening, { type: "close", releaseScroll: false }).phase).toBe("closing");
+    expect(galleryReducer(opening, { type: "close-requested", releaseScroll: false }).phase).toBe(
+      "closing",
+    );
   });
 
   test("a close does nothing once the viewer is closed or closing", () => {
     for (const phase of ["closed", "closing"] as const) {
       const state: GalleryState = { ...opened, phase };
 
-      expect(galleryReducer(state, { type: "close", releaseScroll: true })).toBe(state);
+      expect(galleryReducer(state, { type: "close-requested", releaseScroll: true })).toBe(state);
     }
   });
 

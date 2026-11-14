@@ -19,6 +19,7 @@
         { "path": "registry/ombra/spring.ts", "type": "registry:lib" },
         { "path": "registry/ombra/frame-sampler.ts", "type": "registry:lib" },
         { "path": "registry/ombra/gallery-state.ts", "type": "registry:lib" },
+        { "path": "registry/ombra/use-reducer-with-bailout.ts", "type": "registry:hook" },
         { "path": "registry/ombra/use-reduced-motion.ts", "type": "registry:hook" },
         { "path": "registry/ombra/use-page-zoom-guard.ts", "type": "registry:hook" },
         { "path": "registry/ombra/use-pull.ts", "type": "registry:hook" },
@@ -45,6 +46,7 @@
       "description": "Pinch, double-tap, and ctrl+wheel zoom with scroll-snap hand-off.",
       "files": [
         { "path": "registry/ombra/use-zoom.ts", "type": "registry:hook" },
+        { "path": "registry/ombra/use-reducer-with-bailout.ts", "type": "registry:hook" },
         { "path": "registry/ombra/spring.ts", "type": "registry:lib" }
       ]
     }

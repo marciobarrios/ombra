@@ -14,9 +14,9 @@ export type GalleryState = {
 
 export type GalleryAction =
   /** `restart` is false for a View Transition, which runs outside the FLIP effect. */
-  | { type: "open"; index: number; restart: boolean }
+  | { type: "open-requested"; index: number; restart: boolean }
   | { type: "opened" }
-  | { type: "close"; releaseScroll: boolean }
+  | { type: "close-requested"; releaseScroll: boolean }
   | { type: "closed" }
   | { type: "index-changed"; index: number };
 
@@ -35,13 +35,15 @@ export function isOpen(state: GalleryState): boolean {
 /** Returns the same object when an action changes nothing, so callers can skip a render. */
 export function galleryReducer(state: GalleryState, action: GalleryAction): GalleryState {
   switch (action.type) {
-    case "open":
+    case "open-requested":
       // Also valid from "closing": a reversed close opens again from the clone's pose.
       return {
         ...state,
         phase: "opening",
         index: action.index,
         epoch: action.restart ? state.epoch + 1 : state.epoch,
+        // A reversed close holds the viewer open again, so the page is locked once more.
+        releaseScroll: false,
       };
 
     case "opened":
@@ -49,7 +51,7 @@ export function galleryReducer(state: GalleryState, action: GalleryAction): Gall
 
       return { ...state, phase: "open" };
 
-    case "close":
+    case "close-requested":
       if (state.phase !== "opening" && state.phase !== "open") return state;
 
       return {

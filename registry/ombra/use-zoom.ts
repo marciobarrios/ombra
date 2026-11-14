@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
 
 import { SNAP_SPRING, springCurve } from "./spring";
+import { useReducerWithBailout } from "./use-reducer-with-bailout";
 
 type ZoomAction = { type: "zoom-entered" } | { type: "zoom-left" };
 
@@ -160,9 +161,8 @@ export function useZoom(
   const zoomAnim = useRef<Animation | null>(null);
   const scaleSample = useRef<{ scale: number; t: number } | null>(null);
   const scaleVelocity = useRef(0);
-  const [zoomed, dispatchZoom] = useReducer(zoomReducer, false);
-  // Read before every dispatch, so pan and pinch frames that stay on one side never render.
-  const zoomedRef = useRef(false);
+  // Pan and pinch frames that stay on one side of the line are dropped before they render.
+  const [zoomed, dispatchZoom] = useReducerWithBailout(zoomReducer, false);
 
   enabledRef.current = enabled;
   onSettledRef.current = onSettled;
@@ -209,10 +209,7 @@ export function useZoom(
         track.style.touchAction = nowZoomed ? "none" : "";
       }
 
-      if (nowZoomed !== zoomedRef.current) {
-        zoomedRef.current = nowZoomed;
-        dispatchZoom({ type: nowZoomed ? "zoom-entered" : "zoom-left" });
-      }
+      dispatchZoom({ type: nowZoomed ? "zoom-entered" : "zoom-left" });
 
       if (allowHandoff && overflow !== 0 && track) {
         handedOff.current = true;
@@ -294,10 +291,7 @@ export function useZoom(
         track.style.touchAction = nowZoomed ? "none" : "";
       }
 
-      if (nowZoomed !== zoomedRef.current) {
-        zoomedRef.current = nowZoomed;
-        dispatchZoom({ type: nowZoomed ? "zoom-entered" : "zoom-left" });
-      }
+      dispatchZoom({ type: nowZoomed ? "zoom-entered" : "zoom-left" });
 
       void animation.finished.then(
         () => {
@@ -334,10 +328,7 @@ export function useZoom(
             track.style.touchAction = settled ? "none" : "";
           }
 
-          if (settled !== zoomedRef.current) {
-            zoomedRef.current = settled;
-            dispatchZoom({ type: settled ? "zoom-entered" : "zoom-left" });
-          }
+          dispatchZoom({ type: settled ? "zoom-entered" : "zoom-left" });
         },
         () => undefined,
       );
@@ -361,10 +352,7 @@ export function useZoom(
     lastTap.current = null;
     pointerType.current = null;
 
-    if (zoomedRef.current) {
-      zoomedRef.current = false;
-      dispatchZoom({ type: "zoom-left" });
-    }
+    dispatchZoom({ type: "zoom-left" });
 
     clearLayers(trackRef.current);
 

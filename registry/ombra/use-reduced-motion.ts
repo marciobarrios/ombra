@@ -2,20 +2,28 @@
 
 import { useSyncExternalStore } from "react";
 
-const QUERY = "(prefers-reduced-motion: reduce)";
+let query: MediaQueryList | null = null;
+
+// Created on first use, since the module also loads on the server. React reads the snapshot on
+// every render, so one list is shared instead of parsing the query each time.
+function reducedMotionQuery(): MediaQueryList {
+  query ??= window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  return query;
+}
 
 function subscribe(onChange: () => void): () => void {
-  const query = window.matchMedia(QUERY);
+  const list = reducedMotionQuery();
 
-  query.addEventListener("change", onChange);
+  list.addEventListener("change", onChange);
 
   return () => {
-    query.removeEventListener("change", onChange);
+    list.removeEventListener("change", onChange);
   };
 }
 
 function getSnapshot(): boolean {
-  return window.matchMedia(QUERY).matches;
+  return reducedMotionQuery().matches;
 }
 
 // The server cannot know the setting. Hydration starts from `false` and then reads the query.

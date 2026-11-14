@@ -48,6 +48,7 @@ import { motionDuration } from "./types";
 import { fitToVisualViewport, usePageZoomGuard } from "./use-page-zoom-guard";
 import { usePull } from "./use-pull";
 import { useReducedMotion } from "./use-reduced-motion";
+import { useReducerWithBailout } from "./use-reducer-with-bailout";
 import { useZoom } from "./use-zoom";
 
 const ENGINE_OPTIONS: { id: MorphEngine; label: string }[] = [
@@ -142,35 +143,6 @@ function viewReducer(state: ViewState, action: ViewAction): ViewState {
 
       return { ...state, trackNode: action.node };
   }
-}
-
-/**
- * `useReducer` that drops an action which would leave the state unchanged before React schedules
- * a render. React only bails out of a reducer update after it has run the component again, so
- * without this every scroll event or resize that repeats the index or strip width would re-run
- * the whole gallery.
- */
-function useReducerWithBailout<S, A>(
-  reducer: (state: S, action: A) => S,
-  initial: S,
-): [S, (action: A) => void] {
-  const [state, dispatch] = useReducer(reducer, initial);
-  // Every action passes through `send`, so this is the state after all queued actions.
-  const latest = useRef(state);
-
-  const send = useCallback(
-    (action: A) => {
-      const next = reducer(latest.current, action);
-
-      if (next === latest.current) return;
-
-      latest.current = next;
-      dispatch(action);
-    },
-    [reducer],
-  );
-
-  return [state, send];
 }
 
 // The end of a close is a sliver of spring overshoot, moving too little to see. It
@@ -486,7 +458,7 @@ export function OmbraGallery({
   const zoom = useZoom(
     trackRef,
     layerRef,
-    open && phase === "open",
+    phase === "open",
     settleTrack,
     spring,
     slow,
@@ -503,7 +475,7 @@ export function OmbraGallery({
 
   const pulling = usePull(
     trackNode,
-    open && (phase === "open" || pullCutsOpening) && !zoom.zoomed,
+    (phase === "open" || pullCutsOpening) && !zoom.zoomed,
     pullCutsOpening,
     settledRef,
     reduced,
@@ -1379,7 +1351,7 @@ export function OmbraGallery({
   }
 
   useLayoutEffect(() => {
-    if (open || phase !== "closed") return;
+    if (phase !== "closed") return;
 
     actionsRef.current?.unmount();
 
@@ -1391,7 +1363,7 @@ export function OmbraGallery({
     requestAnimationFrame(() => {
       trigger?.focus();
     });
-  }, [open, phase]);
+  }, [phase]);
 
   function stopCloseInput() {
     closeInputRef.current?.();
@@ -1508,7 +1480,7 @@ export function OmbraGallery({
 
     preserveFlightRef.current = flightRef.current !== null;
     tokenRef.current += 1;
-    send({ type: "open", index: nextIndex, restart: true });
+    send({ type: "open-requested", index: nextIndex, restart: true });
   }
 
   function openWithViewTransition(nextIndex: number, thumb: HTMLImageElement) {
@@ -1526,7 +1498,7 @@ export function OmbraGallery({
     const transition = runViewTransition(() => {
       thumb.style.viewTransitionName = "";
       flushSync(() => {
-        send({ type: "open", index: nextIndex, restart: false });
+        send({ type: "open-requested", index: nextIndex, restart: false });
       });
 
       const hero = images.current[nextIndex];
@@ -1607,7 +1579,7 @@ export function OmbraGallery({
     preserveFlightRef.current = flightRef.current !== null;
     tokenRef.current += 1;
     // An off-screen thumbnail cannot be a morph target, so the page may scroll during the fade.
-    send({ type: "close", releaseScroll: !canMorph });
+    send({ type: "close-requested", releaseScroll: !canMorph });
   }
 
   function closeWithViewTransition(thumb: HTMLImageElement) {
