@@ -27,6 +27,14 @@ const DOUBLE_TAP_MS = 280;
 const DOUBLE_TAP_DISTANCE = 28;
 const TAP_SLOP = 12;
 
+// A pan past the photo's edge moves the track. On release it pages when the track has
+// moved this share of a slide, or on a flick of this many pixels per second.
+const HANDOFF_PAGE_SHARE = 0.3;
+const HANDOFF_FLICK = 400;
+const HANDOFF_SETTLE_MS = 300;
+const HANDOFF_WHEEL_IDLE_MS = 140;
+const VELOCITY_WINDOW_MS = 100;
+
 export type ZoomControls = {
   zoomed: boolean;
   zoomIn: () => void;
@@ -105,6 +113,37 @@ function zoomAt(prev: Pose, nextScale: number, origin: Point, rect: DOMRect): Po
   };
 }
 
+function bezier(u: number, p1: number, p2: number): number {
+  return 3 * (1 - u) ** 2 * u * p1 + 3 * (1 - u) * u * u * p2 + u ** 3;
+}
+
+/** The morph easing, cubic-bezier(0.22, 1, 0.36, 1), for a scroll animated frame by frame. */
+function easeOut(t: number): number {
+  let low = 0;
+  let high = 1;
+  let u = t;
+
+  for (let step = 0; step < 24; step += 1) {
+    u = (low + high) / 2;
+
+    if (bezier(u, 0.22, 0.36) < t) low = u;
+    else high = u;
+  }
+
+  return bezier(u, 1, 1);
+}
+
+/** Distance between neighbouring slide centres, the scroll needed to page once. */
+function slideStep(track: HTMLElement): number {
+  const slides = track.querySelectorAll<HTMLElement>("[data-slot=ombra-slide]");
+  const first = slides[0];
+  const second = slides[1];
+
+  if (!first || !second) return track.clientWidth;
+
+  return second.offsetLeft - first.offsetLeft;
+}
+
 function capturePointer(track: HTMLElement, pointerId: number) {
   try {
     track.setPointerCapture(pointerId);
@@ -143,7 +182,11 @@ export function useZoom(
   const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
   const pointerType = useRef<string | null>(null);
   const moved = useRef(0);
-  const handedOff = useRef(false);
+  // The track's scrollLeft when a pan first passed the photo's edge, or null.
+  const handoffHome = useRef<number | null>(null);
+  const settleFrame = useRef(0);
+  const wheelTimer = useRef(0);
+  const panSamples = useRef<{ x: number; t: number }[]>([]);
   const frame = useRef(0);
   const enabledRef = useRef(enabled);
   const onSettledRef = useRef(onSettled);
@@ -206,20 +249,103 @@ export function useZoom(
         setZoomed(nowZoomed);
       }
 
-      if (allowHandoff && overflow !== 0 && track) {
-        handedOff.current = true;
-        const suspended = gestureRef.current;
+      if (allowHandoff && track && (overflow !== 0 || handoffHome.current !== null)) {
+        // Mandatory snapping would pull every small scroll back to the current slide,
+        // so snapping is off until the hand-off settles. The index holds too, so the
+        // zoom is not reset while this photo is still on screen.
+        if (handoffHome.current === null) {
+          handoffHome.current = track.scrollLeft;
+          track.style.scrollSnapType = "none";
+          gestureRef.current = true;
+        }
 
-        // The scroll event is synchronous. Hold index updates until the gesture ends
-        // so a hand-off does not reset the zoom while the pointer is still down.
-        gestureRef.current = true;
-        track.style.overflowX = "auto";
-        track.scrollLeft -= overflow;
-        track.style.overflowX = "hidden";
-        gestureRef.current = suspended;
+        // Absolute, not incremental: `overflow` is the whole excess since the pan began.
+        track.scrollLeft = handoffHome.current - overflow;
       }
     },
     [gestureRef, layerRef, trackRef],
+  );
+
+  /** The pose's x as if the photo had not stopped at its edge: what a new pan starts from. */
+  const panX = useCallback((): number => {
+    const track = trackRef.current;
+    const home = handoffHome.current;
+
+    if (!track || home === null) return pose.current.x;
+
+    return pose.current.x + home - track.scrollLeft;
+  }, [trackRef]);
+
+  const endHandoff = useCallback(() => {
+    if (settleFrame.current !== 0) cancelAnimationFrame(settleFrame.current);
+
+    settleFrame.current = 0;
+    window.clearTimeout(wheelTimer.current);
+
+    if (handoffHome.current === null) return;
+
+    handoffHome.current = null;
+    gestureRef.current = false;
+
+    const track = trackRef.current;
+
+    if (track) track.style.scrollSnapType = "";
+  }, [gestureRef, trackRef]);
+
+  /** Glides the track to the slide the hand-off chose, then lets the gallery publish it. */
+  const settleHandoff = useCallback(
+    (velocity: number) => {
+      const track = trackRef.current;
+      const home = handoffHome.current;
+
+      if (!track || home === null || settleFrame.current !== 0) return;
+
+      const offset = track.scrollLeft - home;
+      const step = slideStep(track);
+      let direction = Math.abs(offset) > step * HANDOFF_PAGE_SHARE ? Math.sign(offset) : 0;
+
+      // A finger moving left scrolls forward. A flick decides either way.
+      if (velocity < -HANDOFF_FLICK) direction = offset > 0 ? 1 : 0;
+
+      if (velocity > HANDOFF_FLICK) direction = offset < 0 ? -1 : 0;
+
+      const max = track.scrollWidth - track.clientWidth;
+      const target = Math.min(max, Math.max(0, home + direction * step));
+      const from = track.scrollLeft;
+      const duration = reducedRef.current ? 0 : HANDOFF_SETTLE_MS * (slowRef.current ? 3 : 1);
+
+      const finish = () => {
+        track.scrollLeft = target;
+        endHandoff();
+        onSettledRef.current();
+      };
+
+      if (duration === 0 || Math.abs(target - from) < 0.5) {
+        finish();
+
+        return;
+      }
+
+      const start = performance.now();
+
+      const tick = (now: number) => {
+        const t = Math.min(1, (now - start) / duration);
+
+        track.scrollLeft = from + (target - from) * easeOut(t);
+
+        if (t < 1) {
+          settleFrame.current = requestAnimationFrame(tick);
+
+          return;
+        }
+
+        settleFrame.current = 0;
+        finish();
+      };
+
+      settleFrame.current = requestAnimationFrame(tick);
+    },
+    [endHandoff, trackRef],
   );
 
   const stopSpring = useCallback(() => {
@@ -339,17 +465,21 @@ export function useZoom(
 
   const animateRef = useRef(animatePose);
   const stopRef = useRef(stopSpring);
+  const settleRef = useRef(settleHandoff);
+  const panXRef = useRef(panX);
 
   animateRef.current = animatePose;
   stopRef.current = stopSpring;
+  settleRef.current = settleHandoff;
+  panXRef.current = panX;
 
   const reset = useCallback(() => {
+    endHandoff();
     zoomAnim.current?.cancel();
     zoomAnim.current = null;
     pose.current = { scale: 1, x: 0, y: 0 };
     pinchStart.current = null;
     panStart.current = null;
-    handedOff.current = false;
     lastTap.current = null;
     pointerType.current = null;
     zoomedRef.current = false;
@@ -362,7 +492,7 @@ export function useZoom(
       track.style.overflowX = "";
       track.style.touchAction = "";
     }
-  }, [trackRef]);
+  }, [endHandoff, trackRef]);
 
   const zoomBy = useCallback(
     (factor: number, origin?: Point) => {
@@ -498,7 +628,19 @@ export function useZoom(
 
       pointerType.current = event.pointerType;
 
+      // A primary pointer starts a new touch sequence. A pointer still listed from an
+      // earlier one lost its release and would turn this pan into a pinch.
+      if (event.isPrimary) pointers.current.clear();
+
       stopRef.current();
+
+      // Catching the track mid-settle: the pan carries on from where it is.
+      if (settleFrame.current !== 0) {
+        cancelAnimationFrame(settleFrame.current);
+        settleFrame.current = 0;
+      }
+
+      panSamples.current = [{ x: event.clientX, t: event.timeStamp }];
 
       pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       moved.current = 0;
@@ -521,7 +663,7 @@ export function useZoom(
       if (pose.current.scale > 1.02) {
         panStart.current = {
           pointer: { x: event.clientX, y: event.clientY },
-          pose: { ...pose.current },
+          pose: { ...pose.current, x: panXRef.current() },
         };
         capturePointer(track, event.pointerId);
       }
@@ -534,6 +676,14 @@ export function useZoom(
 
       moved.current += Math.hypot(event.clientX - previous.x, event.clientY - previous.y);
       pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+      const samples = panSamples.current;
+
+      samples.push({ x: event.clientX, t: event.timeStamp });
+
+      while (samples.length > 2 && event.timeStamp - (samples[0]?.t ?? 0) > VELOCITY_WINDOW_MS) {
+        samples.shift();
+      }
 
       if (pointers.current.size >= 2 || pose.current.scale > 1.02) schedule();
     };
@@ -548,7 +698,10 @@ export function useZoom(
         const remaining = [...pointers.current.values()][0];
 
         if (remaining) {
-          panStart.current = { pointer: remaining, pose: { ...pose.current } };
+          panStart.current = {
+            pointer: remaining,
+            pose: { ...pose.current, x: panXRef.current() },
+          };
         }
       } else {
         panStart.current = null;
@@ -589,7 +742,7 @@ export function useZoom(
       }
 
       if (pointers.current.size === 0) {
-        gestureRef.current = false;
+        if (handoffHome.current === null) gestureRef.current = false;
 
         const current = pose.current;
         const scale = clampScale(current.scale);
@@ -620,9 +773,13 @@ export function useZoom(
           );
         }
 
-        if (handedOff.current) {
-          handedOff.current = false;
-          onSettledRef.current();
+        if (handoffHome.current !== null) {
+          // The release is a sample too, so a finger that stopped before lifting is not a flick.
+          const samples = [...panSamples.current, { x: event.clientX, t: event.timeStamp }].filter(
+            (sample) => event.timeStamp - sample.t <= VELOCITY_WINDOW_MS,
+          );
+
+          settleRef.current(horizontalSpeed(samples));
         }
       }
     };
@@ -667,6 +824,12 @@ export function useZoom(
 
       event.preventDefault();
       stopRef.current();
+      window.clearTimeout(wheelTimer.current);
+
+      if (settleFrame.current !== 0) {
+        cancelAnimationFrame(settleFrame.current);
+        settleFrame.current = 0;
+      }
 
       const rect = layoutRect(layer, pose.current);
 
@@ -683,11 +846,18 @@ export function useZoom(
       apply(
         {
           scale: pose.current.scale,
-          x: pose.current.x - event.deltaX,
+          x: panXRef.current() - event.deltaX,
           y: pose.current.y - event.deltaY,
         },
         true,
       );
+
+      // A wheel has no release, so the hand-off settles once the wheel goes quiet.
+      if (handoffHome.current !== null) {
+        wheelTimer.current = window.setTimeout(() => {
+          settleRef.current(0);
+        }, HANDOFF_WHEEL_IDLE_MS);
+      }
     };
 
     let gestureBase: number | null = null;
@@ -779,9 +949,19 @@ export function useZoom(
 
       zoomAnim.current?.cancel();
       zoomAnim.current = null;
+      endHandoff();
       gestureRef.current = false;
     };
-  }, [apply, enabled, gestureRef, layerRef, trackRef, zoomBy]);
+  }, [apply, enabled, endHandoff, gestureRef, layerRef, trackRef, zoomBy]);
 
   return { zoomed, zoomIn, zoomOut, reset, home };
+}
+
+function horizontalSpeed(samples: readonly { x: number; t: number }[]): number {
+  const oldest = samples[0];
+  const newest = samples[samples.length - 1];
+
+  if (!oldest || !newest || newest.t <= oldest.t) return 0;
+
+  return ((newest.x - oldest.x) / (newest.t - oldest.t)) * 1000;
 }
