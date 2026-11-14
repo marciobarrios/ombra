@@ -22,6 +22,19 @@ export default defineConfig({
   ],
   jsPlugins: [{ name: "anti-slop", specifier: "./tools/oxlint/anti-slop/src/index.ts" }],
   rules: {
+    "no-restricted-imports": [
+      "error",
+      {
+        paths: [
+          {
+            name: "react",
+            importNames: ["useState"],
+            message:
+              "Use useReducer with actions named after events, or useSyncExternalStore for an external source. See the State section in AGENTS.md.",
+          },
+        ],
+      },
+    ],
     "oxc/no-accumulating-spread": "error",
     "anti-slop/no-array-filter-map": "error",
     "anti-slop/no-reduce-accumulator-copy": "error",
