@@ -25,8 +25,7 @@ export type Flight = {
  */
 type PoseParts = { x: number; y: number; scale: number; inline: number; block: number };
 
-// The clip box's corner radius, in its own space. It is 6px on screen at rest and
-// shrinks with the box towards a thumbnail.
+// The photo's corner radius on screen, at rest and on the thumbnail alike.
 const FLIGHT_RADIUS = 6;
 
 // Keyframes sampled along the path. The clip box and the image scale in opposite
@@ -89,8 +88,21 @@ function imageTransform(parts: PoseParts): string {
   return `scale(${1 / visibleShare(parts.inline)}, ${1 / visibleShare(parts.block)})`;
 }
 
+/**
+ * The clip box's corners in its own space. Its scale is not uniform, so a fixed radius
+ * would shrink and stretch towards a thumbnail and then jump to the thumbnail's 6px
+ * when the clone is removed. Dividing by each axis keeps 6px on screen all the way.
+ */
+function clipRadius(parts: PoseParts): string {
+  const width = Math.abs(parts.scale * visibleShare(parts.inline)) || 1;
+  const height = Math.abs(parts.scale * visibleShare(parts.block)) || 1;
+
+  return `${FLIGHT_RADIUS / width}px / ${FLIGHT_RADIUS / height}px`;
+}
+
 function placeFlight(flight: Pick<Flight, "element" | "image">, parts: PoseParts) {
   flight.element.style.transform = clipTransform(parts);
+  flight.element.style.borderRadius = clipRadius(parts);
   flight.image.style.transform = imageTransform(parts);
 }
 
@@ -136,7 +148,6 @@ export function mountFlight(home: Box, pose: FlipPose, src: string): Flight {
     height: `${home.height}px`,
     margin: "0",
     overflow: "hidden",
-    borderRadius: `${FLIGHT_RADIUS}px`,
     transformOrigin: "center center",
     zIndex: "80",
     pointerEvents: "none",
@@ -159,6 +170,11 @@ export function mountFlight(home: Box, pose: FlipPose, src: string): Flight {
   element.append(image);
 
   let imageAnimation: Animation | null = null;
+  // The corners run in an effect of their own. Border radius cannot run on the
+  // compositor, and in WebKit it would take the transform in the same effect to the
+  // main thread with it (MAR-96). On its own, a stalled main thread only delays the
+  // corners, never the flight.
+  let cornerAnimation: Animation | null = null;
 
   const flight: Flight = {
     element,
@@ -169,6 +185,7 @@ export function mountFlight(home: Box, pose: FlipPose, src: string): Flight {
     destroy() {
       flight.animation?.cancel();
       imageAnimation?.cancel();
+      cornerAnimation?.cancel();
       element.remove();
     },
     hold() {
@@ -176,14 +193,17 @@ export function mountFlight(home: Box, pose: FlipPose, src: string): Flight {
 
       flight.animation?.cancel();
       imageAnimation?.cancel();
+      cornerAnimation?.cancel();
       flight.animation = null;
       imageAnimation = null;
+      cornerAnimation = null;
       placeFlight(flight, partsOf(poseNow));
 
       return poseNow;
     },
     finish() {
       imageAnimation?.finish();
+      cornerAnimation?.finish();
       flight.animation?.finish();
     },
     play(fromPose, toPose, timing) {
@@ -192,9 +212,11 @@ export function mountFlight(home: Box, pose: FlipPose, src: string): Flight {
 
       flight.animation?.cancel();
       imageAnimation?.cancel();
+      cornerAnimation?.cancel();
 
       const clipFrames: Keyframe[] = [];
       const imageFrames: Keyframe[] = [];
+      const cornerFrames: Keyframe[] = [];
 
       for (let sample = 0; sample <= FLIGHT_SAMPLES; sample += 1) {
         const offset = sample / FLIGHT_SAMPLES;
@@ -202,10 +224,12 @@ export function mountFlight(home: Box, pose: FlipPose, src: string): Flight {
 
         clipFrames.push({ offset, transform: clipTransform(parts) });
         imageFrames.push({ offset, transform: imageTransform(parts) });
+        cornerFrames.push({ offset, borderRadius: clipRadius(parts) });
       }
 
-      // Started in the same task, so both share a start time and stay in step.
+      // Started in the same task, so all three share a start time and stay in step.
       imageAnimation = image.animate(imageFrames, timing);
+      cornerAnimation = element.animate(cornerFrames, timing);
       flight.animation = element.animate(clipFrames, timing);
 
       return flight.animation;
