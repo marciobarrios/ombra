@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import {
   frameReadoutReducer,
   initialFrameReadout,
+  startFrameSampler,
   summarizeFrames,
 } from "../registry/ombra/frame-sampler";
 
@@ -52,6 +53,29 @@ test.describe("frame summary", () => {
 
     expect(sample.droppedAt).toEqual([1, 4, 7]);
     expect(sample.midDropped).toBe(1);
+  });
+});
+
+test.describe("frame sampler", () => {
+  test("reports a morph the browser never painted as one long frame", async () => {
+    const original = globalThis.requestAnimationFrame;
+
+    // A starved page: no animation frame runs while the morph does.
+    globalThis.requestAnimationFrame = () => 0;
+
+    try {
+      const sampler = startFrameSampler();
+
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      const sample = sampler.stop();
+
+      expect(sample.frames).toBe(2);
+      expect(sample.longestMs).toBeGreaterThanOrEqual(50);
+      expect(summarizeFrames(sample.deltas, 16.7).dropped).toBe(1);
+    } finally {
+      globalThis.requestAnimationFrame = original;
+    }
   });
 });
 

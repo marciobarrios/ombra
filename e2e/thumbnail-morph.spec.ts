@@ -157,7 +157,9 @@ function installProbe() {
         original(tick);
       };
 
-      original(tick);
+      // The first frame is read now, before the action under test: a loaded machine
+      // can run the action before the next animation frame.
+      tick();
     },
   };
 
