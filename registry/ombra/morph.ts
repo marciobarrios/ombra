@@ -1,8 +1,41 @@
-import type { Box, FlipPose } from "./types";
+import type { Box, FlipPose, MorphEngine } from "./types";
 
 export const MORPH_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 
 export const VIEW_TRANSITION_NAME = "ombra-shared";
+
+// Set on the root while a view transition runs, so the stylesheet can clear every other name.
+const MORPHING_ATTRIBUTE = "data-ombra-morph";
+
+/**
+ * The view transition's pseudo-elements, and the rule that keeps one named group. Any
+ * other `view-transition-name` on the page would fly as a group of its own. The shared
+ * element sets its name inline with `!important`, which wins over this rule.
+ */
+export const MORPH_STYLES = `::view-transition {
+  pointer-events: var(--ombra-vt-pointer-events, auto);
+}
+
+:root[${MORPHING_ATTRIBUTE}] *,
+:root[${MORPHING_ATTRIBUTE}] ::before,
+:root[${MORPHING_ATTRIBUTE}] ::after {
+  view-transition-name: none !important;
+}
+
+::view-transition-group(${VIEW_TRANSITION_NAME}),
+::view-transition-old(${VIEW_TRANSITION_NAME}),
+::view-transition-new(${VIEW_TRANSITION_NAME}) {
+  animation-duration: var(--ombra-vt-duration, 480ms);
+  animation-timing-function: var(--ombra-vt-easing, ${MORPH_EASING});
+}
+
+::view-transition-old(${VIEW_TRANSITION_NAME}),
+::view-transition-new(${VIEW_TRANSITION_NAME}) {
+  height: 100%;
+  overflow: hidden;
+  object-fit: cover;
+  border-radius: 6px;
+}`;
 
 export type Flight = {
   /** The clip box: `transform` places and crops the photo, `overflow: hidden` clips it. */
@@ -10,7 +43,7 @@ export type Flight = {
   image: HTMLImageElement;
   /** The clip box's animation. The image's runs beside it on the same timing. */
   animation: Animation | null;
-  /** The flight as one `transform` and `clip-path` animation, for a hand-off onto the real photo. */
+  /** The flight as `transform` and `clip-path` keyframes, for a hand-off onto the real photo. */
   keyframes: Keyframe[];
   home: Box;
   destroy: () => void;
@@ -60,16 +93,50 @@ function poseOf(parts: PoseParts): FlipPose {
   };
 }
 
+/**
+ * A pose partway along the path. The visible box moves and resizes in a straight line,
+ * as a view transition's group does, so both engines put the photo on the same pixels
+ * at the same progress. Interpolating the crop instead would bow the box inwards.
+ */
 function between(from: PoseParts, to: PoseParts, progress: number): PoseParts {
   const lerp = (a: number, b: number) => a + (b - a) * progress;
+  const scale = lerp(from.scale, to.scale);
+
+  const crop = (start: number, end: number) => {
+    const visible = lerp(from.scale * visibleShare(start), to.scale * visibleShare(end));
+
+    if (Math.abs(scale) < 0.0001) return lerp(start, end);
+
+    return Math.min(0.495, Math.max(0, (1 - visible / scale) / 2));
+  };
 
   return {
     x: lerp(from.x, to.x),
     y: lerp(from.y, to.y),
-    scale: lerp(from.scale, to.scale),
-    inline: lerp(from.inline, to.inline),
-    block: lerp(from.block, to.block),
+    scale,
+    inline: crop(from.inline, to.inline),
+    block: crop(from.block, to.block),
   };
+}
+
+/**
+ * The path from one pose to another as `transform` and `clip-path` keyframes, for the
+ * real photo when it takes over from a clone or a view transition. Sampled, because
+ * a two-frame `inset()` would follow the crop and leave the clone's path.
+ */
+export function flightKeyframes(fromPose: FlipPose, toPose: FlipPose): Keyframe[] {
+  const from = partsOf(fromPose);
+  const to = partsOf(toPose);
+  const frames: Keyframe[] = [];
+
+  for (let sample = 0; sample <= FLIGHT_SAMPLES; sample += 1) {
+    const offset = sample / FLIGHT_SAMPLES;
+    const pose = poseOf(between(from, to, offset));
+
+    frames.push({ offset, transform: pose.transform, clipPath: pose.clipPath });
+  }
+
+  return frames;
 }
 
 /** The visible share of each axis. Kept above zero so the counter-scale stays finite. */
@@ -312,10 +379,7 @@ export function playFlight(
   easing: string = MORPH_EASING,
 ): Promise<boolean> {
   flight.element.dataset.easing = easing;
-  flight.keyframes = [
-    { transform: from.transform, clipPath: from.clipPath },
-    { transform: to.transform, clipPath: to.clipPath },
-  ];
+  flight.keyframes = flightKeyframes(from, to);
 
   if (duration <= 0) {
     flight.hold();
@@ -360,9 +424,31 @@ export function continueAnimation(source: Animation, target: Element): Animation
 }
 
 export function supportsViewTransitions(): boolean {
-  if (!("startViewTransition" in document)) return false;
+  if (typeof document === "undefined" || !("startViewTransition" in document)) return false;
 
   return document.startViewTransition instanceof Function;
+}
+
+/**
+ * The engine that actually runs. Reduced motion is always a fade, and a browser without
+ * View Transitions falls back to FLIP. Callers can still pick FLIP or a fade for a
+ * single morph, such as when a clone is already in the air.
+ */
+export function resolveMorphEngine(requested: MorphEngine, reduced: boolean): MorphEngine {
+  if (reduced) return "fade";
+
+  if (requested === "vt" && !supportsViewTransitions()) return "flip";
+
+  return requested;
+}
+
+/** Gives an element the shared name, over any rule that clears names during a morph. */
+export function nameSharedElement(element: HTMLElement | null | undefined): void {
+  element?.style.setProperty("view-transition-name", VIEW_TRANSITION_NAME, "important");
+}
+
+export function unnameSharedElement(element: HTMLElement | null | undefined): void {
+  element?.style.removeProperty("view-transition-name");
 }
 
 /**
@@ -432,6 +518,12 @@ export function viewTransitionRemaining(): number {
   return 0;
 }
 
+let runningTransition: ViewTransition | null = null;
+
+/**
+ * Starts a view transition with one named group. Other names on the page are cleared
+ * until it ends, so nothing else flies. Without the API the update runs on its own.
+ */
 export function runViewTransition(update: () => void): ViewTransition | null {
   if (!supportsViewTransitions()) {
     update();
@@ -439,5 +531,23 @@ export function runViewTransition(update: () => void): ViewTransition | null {
     return null;
   }
 
-  return document.startViewTransition(update);
+  const root = document.documentElement;
+
+  root.setAttribute(MORPHING_ATTRIBUTE, "");
+
+  const transition = document.startViewTransition(update);
+
+  runningTransition = transition;
+
+  // A transition skipped for a new one settles after the new one starts.
+  const release = () => {
+    if (runningTransition !== transition) return;
+
+    runningTransition = null;
+    root.removeAttribute(MORPHING_ATTRIBUTE);
+  };
+
+  void transition.finished.then(release, release);
+
+  return transition;
 }

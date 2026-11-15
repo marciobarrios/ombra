@@ -26,18 +26,21 @@ import type { FrameSampler, FrameTally } from "./frame-sampler";
 import { galleryReducer, initialGalleryState, isOpen } from "./gallery-state";
 import {
   MORPH_EASING,
-  VIEW_TRANSITION_NAME,
+  MORPH_STYLES,
   continueAnimation,
   continueFlight,
+  flightKeyframes,
   flightVisibleBox,
   mountFlight,
+  nameSharedElement,
   playFlight,
   readPose,
   readViewTransitionBox,
   rebaseFlight,
+  resolveMorphEngine,
   retireFlight,
   runViewTransition,
-  supportsViewTransitions,
+  unnameSharedElement,
   viewTransitionFaded,
   viewTransitionRemaining,
   watchSettled,
@@ -159,7 +162,11 @@ const SWIPE_START_PX = 2;
 
 export type OmbraGalleryProps = {
   items: readonly OmbraItem[];
-  engine: MorphEngine;
+  /**
+   * The morph between a thumbnail and the viewer. FLIP is the default (MAR-12). A
+   * browser without View Transitions runs FLIP for `vt`, and reduced motion always fades.
+   */
+  engine?: MorphEngine;
   slow: boolean;
   spring: boolean;
   onEngineChange: (engine: MorphEngine) => void;
@@ -367,7 +374,7 @@ function IconButton({
 
 export function OmbraGallery({
   items,
-  engine,
+  engine = "flip",
   slow,
   spring,
   onEngineChange,
@@ -835,8 +842,8 @@ export function OmbraGallery({
         flightRef.current = null;
         const fadeDuration = motionDuration(200, slowRef.current, reducedRef.current);
 
-        fadeBackdrop(1, 0, fadeDuration);
-        fadePopup(1, 0, fadeDuration, () => {
+        fadeBackdrop(opacityOf(backdropRef.current), 0, fadeDuration);
+        fadePopup(opacityOf(popupRef.current), 0, fadeDuration, () => {
           if (!alive || tokenRef.current !== token) return;
 
           endSample();
@@ -851,6 +858,11 @@ export function OmbraGallery({
       const pull = Number(
         document.documentElement.style.getPropertyValue("--ombra-pull-live") || "0",
       );
+
+      // Read before the pull is cleared. A close that cuts an opening short leaves
+      // from the scrim and chrome it reached instead of jumping to full strength.
+      const scrimFrom = opacityOf(backdropRef.current);
+      const popupFrom = opacityOf(popupRef.current);
 
       const pulledBox = slide
         ? containBox(boxFromRect(slide.getBoundingClientRect()), item.width / item.height)
@@ -879,14 +891,19 @@ export function OmbraGallery({
       const fromBox = pulledBox ?? home;
       const velocity = releaseVelocity(flick, fromBox, thumbBox);
       const timing = morphTiming(420, velocity);
-      const scrimFrom = 1 - Math.min(1, Math.max(0, pull)) * 0.7;
       const hero = images.current[itemIndex];
 
       if (hero) hero.style.visibility = "hidden";
 
       hideThumb(itemIndex);
       fadeBackdrop(scrimFrom, 0, timing.duration, timing.easing);
-      fadePopup(1, 0, timing.duration, null, springRef.current ? timing.easing : "ease-out");
+      fadePopup(
+        popupFrom,
+        0,
+        timing.duration,
+        null,
+        springRef.current ? timing.easing : "ease-out",
+      );
 
       let from: FlipPose = RESTING_POSE;
       let flight = flightRef.current;
@@ -1160,13 +1177,7 @@ export function OmbraGallery({
     // without a backwards fill the photo would paint at rest for that one frame.
     const timing = { duration: remaining, easing: MORPH_EASING, fill: "backwards" as const };
 
-    const morph = hero.animate(
-      [
-        { transform: pose.transform, clipPath: pose.clipPath },
-        { transform: RESTING_POSE.transform, clipPath: RESTING_POSE.clipPath },
-      ],
-      timing,
-    );
+    const morph = hero.animate(flightKeyframes(pose, RESTING_POSE), timing);
 
     const fades = viewerPartsAround(hero).map((part) =>
       part.animate([{ opacity: scrim }, { opacity: 1 }], timing),
@@ -1174,7 +1185,7 @@ export function OmbraGallery({
 
     heroMorphRef.current = { index: itemIndex, hero, animations: [morph, ...fades] };
     hideThumb(itemIndex);
-    hero.style.viewTransitionName = "";
+    unnameSharedElement(hero);
     revealHero(hero, cachedSrc(itemIndex));
     vtRef.current?.skipTransition();
     vtRef.current = null;
@@ -1212,6 +1223,42 @@ export function OmbraGallery({
       pose,
       cachedSrc(handoff.index),
     );
+  }
+
+  // A view transition cannot run backwards. A close during its opening swaps the
+  // pseudo-elements for a clone on the same pixels, with the viewer at the scrim's
+  // current strength, so the close leaves from where the photo is instead of the end.
+  function reclaimViewTransitionOpening() {
+    if (phaseRef.current !== "opening" || driverRef.current !== "vt" || !vtRef.current) return;
+
+    const itemIndex = indexRef.current;
+    const item = items[itemIndex];
+    const slide = slides.current[itemIndex];
+    const box = readViewTransitionBox();
+
+    if (!item || !slide || !box || flightRef.current || reducedRef.current) return;
+
+    const scrim = Number(
+      getComputedStyle(document.documentElement, "::view-transition-new(root)").opacity,
+    );
+
+    // The clone's home is the photo at rest, where the FLIP close expects it.
+    const home = containBox(boxFromRect(slide.getBoundingClientRect()), item.width / item.height);
+    const crop = coverCrop(item.width, item.height, box.width, box.height);
+    const pose = poseBetween(box, home, crop);
+
+    flightRef.current = mountFlight(home, pose, cachedSrc(itemIndex));
+    hideThumb(itemIndex);
+    // The opening's own clean-up only runs when it settles, which it no longer will.
+    unnameSharedElement(images.current[itemIndex]);
+    vtRef.current.skipTransition();
+    vtRef.current = null;
+
+    const opacity = String(Number.isFinite(scrim) ? scrim : 1);
+
+    if (backdropRef.current) backdropRef.current.style.opacity = opacity;
+
+    if (popupRef.current) popupRef.current.style.opacity = opacity;
   }
 
   useLayoutEffect(
@@ -1465,17 +1512,17 @@ export function OmbraGallery({
     if (!trigger || !thumb) return;
 
     vtRef.current?.skipTransition();
-    driverRef.current = reducedRef.current ? "fade" : engineRef.current;
+    driverRef.current = resolveMorphEngine(engineRef.current, reducedRef.current);
     originRef.current = boxFromRect(thumb.getBoundingClientRect());
 
-    if (!handoff && driverRef.current === "vt" && supportsViewTransitions() && !flightRef.current) {
+    if (!handoff && driverRef.current === "vt" && !flightRef.current) {
       openWithViewTransition(nextIndex, thumb);
 
       return;
     }
 
-    // The FLIP effect bails while the driver is still "vt", which leaves the
-    // dialog stuck in "opening" when View Transitions are unavailable.
+    // A clone already in the air keeps flying, and the FLIP effect bails while
+    // the driver is still "vt", which would leave the dialog stuck in "opening".
     if (driverRef.current === "vt") driverRef.current = "flip";
 
     preserveFlightRef.current = flightRef.current !== null;
@@ -1493,17 +1540,17 @@ export function OmbraGallery({
     // The pseudo-elements would otherwise swallow a swipe aimed at the track. iOS Safari
     // still blocks it until the transition ends, which is accepted because VT is optional.
     document.documentElement.style.setProperty("--ombra-vt-pointer-events", "none");
-    thumb.style.viewTransitionName = VIEW_TRANSITION_NAME;
+    nameSharedElement(thumb);
 
     const transition = runViewTransition(() => {
-      thumb.style.viewTransitionName = "";
+      unnameSharedElement(thumb);
       flushSync(() => {
         send({ type: "open-requested", index: nextIndex, restart: false });
       });
 
       const hero = images.current[nextIndex];
 
-      if (hero) hero.style.viewTransitionName = VIEW_TRANSITION_NAME;
+      nameSharedElement(hero);
 
       placeTrack(nextIndex);
       watchTrackForSwipe(() => {
@@ -1527,11 +1574,11 @@ export function OmbraGallery({
         if (!settled()) return;
 
         stopTrackWatch();
-        thumb.style.viewTransitionName = "";
+        unnameSharedElement(thumb);
 
         const hero = images.current[nextIndex];
 
-        if (hero) hero.style.viewTransitionName = "";
+        unnameSharedElement(hero);
 
         endSample();
         send({ type: "opened" });
@@ -1553,20 +1600,15 @@ export function OmbraGallery({
     stopTrackWatch();
     document.documentElement.style.removeProperty("--ombra-vt-pointer-events");
     reclaimHeroMorph();
-    driverRef.current = reducedRef.current ? "fade" : engineRef.current;
+    reclaimViewTransitionOpening();
+    driverRef.current = resolveMorphEngine(engineRef.current, reducedRef.current);
     vtRef.current?.skipTransition();
 
     const trigger = triggers.current[indexRef.current];
     const thumb = trigger ? imageChild(trigger) : null;
     const canMorph = trigger ? mostlyVisible(trigger) : false;
 
-    if (
-      driverRef.current === "vt" &&
-      supportsViewTransitions() &&
-      canMorph &&
-      thumb &&
-      !flightRef.current
-    ) {
+    if (driverRef.current === "vt" && canMorph && thumb && !flightRef.current) {
       closeWithViewTransition(thumb);
 
       return;
@@ -1603,17 +1645,17 @@ export function OmbraGallery({
     document.documentElement.style.setProperty("--ombra-vt-duration", `${timing.duration}ms`);
     document.documentElement.style.setProperty("--ombra-vt-easing", timing.easing);
 
-    if (hero) hero.style.viewTransitionName = VIEW_TRANSITION_NAME;
+    nameSharedElement(hero);
 
     const transition = runViewTransition(() => {
-      if (hero) hero.style.viewTransitionName = "";
+      unnameSharedElement(hero);
 
       flushSync(() => {
         send({ type: "closed" });
       });
       actionsRef.current?.unmount();
       revealElement(thumb.parentElement instanceof HTMLElement ? thumb.parentElement : thumb);
-      thumb.style.viewTransitionName = VIEW_TRANSITION_NAME;
+      nameSharedElement(thumb);
     });
 
     vtRef.current = transition;
@@ -1634,7 +1676,7 @@ export function OmbraGallery({
 
     void transition?.finished.then(
       () => {
-        thumb.style.viewTransitionName = "";
+        unnameSharedElement(thumb);
 
         if (tokenRef.current !== token) return;
 
@@ -1645,7 +1687,7 @@ export function OmbraGallery({
         document.documentElement.style.setProperty("--ombra-pull-live", "0");
       },
       () => {
-        thumb.style.viewTransitionName = "";
+        unnameSharedElement(thumb);
 
         if (tokenRef.current !== token) return;
 
@@ -1704,6 +1746,8 @@ export function OmbraGallery({
       data-spring={spring ? "on" : "off"}
       className={cn("text-foreground", className)}
     >
+      {/* Outside the dialog, so a closing view transition still has it after the viewer unmounts. */}
+      <style data-slot="ombra-morph-styles">{MORPH_STYLES}</style>
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col items-start gap-3">
           <EngineSwitch engine={engine} onEngineChange={onEngineChange} />
