@@ -15,6 +15,8 @@ import {
   containBox,
   coverCrop,
   indexFromScroll,
+  isRendered,
+  mostlyUnclipped,
   mostlyVisible,
   poseBetween,
   RESTING_POSE,
@@ -30,6 +32,7 @@ import {
   continueAnimation,
   continueFlight,
   flightKeyframes,
+  flightRemaining,
   flightVisibleBox,
   mountFlight,
   nameSharedElement,
@@ -43,7 +46,9 @@ import {
   unnameSharedElement,
   viewTransitionFaded,
   viewTransitionRemaining,
+  watchLayoutShift,
   watchSettled,
+  whenDecoded,
 } from "./morph";
 import type { Flight } from "./morph";
 import { MORPH_SPRING, normalizeVelocity, springCurve } from "./spring";
@@ -159,6 +164,10 @@ type HeroMorph = { index: number; hero: HTMLImageElement; animations: Animation[
 
 // Placing the track and snapping can land a fraction of a pixel off.
 const SWIPE_START_PX = 2;
+
+// How long a landed morph may wait for the photo under it to decode before the
+// swap. A cached bitmap is ready within a frame; this only caps a slow network.
+const DECODE_WAIT_MS = 120;
 
 export type OmbraGalleryProps = {
   items: readonly OmbraItem[];
@@ -284,12 +293,20 @@ function formatDrops(sample: FrameSample): string {
 }
 
 function TallyLine({ kind, tally }: { kind: MorphKind; tally: FrameTally | undefined }) {
-  if (!tally) return null;
+  // One line, always there: a first sample or a long list of drops would otherwise
+  // push the grid down just as a close lands on its thumbnail.
+  if (!tally) {
+    return (
+      <div aria-hidden="true" className="truncate pl-4 text-white/70">
+        –
+      </div>
+    );
+  }
 
   const { last, runs, clean, mid } = tally;
 
   return (
-    <div data-slot={`ombra-readout-${kind}-tally`} className="pl-4 text-white/70">
+    <div data-slot={`ombra-readout-${kind}-tally`} className="truncate pl-4 text-white/70">
       clean {clean}/{runs} · mid {mid}/{runs}
       {last.dropped > 0 && (
         <>
@@ -311,7 +328,7 @@ function FrameReadout({
   return (
     <div
       data-slot="ombra-readout"
-      className="pointer-events-none w-max max-w-full rounded-md bg-black/80 px-3 py-2 font-mono text-[11px] leading-4 text-white"
+      className="pointer-events-none w-max max-w-[min(100%,24rem)] rounded-md bg-black/80 px-3 py-2 font-mono text-[11px] leading-4 text-white"
     >
       <div>Longest frame / dropped @ frame interval</div>
       <div data-slot="ombra-readout-open">Open {formatLast(samples.open)}</div>
@@ -413,6 +430,7 @@ export function OmbraGallery({
   const preserveFlightRef = useRef(false);
   const heroMorphRef = useRef<HeroMorph | null>(null);
   const stopTrackWatchRef = useRef<(() => void) | null>(null);
+  const stopFollowRef = useRef<(() => void) | null>(null);
   const tokenRef = useRef(0);
   const originRef = useRef<Box | null>(null);
   const phaseRef = useRef(phase);
@@ -682,6 +700,7 @@ export function OmbraGallery({
       alive = false;
       stopCloseInput();
       stopTrackWatch();
+      stopFollow();
       cancelHeroMorph();
 
       if (preserveFlightRef.current) {
@@ -732,7 +751,9 @@ export function OmbraGallery({
       const itemIndex = indexRef.current;
       const item = items[itemIndex];
       const slide = slides.current[itemIndex];
-      const origin = originRef.current;
+      // Measured again now the viewer is mounted: locking the page scroll can move
+      // the thumbnail, and a retried open starts frames after the tap.
+      const origin = thumbnailBox(itemIndex) ?? originRef.current;
 
       if (!item || !slide || !origin) {
         retry(runOpen);
@@ -796,7 +817,13 @@ export function OmbraGallery({
 
       const hero = images.current[itemIndex];
 
-      if (hero) hero.style.visibility = "hidden";
+      if (hero) {
+        hero.style.visibility = "hidden";
+
+        // The slide may still be loading its own source. The clone's is decoded, so
+        // the photo under it is ready to paint when the clone goes.
+        if (!hero.complete || hero.naturalWidth === 0) hero.src = flight.image.src;
+      }
 
       const settle = () => {
         if (!alive || tokenRef.current !== token) return;
@@ -806,11 +833,40 @@ export function OmbraGallery({
         settleOpen(itemIndex);
       };
 
-      void playFlight(flight, startPose, RESTING_POSE, timing.duration, timing.easing).then(
-        (completed) => {
-          if (completed) settle();
-        },
-      );
+      // The clone holds the last frame, so waiting for the photo under it is invisible.
+      const land = (completed: boolean) => {
+        if (!completed) return;
+
+        if (!hero) {
+          settle();
+
+          return;
+        }
+
+        void whenDecoded(hero, DECODE_WAIT_MS).then(settle);
+      };
+
+      void playFlight(flight, startPose, RESTING_POSE, timing.duration, timing.easing).then(land);
+
+      // The viewer fills the visual viewport, so an address bar that collapses or
+      // returns mid-flight moves the photo's resting box. Rebase onto the new box
+      // and fly the rest of the way there, so the clone lands where the photo is.
+      followLayout(() => {
+        if (flightRef.current !== flight) return;
+
+        const next = containBox(
+          boxFromRect(slide.getBoundingClientRect()),
+          item.width / item.height,
+        );
+
+        const remaining = flightRemaining(flight);
+
+        if (remaining <= 0 || boxDistance(next, flight.home) < 0.5) return;
+
+        const pose = rebaseFlight(flight, next);
+
+        void playFlight(flight, pose, RESTING_POSE, remaining, timing.easing).then(land);
+      });
 
       watchTrackForSwipe(() => {
         void handOffFlight(itemIndex)?.finished.then(settle, () => undefined);
@@ -823,37 +879,13 @@ export function OmbraGallery({
       const itemIndex = indexRef.current;
       const item = items[itemIndex];
       const trigger = triggers.current[itemIndex];
-
-      if (!item || !trigger) {
-        retry(runClose);
-
-        return;
-      }
-
-      const revealed = revealElement(trigger);
-      const thumb = imageChild(trigger);
-      const fade = driverRef.current === "fade" || revealed === "hidden" || !thumb;
+      const thumb = trigger ? imageChild(trigger) : null;
+      // A trigger that unmounted, or one a scroll container still clips after
+      // revealing it, has no box to land on. Fade instead of flying somewhere wrong.
+      const revealed = item && thumb && isRendered(trigger) ? revealElement(trigger) : "hidden";
       const flick = flickRef.current;
 
       flickRef.current = 0;
-
-      if (fade) {
-        flightRef.current?.destroy();
-        flightRef.current = null;
-        const fadeDuration = motionDuration(200, slowRef.current, reducedRef.current);
-
-        fadeBackdrop(opacityOf(backdropRef.current), 0, fadeDuration);
-        fadePopup(opacityOf(popupRef.current), 0, fadeDuration, () => {
-          if (!alive || tokenRef.current !== token) return;
-
-          endSample();
-          finishClose();
-        });
-
-        return;
-      }
-
-      const slide = slides.current[itemIndex];
 
       const pull = Number(
         document.documentElement.style.getPropertyValue("--ombra-pull-live") || "0",
@@ -863,6 +895,42 @@ export function OmbraGallery({
       // from the scrim and chrome it reached instead of jumping to full strength.
       const scrimFrom = opacityOf(backdropRef.current);
       const popupFrom = opacityOf(popupRef.current);
+
+      if (driverRef.current === "fade" || revealed === "hidden" || !item || !thumb) {
+        const fadeDuration = motionDuration(200, slowRef.current, reducedRef.current);
+        const flying = flightRef.current;
+
+        flightRef.current = null;
+
+        // A photo still in the air fades where it is, so it never jumps to rest.
+        if (flying) {
+          const hero = images.current[itemIndex];
+
+          if (hero) hero.style.visibility = "hidden";
+
+          retiringFlightRef.current?.destroy();
+          retiringFlightRef.current = flying;
+          retireFlight(flying, fadeDuration);
+        }
+
+        // Same as the morph: keep the sheet and scrim where a pull released them.
+        document.documentElement.style.setProperty("--ombra-pull-live", "0");
+        holdPulledSheet(pull);
+        fadeBackdrop(scrimFrom, 0, fadeDuration);
+        fadePopup(popupFrom, 0, fadeDuration, () => {
+          if (!alive || tokenRef.current !== token) return;
+
+          endSample();
+          finishClose();
+        });
+
+        return;
+      }
+
+      // Revealing it may have brought a thumbnail the page had not decoded yet.
+      void thumb.decode().catch(() => undefined);
+
+      const slide = slides.current[itemIndex];
 
       const pulledBox = slide
         ? containBox(boxFromRect(slide.getBoundingClientRect()), item.width / item.height)
@@ -915,23 +983,55 @@ export function OmbraGallery({
       }
 
       if (!flight) {
-        flight = mountFlight(home, from, cachedSrc(itemIndex));
+        flight = mountFlight(home, from, shownSrc(itemIndex));
         flightRef.current = flight;
       }
 
-      void playFlight(flight, from, endPose, timing.duration, timing.easing).then((completed) => {
+      let target = thumbBox;
+
+      // The clone holds the thumbnail's pose until the thumbnail can paint.
+      const land = (completed: boolean) => {
         if (!alive || tokenRef.current !== token || !completed) return;
 
-        showThumb(itemIndex);
-        flightRef.current?.destroy();
-        flightRef.current = null;
-        endSample();
-        finishClose();
+        void whenDecoded(thumb, DECODE_WAIT_MS).then(() => {
+          if (!alive || tokenRef.current !== token) return;
+
+          showThumb(itemIndex);
+          flightRef.current?.destroy();
+          flightRef.current = null;
+          endSample();
+          finishClose();
+        });
+      };
+
+      void playFlight(flight, from, endPose, timing.duration, timing.easing).then(land);
+
+      // A page that scrolls or a viewport that resizes mid-close moves the thumbnail.
+      // Fly the rest of the way to where it is now instead of its old coordinates.
+      followLayout(() => {
+        if (flightRef.current !== flight) return;
+
+        const next = boxFromRect(thumb.getBoundingClientRect());
+        const remaining = flightRemaining(flight);
+
+        if (remaining <= 0 || boxDistance(next, target) < 0.5) return;
+
+        target = next;
+
+        const nextCrop = coverCrop(item.width, item.height, next.width, next.height);
+
+        void playFlight(
+          flight,
+          flight.hold(),
+          poseBetween(next, home, nextCrop),
+          remaining,
+          timing.easing,
+        ).then(land);
       });
 
       armCloseInput(
         () =>
-          boxDistance(flightVisibleBox(flight), thumbBox) < ARRIVED_PX &&
+          boxDistance(flightVisibleBox(flight), target) < ARRIVED_PX &&
           opacityOf(backdropRef.current) < FADED_OPACITY &&
           opacityOf(popupRef.current) < FADED_OPACITY,
         () => {
@@ -973,6 +1073,50 @@ export function OmbraGallery({
     const item = items[itemIndex];
 
     return thumb?.currentSrc || item?.thumbSrc || "";
+  }
+
+  /** The source the viewer shows for a photo, which is decoded, or the thumbnail's. */
+  function shownSrc(itemIndex: number): string {
+    const hero = images.current[itemIndex];
+
+    if (hero?.complete && hero.naturalWidth > 0 && hero.currentSrc) return hero.currentSrc;
+
+    return cachedSrc(itemIndex);
+  }
+
+  function thumbnailBox(itemIndex: number): Box | null {
+    const trigger = triggers.current[itemIndex];
+    const thumb = trigger ? imageChild(trigger) : null;
+
+    if (!thumb || !isRendered(trigger)) return null;
+
+    return boxFromRect(thumb.getBoundingClientRect());
+  }
+
+  /** The current slide's trigger, or the nearest one still on the page if it is gone. */
+  function focusTarget(): HTMLButtonElement | null {
+    const list = triggers.current;
+    const current = indexRef.current;
+
+    for (let distance = 0; distance < list.length; distance += 1) {
+      for (const candidate of [current - distance, current + distance]) {
+        const trigger = list[candidate];
+
+        if (isRendered(trigger)) return trigger;
+      }
+    }
+
+    return null;
+  }
+
+  function stopFollow() {
+    stopFollowRef.current?.();
+    stopFollowRef.current = null;
+  }
+
+  function followLayout(changed: () => void) {
+    stopFollow();
+    stopFollowRef.current = watchLayoutShift(popupRef.current, changed);
   }
 
   function hideThumb(itemIndex: number) {
@@ -1072,6 +1216,7 @@ export function OmbraGallery({
 
   function settleOpen(itemIndex: number) {
     stopTrackWatch();
+    stopFollow();
     heroMorphRef.current = null;
     showThumb(itemIndex);
     flightRef.current?.destroy();
@@ -1150,6 +1295,7 @@ export function OmbraGallery({
     }
 
     revealHero(hero, flight.image.src);
+    stopFollow();
     flight.destroy();
     flightRef.current = null;
     heroMorphRef.current = { index: itemIndex, hero, animations };
@@ -1380,6 +1526,7 @@ export function OmbraGallery({
   const restoreFocusRef = useRef(false);
 
   function finishClose() {
+    stopFollow();
     clearSheetHold();
     document.documentElement.style.setProperty("--ombra-pull-live", "0");
 
@@ -1405,12 +1552,25 @@ export function OmbraGallery({
     if (!restoreFocusRef.current) return;
 
     restoreFocusRef.current = false;
-    const trigger = triggers.current[indexRef.current];
+    const trigger = focusTarget();
 
     requestAnimationFrame(() => {
-      trigger?.focus();
+      // The close already revealed its own trigger. A stand-in for one that is
+      // gone must not scroll the page once the viewer has faded.
+      trigger?.focus({ preventScroll: true });
     });
   }, [phase]);
+
+  /**
+   * Base UI focuses the close button without `preventScroll`, which scrolled the page
+   * under the viewer to the end of the document, where the portal lives. The close
+   * then had to scroll the page back to find its thumbnail, and lost the reader's place.
+   */
+  function focusInitial() {
+    closeRef.current?.focus({ preventScroll: true });
+
+    return false;
+  }
 
   function stopCloseInput() {
     closeInputRef.current?.();
@@ -1512,7 +1672,12 @@ export function OmbraGallery({
     if (!trigger || !thumb) return;
 
     vtRef.current?.skipTransition();
-    driverRef.current = resolveMorphEngine(engineRef.current, reducedRef.current);
+    // A thumbnail mostly cut off by a scroll container would fly out with its hidden
+    // part showing on the first frame, so it fades in instead.
+    driverRef.current = resolveMorphEngine(
+      engineRef.current,
+      reducedRef.current || !mostlyUnclipped(trigger),
+    );
     originRef.current = boxFromRect(thumb.getBoundingClientRect());
 
     if (!handoff && driverRef.current === "vt" && !flightRef.current) {
@@ -1831,8 +1996,8 @@ export function OmbraGallery({
             data-phase={phase}
             data-zoomed={zoom.zoomed ? "true" : "false"}
             data-pulling={pulling ? "true" : "false"}
-            initialFocus={closeRef}
-            finalFocus={() => triggers.current[indexRef.current] ?? true}
+            initialFocus={focusInitial}
+            finalFocus={() => focusTarget() ?? true}
             onKeyDown={onKeyDown}
             className={cn(
               // pan-x pan-y without pinch-zoom: the page under the viewer cannot pinch-zoom.
