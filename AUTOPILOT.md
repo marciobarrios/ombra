@@ -54,6 +54,15 @@ pnpm test:e2e       # needs `pnpm exec playwright install chromium webkit` once
   lifecycle, engine hand-offs): Mermaid `stateDiagram-v2` of the events and
   transitions, before and after.
 
+## Vercel Preview
+
+- Depth: `full`. The docs site has no backend or user data, so drive the
+  interactions on the Preview too.
+- Production (the "before" side) is the live docs site from `main`.
+- Open the Preview in the iOS Simulator's Safari as well as `agent-browser`:
+  it's the closest automated check to a real iPhone, since desktop WebKit
+  is not iOS Safari. Release the device with `device_close` afterwards.
+
 ## Merge rules
 
 Auto-merge allowed at **low** risk when all checks are green. Never auto-merge
