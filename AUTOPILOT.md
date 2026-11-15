@@ -9,6 +9,10 @@ Everything in `AGENTS.md` still applies (stack, state rules, Linear and PR rules
 - Linear team: MAR. Confirm the issue belongs to Ombra before starting.
 - Package manager: pnpm 10 on Node 24 (`.nvmrc`). Put the Node 24 bin first on `PATH`.
 
+## Worktree setup
+
+No local env files to copy. Run `pnpm install --frozen-lockfile`.
+
 ## Commands
 
 Match CI (`.github/workflows/ci.yml`). Run all of these before opening the PR:
