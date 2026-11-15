@@ -2,7 +2,7 @@
 
 Ombra's public API should let the caller assemble a lightbox from React components. Layout, media, captions, and controls belong in JSX. Props configure the behavior of the part receiving them.
 
-This is the target contract, not an implemented API. The current `OmbraGallery` remains a morph and gesture spike. The names and examples below describe the next registry API.
+This is the target contract, not an implemented API. The current `OmbraGallery` remains a morph and gesture spike. The names and examples below describe the next registry API. `OmbraRoot` and its state contract (controlled and uncontrolled open and active item, stable IDs, registration behaviour) are implemented, and `OmbraGallery` runs on it; the other parts are not yet.
 
 Implementation is tracked in [MAR-64](https://linear.app/marciobarrios/issue/MAR-64/migrate-the-lightbox-spike-to-composable-primitives-and-gallery), in Ombra's v0.1 MVP milestone. The [Linear architecture document](https://linear.app/marciobarrios/document/ombra-composition-architecture-primitives-styled-parts-and-recipes-e67e6acc5788) records the same recommendation for project planning.
 
