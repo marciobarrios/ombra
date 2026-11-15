@@ -4,11 +4,14 @@ import { useEffect, useReducer, useRef } from "react";
 
 import { OmbraGallery } from "../../../../registry/ombra/ombra-gallery";
 import type { MorphEngine } from "../../../../registry/ombra/types";
+import { useReducedMotion } from "../../../../registry/ombra/use-reduced-motion";
 
 import { Bench } from "./bench";
 import type { BenchSampleListener } from "./bench";
 
+import { frameReadoutReducer, initialFrameReadout } from "./frame-readout";
 import { photos } from "./photos";
+import { SpikeControls } from "./spike-controls";
 import { ZoomDiagnostics } from "./zoom-diagnostics";
 
 type Settings = { engine: MorphEngine; slow: boolean; spring: boolean };
@@ -55,6 +58,15 @@ export function SpikeApp({
     dispatch({ type: "engine-changed", engine: next });
   };
 
+  const [readout, sendReadout] = useReducer(frameReadoutReducer, initialFrameReadout);
+  const reduced = useReducedMotion();
+  const effectiveEngine: MorphEngine = reduced ? "fade" : engine;
+  // Tallies start over when any of these change, so each test row starts at zero.
+  const readoutCondition = `${effectiveEngine}|${slow}|${spring}`;
+  const readoutConditionRef = useRef(readoutCondition);
+
+  readoutConditionRef.current = readoutCondition;
+
   const benchListener = useRef<BenchSampleListener | null>(null);
 
   useEffect(() => {
@@ -94,11 +106,12 @@ export function SpikeApp({
         />
       )}
       <div className="mt-12">
-        <OmbraGallery
-          items={photos}
+        <SpikeControls
           engine={engine}
+          effectiveEngine={effectiveEngine}
           slow={slow}
           spring={spring}
+          samples={readout.condition === readoutCondition ? readout : {}}
           onEngineChange={setEngine}
           onSlowChange={(next) => {
             dispatch({ type: "slow-changed", slow: next });
@@ -106,7 +119,16 @@ export function SpikeApp({
           onSpringChange={(next) => {
             dispatch({ type: "spring-changed", spring: next });
           }}
-          onFrameSample={(kind, sample) => benchListener.current?.(kind, sample)}
+        />
+        <OmbraGallery
+          items={photos}
+          engine={engine}
+          slow={slow}
+          spring={spring}
+          onFrameSample={(kind, sample) => {
+            benchListener.current?.(kind, sample);
+            sendReadout({ type: "sampled", kind, condition: readoutConditionRef.current, sample });
+          }}
         />
       </div>
     </main>

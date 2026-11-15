@@ -32,6 +32,22 @@ test.describe("spike viewer", () => {
     await expect(page.locator("[data-slot=ombra-trigger]").last()).toBeFocused();
   });
 
+  test("renders the experiment controls outside the registry gallery", async ({ page }) => {
+    await page.goto("/spike?engine=flip");
+
+    const gallery = page.locator("[data-slot=ombra-root]");
+
+    await expect(page.locator("[data-slot=ombra-engine]")).toBeVisible();
+    await expect(page.locator("[data-slot=ombra-readout]")).toBeVisible();
+    await expect(page.locator("[data-slot=ombra-spring]")).toBeVisible();
+    await expect(page.locator("[data-slot=ombra-slow]")).toBeVisible();
+    await expect(
+      gallery.locator(
+        "[data-slot=ombra-engine], [data-slot=ombra-readout], [data-slot=ombra-spring], [data-slot=ombra-slow]",
+      ),
+    ).toHaveCount(0);
+  });
+
   test("keeps separate frame readouts for the last open and close", async ({ page }) => {
     // Slow motion gives the close enough frames for a readout where rAF runs slowly (CI WebKit).
     await page.goto("/spike?engine=flip&slow=1");

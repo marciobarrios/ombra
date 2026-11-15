@@ -1,11 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-import {
-  frameReadoutReducer,
-  initialFrameReadout,
-  startFrameSampler,
-  summarizeFrames,
-} from "../registry/ombra/frame-sampler";
+import { frameReadoutReducer, initialFrameReadout } from "../apps/docs/app/spike/frame-readout";
+import { startFrameSampler, summarizeFrames } from "../registry/ombra/frame-sampler";
 
 test.describe("frame summary", () => {
   test("does not count steady 30 Hz frames as dropped", () => {
