@@ -6,7 +6,7 @@ Ombra is a shadcn registry, not an npm component library. Users copy files. Do n
 
 - Confirm that each Linear issue belongs to Ombra and matches the change before linking it.
 - For every issue fully resolved by a PR, include a separate `Fixes MAR-123` line in the PR description, replacing the example with the actual issue identifier. A bare ID, branch name, or PR comment is not a substitute for an explicit closing keyword in the description.
-- For partial work, investigations with remaining acceptance criteria, or related follow-ups, use `Refs MAR-123` (contributing work) or `Relates to MAR-123` (context only). Do not use a closing keyword until the PR completes the issue's scope.
+- For partial work, investigations with remaining acceptance criteria, or related follow-ups, use `Refs MAR-123` (contributing work) or `Relates to MAR-123` (context only). Gate issues are the exception: see Real-iPhone verification. Do not use a closing keyword until the PR completes the issue's scope.
 - Before handing off a PR, verify its saved description contains the intended closing lines and the issues are linked in Linear. Automatic completion requires the team's GitHub integration to map **On PR or commit merge** to **Done**; when multiple PRs implement one issue, completion waits for the final linked PR. See [Linear's GitHub integration docs](https://linear.app/docs/github).
 - When reconciling stale issues, verify the implementing PRs have merged and the issue's acceptance criteria are satisfied, then mark the issue Done with links to the merged PRs. Keep issues open when implementation or required validation remains.
 
@@ -17,6 +17,7 @@ Ombra is a shadcn registry, not an npm component library. Users copy files. Do n
 - When an issue has a check only a real device can judge, add it to its milestone's gate checklist and relate the two issues. Do not add "confirm on a real iPhone" to the feature issue's acceptance criteria.
 - Keep a real-device check in a feature issue only when the issue cannot be judged at all without it, and say why in the issue.
 - A failed gate check gets its own bug issue, linked from the gate.
+- Never mention a gate issue in a PR description or commit message, not even with `Refs` or `Relates to`. Linear's GitHub integration moves any issue a new PR mentions to In Progress, and a gate must stay in Backlog until its session runs. Note the PR in a comment on the gate instead.
 
 ## Simulators and emulators
 
