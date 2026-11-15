@@ -112,6 +112,7 @@ export function measureIdleInterval(frames = 30): Promise<number> {
 /** rAF sampler that works in Safari, which has no long-animation-frame API. */
 export function startFrameSampler(): FrameSampler {
   const deltas: number[] = [];
+  const started = performance.now();
   let last: number | null = null;
   let active = true;
 
@@ -130,6 +131,13 @@ export function startFrameSampler(): FrameSampler {
   return {
     stop() {
       active = false;
+
+      // A browser that painted at most once during the morph left no delta. The whole
+      // morph was then one long frame: report it, rather than an empty sample that hides
+      // the worst run and leaves the benchmark waiting for it.
+      const elapsed = performance.now() - started;
+
+      if (deltas.length === 0 && elapsed > 0) return summarizeFrames([elapsed]);
 
       return summarizeFrames(deltas);
     },

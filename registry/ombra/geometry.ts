@@ -119,18 +119,88 @@ export function boxContains(box: Box, x: number, y: number): boolean {
   return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
 }
 
-export function mostlyVisible(element: HTMLElement): boolean {
+/** Whether an element is in the document and laid out, so it has a box to morph to. */
+export function isRendered(element: HTMLElement | null | undefined): element is HTMLElement {
+  return Boolean(element?.isConnected && element.getClientRects().length > 0);
+}
+
+function clipsOverflow(style: CSSStyleDeclaration): boolean {
+  return style.overflowX !== "visible" || style.overflowY !== "visible";
+}
+
+/**
+ * The part of an element's box that is not clipped by an ancestor with overflow
+ * other than visible, and, when `viewport` is set, by the layout viewport.
+ */
+function unclippedBox(element: HTMLElement, viewport: boolean): Box | null {
+  const rect = element.getBoundingClientRect();
+  let left = rect.left;
+  let top = rect.top;
+  let right = rect.right;
+  let bottom = rect.bottom;
+
+  for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+    if (parent === document.body || parent === document.documentElement) break;
+
+    const style = getComputedStyle(parent);
+
+    if (clipsOverflow(style)) {
+      const clip = parent.getBoundingClientRect();
+
+      left = Math.max(left, clip.left);
+      top = Math.max(top, clip.top);
+      right = Math.min(right, clip.right);
+      bottom = Math.min(bottom, clip.bottom);
+    }
+
+    // Ancestors of a fixed box do not clip it.
+    if (style.position === "fixed") break;
+  }
+
+  if (viewport) {
+    left = Math.max(left, 0);
+    top = Math.max(top, 0);
+    right = Math.min(right, window.innerWidth);
+    bottom = Math.min(bottom, window.innerHeight);
+  }
+
+  if (right <= left || bottom <= top) return null;
+
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+function mostlyShown(element: HTMLElement, viewport: boolean): boolean {
+  if (!isRendered(element)) return false;
+
   const rect = element.getBoundingClientRect();
 
   if (rect.width <= 0 || rect.height <= 0) return false;
 
-  const visibleWidth = Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0);
-  const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
+  const visible = unclippedBox(element, viewport);
 
-  return visibleWidth >= rect.width * 0.55 && visibleHeight >= rect.height * 0.55;
+  if (!visible) return false;
+
+  return visible.width >= rect.width * 0.55 && visible.height >= rect.height * 0.55;
+}
+
+/** At least 55% of each side is on screen and not clipped by a scroll container. */
+export function mostlyVisible(element: HTMLElement): boolean {
+  return mostlyShown(element, true);
+}
+
+/**
+ * At least 55% of each side is not clipped by a scroll container. The viewport
+ * does not count: a photo opening from a thumbnail half off screen still flies
+ * from the right place, but one cut by a carousel's edge would show its hidden part.
+ */
+export function mostlyUnclipped(element: HTMLElement): boolean {
+  return mostlyShown(element, false);
 }
 
 export function revealElement(element: HTMLElement): "ready" | "hidden" {
+  // Scrolling towards an element with no box would move the page for nothing.
+  if (!isRendered(element)) return "hidden";
+
   if (mostlyVisible(element)) return "ready";
 
   element.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });

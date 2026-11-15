@@ -222,6 +222,9 @@ export function mountFlight(home: Box, pose: FlipPose, src: string): Flight {
   });
 
   image.alt = "";
+  // The source is one the page already shows, so its bitmap is ready: ask for it
+  // on the first frame instead of a blank box while it decodes again.
+  image.decoding = "sync";
   image.src = src;
   image.draggable = false;
   Object.assign(image.style, {
@@ -350,6 +353,71 @@ export function flightVisibleBox(flight: Flight): Box {
   const rect = flight.element.getBoundingClientRect();
 
   return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+}
+
+/** Milliseconds left on a flight's animation, or 0 if it is not running. */
+export function flightRemaining(flight: Flight): number {
+  const effect = flight.animation?.effect;
+
+  if (!effect) return 0;
+
+  const { endTime, localTime } = effect.getComputedTiming();
+
+  return Math.max(0, Number(endTime) - Number(localTime ?? 0));
+}
+
+/**
+ * Calls `changed` once per frame after the viewport resizes or anything outside
+ * `ignore` scrolls: an address bar collapsing, a page scrolled under the viewer.
+ * Returns a stop.
+ */
+export function watchLayoutShift(ignore: Element | null, changed: () => void): () => void {
+  let frame = 0;
+
+  const schedule = (event: Event) => {
+    if (ignore && event.target instanceof Node && ignore.contains(event.target)) return;
+
+    if (frame) return;
+
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      changed();
+    });
+  };
+
+  const viewport = window.visualViewport;
+  const options = { capture: true, passive: true };
+
+  window.addEventListener("resize", schedule);
+  document.addEventListener("scroll", schedule, options);
+  viewport?.addEventListener("resize", schedule);
+  viewport?.addEventListener("scroll", schedule);
+
+  return () => {
+    cancelAnimationFrame(frame);
+    window.removeEventListener("resize", schedule);
+    document.removeEventListener("scroll", schedule, options);
+    viewport?.removeEventListener("resize", schedule);
+    viewport?.removeEventListener("scroll", schedule);
+  };
+}
+
+/**
+ * Resolves once `image` can paint without a blank frame, or after `limit` ms so a
+ * slow network never holds the morph. A decode error resolves too.
+ */
+export function whenDecoded(image: HTMLImageElement, limit: number): Promise<void> {
+  const decoded = image.decode().then(
+    () => undefined,
+    () => undefined,
+  );
+
+  return Promise.race([
+    decoded,
+    new Promise<void>((resolve) => {
+      window.setTimeout(resolve, limit);
+    }),
+  ]);
 }
 
 /** Fades a flight out where it is, then removes it. */
