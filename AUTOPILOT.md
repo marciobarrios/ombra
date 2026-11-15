@@ -69,7 +69,7 @@ pnpm test:e2e       # needs `pnpm exec playwright install chromium webkit` once
 
 ## Production monitoring
 
-- Production URL: https://ombra-navy.vercel.app (Vercel project `ombra`).
+- Production URL: https://www.useombra.dev (Vercel project `ombra`).
 - After a merge: deployment Ready, smoke the home page, `/spike`, and the
   pages the issue touched (mobile and desktop), then Vercel runtime errors
   for 15 minutes.
