@@ -9,6 +9,10 @@ Everything in `AGENTS.md` still applies (stack, state rules, Linear and PR rules
 - Linear team: MAR. Confirm the issue belongs to Ombra before starting.
 - Package manager: pnpm 10 on Node 24 (`.nvmrc`). Put the Node 24 bin first on `PATH`.
 
+## Worktree setup
+
+No local env files to copy. Run `pnpm install --frozen-lockfile`.
+
 ## Commands
 
 Match CI (`.github/workflows/ci.yml`). Run all of these before opening the PR:
@@ -62,6 +66,14 @@ pnpm test:e2e       # needs `pnpm exec playwright install chromium webkit` once
 - Open the Preview in the iOS Simulator's Safari as well as `agent-browser`:
   it's the closest automated check to a real iPhone, since desktop WebKit
   is not iOS Safari. Release the device with `device_close` afterwards.
+
+## Production monitoring
+
+- Production URL: https://www.useombra.dev (Vercel project `ombra`).
+- After a merge: deployment Ready, smoke the home page, `/spike`, and the
+  pages the issue touched (mobile and desktop), then Vercel runtime errors
+  for 15 minutes.
+- No logged-in area, so no test account.
 
 ## Merge rules
 
