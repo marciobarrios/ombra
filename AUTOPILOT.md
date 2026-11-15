@@ -63,6 +63,14 @@ pnpm test:e2e       # needs `pnpm exec playwright install chromium webkit` once
   it's the closest automated check to a real iPhone, since desktop WebKit
   is not iOS Safari. Release the device with `device_close` afterwards.
 
+## Production monitoring
+
+- Production URL: https://ombra-navy.vercel.app (Vercel project `ombra`).
+- After a merge: deployment Ready, smoke the home page, `/spike`, and the
+  pages the issue touched (mobile and desktop), then Vercel runtime errors
+  for 15 minutes.
+- No logged-in area, so no test account.
+
 ## Merge rules
 
 Auto-merge allowed at **low** risk when all checks are green. Never auto-merge
