@@ -25,7 +25,7 @@ import {
 } from "./geometry";
 import { startFrameSampler } from "./frame-sampler";
 import type { FrameSampler } from "./frame-sampler";
-import { galleryReducer, initialGalleryState, isOpen } from "./gallery-state";
+import { isOpen } from "./gallery-state";
 import {
   MORPH_EASING,
   MORPH_STYLES,
@@ -51,6 +51,8 @@ import {
   whenDecoded,
 } from "./morph";
 import type { Flight } from "./morph";
+import { OmbraRoot, useOmbraRoot } from "./ombra-root";
+import type { OmbraRootProps } from "./ombra-root";
 import { MORPH_SPRING, normalizeVelocity, springCurve } from "./spring";
 import type { Box, FlipPose, FrameSample, MorphEngine, MorphKind, OmbraItem } from "./types";
 import { motionDuration } from "./types";
@@ -163,7 +165,8 @@ const SWIPE_START_PX = 2;
 // swap. A cached bitmap is ready within a frame; this only caps a slow network.
 const DECODE_WAIT_MS = 120;
 
-export type OmbraGalleryProps = {
+export type OmbraGalleryProps = Omit<OmbraRootProps, "children"> & {
+  /** Each item's `id` is its stable identity: a reorder keeps the open photo open. */
   items: readonly OmbraItem[];
   /**
    * The morph between a thumbnail and the viewer. FLIP is the default (MAR-12). A
@@ -260,16 +263,47 @@ function IconButton({
 }
 
 export function OmbraGallery({
+  open,
+  defaultOpen,
+  onOpenChange,
+  activeId,
+  defaultActiveId,
+  onActiveIdChange,
+  ...viewer
+}: OmbraGalleryProps) {
+  return (
+    <OmbraRoot
+      open={open}
+      defaultOpen={defaultOpen}
+      onOpenChange={onOpenChange}
+      activeId={activeId}
+      defaultActiveId={defaultActiveId}
+      onActiveIdChange={onActiveIdChange}
+    >
+      <GalleryViewer {...viewer} />
+    </OmbraRoot>
+  );
+}
+
+function GalleryViewer({
   items,
   engine = "flip",
   slow = false,
   spring = false,
   onFrameSample,
   className,
-}: OmbraGalleryProps) {
+}: Omit<OmbraGalleryProps, keyof OmbraRootProps>) {
   const reduced = useReducedMotion();
-  const [gallery, send] = useReducerWithBailout(galleryReducer, initialGalleryState);
-  const { phase, index, epoch: animEpoch, releaseScroll } = gallery;
+  const root = useOmbraRoot();
+  const { state: gallery, send, registerItem } = root;
+  const { phase, activeId, epoch: animEpoch, releaseScroll } = gallery;
+
+  // Positions still address the DOM lists below; the active ID chooses which one.
+  const index = Math.max(
+    0,
+    items.findIndex((item) => item.id === activeId),
+  );
+
   const open = isOpen(gallery);
   const [view, sendView] = useReducerWithBailout(viewReducer, initialViewState);
   const { sharpIds, stripOverflows, trackNode } = view;
@@ -312,11 +346,15 @@ export function OmbraGallery({
   const samplerRef = useRef<FrameSampler | null>(null);
   const sampleKindRef = useRef<MorphKind>("open");
   const vtRef = useRef<ViewTransition | null>(null);
-  const seenIndex = useRef(index);
+  const seenId = useRef(activeId);
+  const rootRef = useRef(root);
+  const itemsRef = useRef(items);
   const navigationTarget = useRef<number | null>(null);
 
   phaseRef.current = phase;
   indexRef.current = index;
+  rootRef.current = root;
+  itemsRef.current = items;
   engineRef.current = engine;
   slowRef.current = slow;
   springRef.current = spring;
@@ -339,7 +377,7 @@ export function OmbraGallery({
       block: "nearest",
       behavior: reducedRef.current ? "auto" : "smooth",
     });
-    send({ type: "index-changed", index: nearest });
+    selectIndex(nearest);
   };
 
   const zoom = useZoom(
@@ -370,7 +408,7 @@ export function OmbraGallery({
     spring,
     (velocity) => {
       flickRef.current = velocity;
-      requestClose();
+      rootRef.current.requestClose();
     },
   );
 
@@ -379,11 +417,64 @@ export function OmbraGallery({
   zoomRef.current = zoom;
 
   useLayoutEffect(() => {
-    if (seenIndex.current === index) return;
+    if (seenId.current === activeId) return;
 
-    seenIndex.current = index;
+    seenId.current = activeId;
     zoomRef.current.reset();
-  }, [index]);
+  }, [activeId]);
+
+  // The trigger grid is always mounted, so it registers the collection in document order.
+  useLayoutEffect(() => {
+    const stops = items.map((item, itemIndex) =>
+      registerItem(item.id, triggers.current[itemIndex] ?? null),
+    );
+
+    return () => {
+      for (const stop of stops) stop();
+    };
+  }, [items, registerItem]);
+
+  useLayoutEffect(() => {
+    root.driverRef.current = {
+      open: (itemId, intent) => {
+        const nextIndex = itemsRef.current.findIndex((item) => item.id === itemId);
+
+        if (nextIndex < 0) return false;
+
+        if (intent.reason === "reverse" || phaseRef.current === "closing" || vtClosingRef.current) {
+          return reopenFromClose(nextIndex, intent.reason === "reverse" ? intent.speed : 0);
+        }
+
+        return openAt(nextIndex);
+      },
+      close: startClose,
+    };
+  });
+
+  useLayoutEffect(() => {
+    const driver = root.driverRef;
+
+    return () => {
+      driver.current = null;
+    };
+  }, [root.driverRef]);
+
+  // A reorder or a removal moves the active slide under the track. Put it back at once.
+  const itemsKey = items.map((item) => item.id).join("\n");
+
+  useLayoutEffect(() => {
+    snapToActive("auto");
+    // Keyed on the order, not the array: a new array with the same IDs moves nothing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemsKey]);
+
+  // A controlled parent can choose another item while the viewer is open.
+  useLayoutEffect(() => {
+    if (navigationTarget.current !== null) return;
+
+    snapToActive(reducedRef.current ? "auto" : "smooth");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -503,15 +594,20 @@ export function OmbraGallery({
     const publish = () => {
       if (zoomGestureRef.current) return;
 
-      const next = indexFromScroll(node);
-
-      send({ type: "index-changed", index: next });
+      selectIndex(indexFromScroll(node));
     };
 
     const settle = () => {
       settledRef.current = true;
       navigationTarget.current = null;
       publish();
+      // A controlled parent may keep the active item. Glide back to it once the parent
+      // has had its render, rather than rest on a slide it refused.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          snapToActive(reducedRef.current ? "auto" : "smooth");
+        });
+      });
     };
 
     const onScroll = () => {
@@ -1439,11 +1535,11 @@ export function OmbraGallery({
     stopCloseInput();
 
     const stopInput = listenForCloseInput({
-      onReverse: (speed) => reopenFromClose(indexRef.current, speed),
+      onReverse: (speed) => reopenItem(indexRef.current, speed),
       onTap: (x, y) => {
         const itemIndex = closeTapTarget(x, y);
 
-        return itemIndex !== null && reopenFromClose(itemIndex, 0);
+        return itemIndex !== null && reopenItem(itemIndex, 0);
       },
     });
 
@@ -1453,6 +1549,13 @@ export function OmbraGallery({
       stopInput();
       stopWatching();
     };
+  }
+
+  /** A reversal is an open request too, so a controlled parent can refuse it. */
+  function reopenItem(itemIndex: number, speed: number): boolean {
+    const item = itemsRef.current[itemIndex];
+
+    return item !== undefined && rootRef.current.requestOpen(item.id, { reason: "reverse", speed });
   }
 
   function closeTapTarget(x: number, y: number): number | null {
@@ -1516,16 +1619,37 @@ export function OmbraGallery({
     flickRef.current = same ? -speed : 0;
     resumeRef.current = resume;
     document.documentElement.style.setProperty("--ombra-pull-live", "0");
-    openAt(nextIndex, true);
 
-    return true;
+    return openAt(nextIndex, true);
   }
 
-  function openAt(nextIndex: number, handoff = false) {
+  function selectIndex(itemIndex: number) {
+    const item = itemsRef.current[itemIndex];
+
+    if (item) rootRef.current.requestActive(item.id);
+  }
+
+  /** Scrolls the track to the root's active item when it rests on another slide. */
+  function snapToActive(behavior: ScrollBehavior) {
+    const track = trackRef.current;
+    const activeItem = rootRef.current.latestActiveId();
+    const itemIndex = itemsRef.current.findIndex((item) => item.id === activeItem);
+
+    if (!track || itemIndex < 0 || phaseRef.current !== "open") return;
+
+    if (!settledRef.current || zoomGestureRef.current || zoomRef.current.zoomed) return;
+
+    if (indexFromScroll(track) === itemIndex) return;
+
+    scrollTrackTo(itemIndex, behavior);
+  }
+
+  function openAt(nextIndex: number, handoff = false): boolean {
     const trigger = triggers.current[nextIndex];
     const thumb = trigger ? imageChild(trigger) : null;
+    const item = items[nextIndex];
 
-    if (!trigger || !thumb) return;
+    if (!trigger || !thumb || !item) return false;
 
     vtRef.current?.skipTransition();
     // A thumbnail mostly cut off by a scroll container would fly out with its hidden
@@ -1537,9 +1661,9 @@ export function OmbraGallery({
     originRef.current = boxFromRect(thumb.getBoundingClientRect());
 
     if (!handoff && driverRef.current === "vt" && !flightRef.current) {
-      openWithViewTransition(nextIndex, thumb);
+      openWithViewTransition(nextIndex, item.id, thumb);
 
-      return;
+      return true;
     }
 
     // A clone already in the air keeps flying, and the FLIP effect bails while
@@ -1548,10 +1672,12 @@ export function OmbraGallery({
 
     preserveFlightRef.current = flightRef.current !== null;
     tokenRef.current += 1;
-    send({ type: "open-requested", index: nextIndex, restart: true });
+    send({ type: "open-requested", itemId: item.id, restart: true });
+
+    return true;
   }
 
-  function openWithViewTransition(nextIndex: number, thumb: HTMLImageElement) {
+  function openWithViewTransition(nextIndex: number, itemId: string, thumb: HTMLImageElement) {
     const token = ++tokenRef.current;
     const timing = morphTiming(480, 0);
 
@@ -1566,7 +1692,7 @@ export function OmbraGallery({
     const transition = runViewTransition(() => {
       unnameSharedElement(thumb);
       flushSync(() => {
-        send({ type: "open-requested", index: nextIndex, restart: false });
+        send({ type: "open-requested", itemId, restart: false });
       });
 
       const hero = images.current[nextIndex];
@@ -1615,7 +1741,7 @@ export function OmbraGallery({
     );
   }
 
-  function requestClose() {
+  function startClose() {
     if (phaseRef.current === "closed" || phaseRef.current === "closing") return;
 
     stopTrackWatch();
@@ -1730,7 +1856,7 @@ export function OmbraGallery({
 
     // Smooth scrolling publishes the centered slide as it moves. Selecting the
     // destination now would flash its border before the first scroll event.
-    if (behavior !== "smooth") send({ type: "index-changed", index: nextIndex });
+    if (behavior !== "smooth") selectIndex(nextIndex);
     scrollTrackTo(nextIndex, behavior);
   }
 
@@ -1779,7 +1905,7 @@ export function OmbraGallery({
             type="button"
             data-slot="ombra-trigger"
             aria-haspopup="dialog"
-            onClick={() => openAt(itemIndex)}
+            onClick={() => root.requestOpen(item.id)}
             className="relative mb-3 block w-full break-inside-avoid overflow-hidden rounded-[6px] after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:inset-ring after:inset-ring-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
             style={{ aspectRatio: item.frame }}
           >
@@ -1809,7 +1935,7 @@ export function OmbraGallery({
           if (next) return;
 
           details.preventUnmountOnClose();
-          requestClose();
+          root.requestClose();
         }}
       >
         <Dialog.Portal>
