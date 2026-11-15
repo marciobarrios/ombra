@@ -1109,10 +1109,8 @@ test.describe("spike viewer", () => {
       await expect(page.getByRole("dialog")).toBeHidden();
     });
 
-    test("the swipe's momentum does not scroll the page after the close", async ({ page }) => {
-      await page.emulateMedia({ reducedMotion: "reduce" });
-      await openAndHover(page, "engine=fade");
-
+    /** Logs whether each wheel event was claimed, then sends `deltas` one by one. */
+    async function sendLogged(page: Page, deltas: readonly number[]) {
       await page.evaluate(() => {
         const log: { t: number; prevented: boolean }[] = [];
 
@@ -1122,21 +1120,68 @@ test.describe("spike viewer", () => {
         });
       });
 
-      // Past the threshold, then the tail a trackpad keeps sending.
-      await swipe(page, 0, 30, 30);
+      for (const delta of deltas) {
+        await page.mouse.wheel(0, delta);
+        await page.waitForTimeout(16);
+      }
+
       await expect(page.getByRole("dialog")).toBeHidden();
 
       const log = await page.evaluate(() => window.ombraWheelLog ?? []);
 
-      // A real momentum tail arrives every frame. Under a loaded test runner the
-      // events can arrive far apart, and a gap that long rightly ends the swallow, so
-      // only events that follow the previous one closely must be claimed.
-      const unbroken = log.filter(
-        (entry, index) => index === 0 || entry.t - log[index - 1].t < 250,
-      );
+      expect(log).toHaveLength(deltas.length);
 
-      expect(unbroken.length).toBeGreaterThan(10);
-      expect(unbroken.every((entry) => entry.prevented)).toBe(true);
+      // A real trackpad sends every frame. Under a loaded test runner events can
+      // arrive far apart, and a gap that long rightly ends the swallow on its own,
+      // so a claim is only required of events that follow the previous one closely.
+      return log.map((entry, index) => ({
+        ...entry,
+        unbroken: log.slice(1, index + 1).every((next, at) => next.t - log[at].t < 250),
+      }));
+    }
+
+    // Past the threshold on the third event, then a tail that decays the way a trackpad's does.
+    const close = [40, 40, 40, 40];
+    const tail = [30, 22, 16, 11, 7, 4, 2];
+
+    test("the swipe's momentum does not scroll the page after the close", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await openAndHover(page, "engine=fade");
+
+      const log = await sendLogged(page, [...close, ...tail]);
+
+      expect(log.filter((entry) => entry.unbroken && !entry.prevented)).toEqual([]);
+    });
+
+    test("a scroll started right after the close reaches the page", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await openAndHover(page, "engine=fade");
+
+      // The fingers land again while the tail decays and scroll on: the wheel picks up.
+      const rising = [3, 6, 12, 20, 30, 40, 40, 40];
+      const log = await sendLogged(page, [...close, ...tail, ...rising]);
+      const fresh = log.slice(close.length + tail.length + 2);
+
+      expect(fresh.filter((entry) => entry.prevented)).toEqual([]);
+    });
+
+    test("a scroll the other way right after the close reaches the page", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await openAndHover(page, "engine=fade");
+
+      const log = await sendLogged(page, [...close, 30, 22, -4, -10, -20, -30]);
+
+      expect(log.slice(close.length + 2).filter((entry) => entry.prevented)).toEqual([]);
+    });
+
+    test("mouse wheel notches right after the close reach the page", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await openAndHover(page, "engine=fade");
+
+      // Notches do not decay, so a steady run of them is a scroll, not momentum.
+      const log = await sendLogged(page, [100, 100, 100, 100, 100, 100, 100, 100]);
+
+      expect(log.slice(5).filter((entry) => entry.prevented)).toEqual([]);
     });
   });
 

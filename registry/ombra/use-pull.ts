@@ -21,9 +21,24 @@ const WHEEL_IDLE_MS = 140;
 /**
  * The momentum after a dismissal is swallowed until the wheel goes quiet this long.
  * Longer than the gesture's idle, because a tail that stutters past it would scroll
- * the page, and a scroll swallowed just after a close costs nothing.
+ * the page.
  */
 const MOMENTUM_IDLE_MS = 300;
+
+/**
+ * Momentum only ever slows down. A wheel event this much bigger than the quietest
+ * one so far (times the ratio, plus the pixels) is the fingers scrolling again.
+ */
+const MOMENTUM_RISE_RATIO = 1.5;
+const MOMENTUM_RISE_PX = 4;
+
+/**
+ * This many wheel events in a row that do not slow down, each at least this big,
+ * are a scroll too: mouse wheel notches stay the same size, while momentum shrinks
+ * every frame and only holds steady once it is down to a few pixels.
+ */
+const MOMENTUM_STEADY_EVENTS = 3;
+const MOMENTUM_STEADY_PX = 12;
 
 /** A wheel flick also has to travel this far, so a single fast event cannot close. */
 const WHEEL_FLICK_DISTANCE = 32;
@@ -339,7 +354,7 @@ export function usePull(
 
           if (!lockVertical(dy, event.timeStamp)) {
             window.clearTimeout(wheelTimer);
-            swallowWheelMomentum();
+            swallowWheelMomentum(event.deltaY * unit);
 
             return;
           }
@@ -363,7 +378,7 @@ export function usePull(
       axis = null;
       window.clearTimeout(wheelTimer);
       dispatchPull({ type: "pull-ended" });
-      swallowWheelMomentum();
+      swallowWheelMomentum(event.deltaY * unit);
       dismiss(velocity);
     };
 
@@ -414,19 +429,49 @@ function wheelUnit(event: WheelEvent): number {
  * A trackpad keeps sending momentum after the swipe that closed the viewer. Without
  * this, the tail scrolls the page once the dialog is gone. It outlives the hook,
  * whose listeners unbind as soon as the close starts.
+ *
+ * Only the tail is swallowed. A scroll the person starts right after the close
+ * must reach the page at once, so the swallow ends as soon as the wheel speeds up,
+ * turns around, goes sideways, or stops slowing down, and every later event passes.
+ * `lastDelta` is the closing event's `deltaY`, which the tail continues.
  */
-function swallowWheelMomentum() {
+function swallowWheelMomentum(lastDelta: number) {
   let timer = 0;
+  let quietest = Math.abs(lastDelta);
+  let previous = quietest;
+  let steady = 0;
+  const direction = Math.sign(lastDelta);
 
   const swallow = (event: WheelEvent) => {
     if (event.ctrlKey) return;
 
+    const unit = wheelUnit(event);
+    const delta = event.deltaY * unit;
+    const size = Math.abs(delta);
+
+    steady = size >= previous && size >= MOMENTUM_STEADY_PX ? steady + 1 : 0;
+    previous = size;
+
+    const fresh =
+      size > quietest * MOMENTUM_RISE_RATIO + MOMENTUM_RISE_PX ||
+      (delta !== 0 && Math.sign(delta) !== direction) ||
+      Math.abs(event.deltaX * unit) > size ||
+      steady >= MOMENTUM_STEADY_EVENTS;
+
+    if (fresh) {
+      stop();
+
+      return;
+    }
+
+    quietest = Math.min(quietest, size);
     event.preventDefault();
     window.clearTimeout(timer);
     timer = window.setTimeout(stop, MOMENTUM_IDLE_MS);
   };
 
   const stop = () => {
+    window.clearTimeout(timer);
     window.removeEventListener("wheel", swallow, true);
   };
 
