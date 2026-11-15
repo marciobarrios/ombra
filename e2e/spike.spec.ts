@@ -1,6 +1,14 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import { photos } from "../apps/docs/app/spike/photos";
+
+declare global {
+  interface Window {
+    ombraWheelSeen?: { prevented: number; events: number; pull: number };
+    ombraWheelLog?: { t: number; prevented: boolean }[];
+  }
+}
 
 const photoCount = photos.length;
 
@@ -939,6 +947,197 @@ test.describe("spike viewer", () => {
     await page.mouse.move(x, y + 200, { steps: 8 });
     await page.mouse.up();
     await expect(page.getByRole("dialog")).toBeHidden();
+  });
+
+  test("an upward pull pushes the sheet up and dismisses", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    const track = page.locator("[data-slot=ombra-track]");
+    const box = await track.boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height - Math.min(72, box.height / 3);
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y - 200, { steps: 10 });
+
+    const pulled = await page.evaluate(() => {
+      const backdrop = document.querySelector("[data-slot=ombra-backdrop]");
+      const sheet = document.querySelector("[data-slot=ombra-sheet]");
+
+      const matrix =
+        sheet instanceof HTMLElement ? new DOMMatrix(getComputedStyle(sheet).transform) : null;
+
+      return {
+        progress: Number(document.documentElement.style.getPropertyValue("--ombra-pull-live")),
+        opacity: backdrop instanceof HTMLElement ? Number(getComputedStyle(backdrop).opacity) : 1,
+        ty: matrix?.m42 ?? 0,
+        scale: matrix?.a ?? 1,
+      };
+    });
+
+    expect(pulled.progress).toBeLessThan(-0.1);
+    expect(pulled.ty).toBeLessThan(-24);
+    // The sheet shrinks and the scrim fades by the size of the pull, whichever way it goes.
+    expect(pulled.scale).toBeLessThan(1);
+    expect(pulled.opacity).toBeLessThan(0.92);
+    await page.mouse.up();
+    await expect(page.getByRole("dialog")).toBeHidden();
+  });
+
+  test.describe("trackpad", () => {
+    test.skip(({ isMobile }) => isMobile, "a trackpad swipe is a desktop input");
+
+    async function openAndHover(page: Page, query: string) {
+      await page.goto(`/spike?${query}`);
+      await page.getByRole("button", { name: firstPhoto }).click();
+      await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+      await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+      const box = await page.locator("[data-slot=ombra-track]").boundingBox();
+
+      if (!box) throw new Error("track had no box");
+
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    }
+
+    async function swipe(page: Page, deltaX: number, deltaY: number, events: number) {
+      for (let step = 0; step < events; step += 1) {
+        await page.mouse.wheel(deltaX, deltaY);
+        await page.waitForTimeout(16);
+      }
+    }
+
+    for (const [direction, deltaY] of [
+      ["down", -40],
+      ["up", 40],
+    ] as const) {
+      test(`a two-finger swipe ${direction} dismisses`, async ({ page }) => {
+        await page.emulateMedia({ reducedMotion: "no-preference" });
+        await openAndHover(page, "engine=flip");
+        await swipe(page, 0, deltaY, 8);
+        await expect(page.getByRole("dialog")).toBeHidden();
+      });
+    }
+
+    test("the photo follows the fingers and springs back after a short swipe", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await openAndHover(page, "engine=flip");
+
+      // Short: under the distance threshold, and too short to count as a flick.
+      await swipe(page, 0, -8, 3);
+
+      // The snap-back animates the variable but leaves the inline value until it ends.
+      const progress = await page.evaluate(() =>
+        Number(document.documentElement.style.getPropertyValue("--ombra-pull-live")),
+      );
+
+      // Fingers moving down scroll with negative deltaY, and pull the photo down.
+      expect(progress).toBeGreaterThan(0.01);
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            Number(
+              getComputedStyle(document.documentElement).getPropertyValue("--ombra-pull-live"),
+            ),
+          ),
+        )
+        .toBe(0);
+      await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute(
+        "data-pulling",
+        "false",
+      );
+      await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    });
+
+    test("a horizontal swipe leaves the pull alone", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await openAndHover(page, "engine=flip");
+
+      // Where the scroll lands differs between engines, so watch what the pull does
+      // instead: it must leave every event to the native scroll and never move.
+      await page.evaluate(() => {
+        const seen = { prevented: 0, events: 0, pull: 0 };
+
+        window.ombraWheelSeen = seen;
+        window.addEventListener("wheel", (event) => {
+          seen.events += 1;
+
+          if (event.defaultPrevented) seen.prevented += 1;
+
+          const pull = Number(
+            document.documentElement.style.getPropertyValue("--ombra-pull-live") || "0",
+          );
+
+          seen.pull = Math.max(seen.pull, Math.abs(pull));
+        });
+      });
+      await swipe(page, 40, 6, 12);
+      await page.waitForTimeout(300);
+      await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+
+      const seen = await page.evaluate(() => window.ombraWheelSeen);
+
+      if (!seen) throw new Error("no wheel log");
+
+      expect(seen.events).toBe(12);
+      expect(seen.prevented).toBe(0);
+      expect(seen.pull).toBe(0);
+    });
+
+    test("a pinch does not pull", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await openAndHover(page, "engine=fade");
+      await page.keyboard.down("Control");
+      await swipe(page, 0, 20, 8);
+      await page.keyboard.up("Control");
+      await page.waitForTimeout(300);
+      await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    });
+
+    test("reduced motion still dismisses on a swipe", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await openAndHover(page, "engine=flip");
+      await swipe(page, 0, -40, 8);
+      await expect(page.getByRole("dialog")).toBeHidden();
+    });
+
+    test("the swipe's momentum does not scroll the page after the close", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await openAndHover(page, "engine=fade");
+
+      await page.evaluate(() => {
+        const log: { t: number; prevented: boolean }[] = [];
+
+        window.ombraWheelLog = log;
+        window.addEventListener("wheel", (event) => {
+          log.push({ t: event.timeStamp, prevented: event.defaultPrevented });
+        });
+      });
+
+      // Past the threshold, then the tail a trackpad keeps sending.
+      await swipe(page, 0, 30, 30);
+      await expect(page.getByRole("dialog")).toBeHidden();
+
+      const log = await page.evaluate(() => window.ombraWheelLog ?? []);
+
+      // A real momentum tail arrives every frame. Under a loaded test runner the
+      // events can arrive far apart, and a gap that long rightly ends the swallow, so
+      // only events that follow the previous one closely must be claimed.
+      const unbroken = log.filter(
+        (entry, index) => index === 0 || entry.t - log[index - 1].t < 250,
+      );
+
+      expect(unbroken.length).toBeGreaterThan(10);
+      expect(unbroken.every((entry) => entry.prevented)).toBe(true);
+    });
   });
 
   test("keeps a zoomed photo inside its slide while panning", async ({ page }) => {

@@ -318,7 +318,7 @@ test.describe("swiping while a photo opens", () => {
     });
   }
 
-  test("an upward drag leaves the opening alone", async ({ page }) => {
+  test("an upward drag cuts the opening and closes", async ({ page }) => {
     await openFrozen(page, "engine=flip&slow=1", "flip");
 
     const box = await page.locator("[data-slot=ombra-track]").boundingBox();
@@ -333,10 +333,28 @@ test.describe("swiping while a photo opens", () => {
 
     for (let step = 1; step <= 6; step += 1) await page.mouse.move(x, y - step * 10);
 
+    await expect(viewer(page)).toHaveAttribute("data-phase", "closing");
+    await expect(page.locator("[data-slot=ombra-flight]")).toHaveCount(1);
     await page.mouse.up();
-    await expect(viewer(page)).toHaveAttribute("data-phase", "opening");
     await finishEverything(page);
-    await expect(viewer(page)).toHaveAttribute("data-phase", "open");
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expectOneImageLeft(page);
+  });
+
+  test("a vertical trackpad swipe cuts the opening and closes", async ({ page, isMobile }) => {
+    test.skip(isMobile, "a trackpad swipe is a desktop input");
+    await openFrozen(page, "engine=flip&slow=1", "flip");
+
+    const box = await page.locator("[data-slot=ombra-track]").boundingBox();
+
+    if (!box) throw new Error("no track");
+
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, -12);
+    await expect(viewer(page)).toHaveAttribute("data-phase", "closing");
+    await expect(page.locator("[data-slot=ombra-flight]")).toHaveCount(1);
+    await finishEverything(page);
+    await expect(page.getByRole("dialog")).toBeHidden();
     await expectOneImageLeft(page);
   });
 
