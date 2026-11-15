@@ -106,6 +106,8 @@ export function usePull(
     let startY = 0;
     // Signed vertical travel of the current gesture, positive downward.
     let offset = 0;
+    // Where the photo was when the gesture began, in the same pixels as `offset`.
+    let base = 0;
     let wheelX = 0;
     let wheelTimer = 0;
     const samples: Sample[] = [];
@@ -182,9 +184,13 @@ export function usePull(
       cancelSnap();
       source = kind;
       axis = null;
-      offset = 0;
+      // A gesture that catches a snap-back carries on from where the photo is. A
+      // trackpad's momentum often arrives as a second burst after the wheel went
+      // quiet, and starting it from zero would jump the photo to the centre.
+      base = reducedRef.current ? 0 : readProgress() * window.innerHeight * PULL_SPAN;
+      offset = base;
       samples.length = 0;
-      samples.push({ y: 0, t });
+      samples.push({ y: offset, t });
     };
 
     const record = (t: number) => {
@@ -296,6 +302,7 @@ export function usePull(
 
       const dx = event.clientX - startX;
       const dy = event.clientY - startY;
+      const pulled = base + dy;
 
       if (!axis) {
         if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) return;
@@ -304,7 +311,7 @@ export function usePull(
 
         if (axis === "x") return;
 
-        if (!lockVertical(dy, event.timeStamp)) return;
+        if (!lockVertical(pulled, event.timeStamp)) return;
 
         try {
           track.setPointerCapture(event.pointerId);
@@ -316,7 +323,7 @@ export function usePull(
 
       if (axis !== "y") return;
 
-      follow(dy, event.timeStamp);
+      follow(pulled, event.timeStamp);
     };
 
     const finish = (event: PointerEvent) => {
@@ -347,11 +354,13 @@ export function usePull(
       wheelTimer = window.setTimeout(release, WHEEL_IDLE_MS);
 
       if (!axis) {
-        if (wheelX === 0 && dy === 0) return;
+        const wheelY = dy - base;
+
+        if (wheelX === 0 && wheelY === 0) return;
 
         // A trackpad swipe says its direction in its first event; waiting would let
         // the first pixels of a horizontal swipe go missing from the native scroll.
-        axis = Math.abs(dy) > Math.abs(wheelX) ? "y" : "x";
+        axis = Math.abs(wheelY) > Math.abs(wheelX) ? "y" : "x";
 
         if (axis === "y") {
           event.preventDefault();

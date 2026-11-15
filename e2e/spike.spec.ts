@@ -8,6 +8,7 @@ declare global {
     ombraWheelSeen?: { prevented: number; events: number; pull: number };
     ombraWheelLog?: { t: number; prevented: boolean }[];
     ombraFirstFlight?: Promise<number>;
+    ombraWheelCatch?: { before: number; after: number }[];
   }
 }
 
@@ -1133,6 +1134,44 @@ test.describe("spike viewer", () => {
         "false",
       );
       await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    });
+
+    test("a second burst during the snap-back carries on from where the photo is", async ({
+      page,
+    }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      // Slow motion keeps the snap-back running across the runner's gaps.
+      await openAndHover(page, "engine=flip&slow=1");
+      await page.evaluate(() => {
+        const live = () =>
+          Number(getComputedStyle(document.documentElement).getPropertyValue("--ombra-pull-live"));
+
+        const log: { before: number; after: number }[] = [];
+        let before = 0;
+
+        window.ombraWheelCatch = log;
+        // Capture runs before the track's handler and the bubble listener after it.
+        window.addEventListener("wheel", () => (before = live()), { capture: true });
+        window.addEventListener("wheel", () => log.push({ before, after: live() }));
+      });
+
+      // Fingers up push the photo up, short of the threshold.
+      await swipe(page, 0, 10, 6);
+      // The wheel goes quiet and the photo starts springing back.
+      await page.waitForTimeout(220);
+      // The momentum arrives as a second burst while it springs back.
+      await page.mouse.wheel(0, 10);
+
+      await expect.poll(() => page.evaluate(() => window.ombraWheelCatch?.length ?? 0)).toBe(7);
+
+      const caught = await page.evaluate(() => window.ombraWheelCatch?.[6]);
+
+      if (!caught) throw new Error("the second burst was not logged");
+
+      // The photo was still on its way back, so the catch is meaningful.
+      expect(caught.before).toBeLessThan(-0.02);
+      // It moves on up from there instead of jumping back to the centre first.
+      expect(caught.after).toBeLessThan(caught.before);
     });
 
     test("a horizontal swipe leaves the pull alone", async ({ page }) => {
