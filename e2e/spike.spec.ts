@@ -48,6 +48,28 @@ test.describe("spike viewer", () => {
     ).toHaveCount(0);
   });
 
+  test("starts the readout over when spring or slow motion changes", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=fade");
+
+    const open = page.locator("[data-slot=ombra-readout-open]");
+
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(open).toHaveText(/^Open \d+\.\d ms/);
+    await page.getByRole("button", { name: "Spring" }).click();
+    await expect(open).toHaveText("Open –");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(open).toHaveText(/^Open \d+\.\d ms/);
+    await page.getByRole("button", { name: "Slow motion" }).click();
+    await expect(open).toHaveText("Open –");
+  });
+
   test("keeps separate frame readouts for the last open and close", async ({ page }) => {
     // Slow motion gives the close enough frames for a readout where rAF runs slowly (CI WebKit).
     await page.goto("/spike?engine=flip&slow=1");
