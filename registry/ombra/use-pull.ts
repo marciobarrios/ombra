@@ -169,6 +169,10 @@ export function usePull(
 
           snap = null;
           setProgress(0);
+          // A finished animation that fills forwards keeps overriding the inline
+          // value, so the next pull would set progress the sheet never shows: the
+          // photo would stay in the centre and then close from there.
+          animation.cancel();
         },
         () => undefined,
       );

@@ -7,6 +7,7 @@ declare global {
   interface Window {
     ombraWheelSeen?: { prevented: number; events: number; pull: number };
     ombraWheelLog?: { t: number; prevented: boolean }[];
+    ombraFirstFlight?: Promise<number>;
   }
 }
 
@@ -895,6 +896,83 @@ test.describe("spike viewer", () => {
 
     expect(progress).toBeGreaterThan(0.25);
     await page.mouse.up();
+  });
+
+  test("a pull after a finished snap-back still moves the photo and closes from there", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    const box = await page.locator("[data-slot=ombra-track]").boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+
+    const sheetY = () =>
+      page.evaluate(() => {
+        const sheet = document.querySelector("[data-slot=ombra-sheet]");
+
+        if (!(sheet instanceof HTMLElement)) throw new Error("the viewer closed");
+
+        return new DOMMatrix(getComputedStyle(sheet).transform).m42;
+      });
+
+    // A short, slow pull, so it is not a flick: released and left to spring all the way back.
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+
+    for (let step = 1; step <= 6; step += 1) {
+      await page.mouse.move(x, y + step * 10);
+      await page.waitForTimeout(30);
+    }
+
+    await page.waitForTimeout(160);
+    await page.mouse.up();
+    await expect.poll(sheetY).toBe(0);
+    await page.waitForTimeout(200);
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+
+    const rest = await page.locator("[data-slot=ombra-slide][data-active=true]").boundingBox();
+
+    // The next pull, the other way, must still move the photo with the pointer.
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y - 200, { steps: 10 });
+    expect(await sheetY()).toBeLessThan(-24);
+
+    // And the close leaves from where the pull let go, not from the centre.
+    await page.evaluate(() => {
+      window.ombraFirstFlight = new Promise((resolve) => {
+        const tick = () => {
+          const flight = document.querySelector("[data-slot=ombra-flight]");
+
+          if (!flight) {
+            requestAnimationFrame(tick);
+
+            return;
+          }
+
+          const box = flight.getBoundingClientRect();
+
+          resolve(box.y + box.height / 2);
+        };
+
+        requestAnimationFrame(tick);
+      });
+    });
+    await page.mouse.up();
+
+    const flightCentre = await page.evaluate(() => window.ombraFirstFlight);
+
+    if (!rest || flightCentre === undefined) throw new Error("no slide or flight");
+
+    expect(flightCentre).toBeLessThan(rest.y + rest.height / 2 - 24);
   });
 
   test("a pointerup outside the track does not swallow the next pull", async ({ page }) => {
