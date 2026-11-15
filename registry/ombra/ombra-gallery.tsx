@@ -2,7 +2,7 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "cn";
-import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { flushSync } from "react-dom";
 
@@ -23,8 +23,8 @@ import {
   revealElement,
   uncropBox,
 } from "./geometry";
-import { frameReadoutReducer, initialFrameReadout, startFrameSampler } from "./frame-sampler";
-import type { FrameSampler, FrameTally } from "./frame-sampler";
+import { startFrameSampler } from "./frame-sampler";
+import type { FrameSampler } from "./frame-sampler";
 import { galleryReducer, initialGalleryState, isOpen } from "./gallery-state";
 import {
   MORPH_EASING,
@@ -59,12 +59,6 @@ import { usePull } from "./use-pull";
 import { useReducedMotion } from "./use-reduced-motion";
 import { useReducerWithBailout } from "./use-reducer-with-bailout";
 import { useZoom } from "./use-zoom";
-
-const ENGINE_OPTIONS: { id: MorphEngine; label: string }[] = [
-  { id: "vt", label: "View Transition" },
-  { id: "flip", label: "FLIP" },
-  { id: "fade", label: "Fade" },
-];
 
 // Keyframes need real CSS, so this ships as a stylesheet rather than Tailwind classes.
 const stripEdgeStyles = `@media (prefers-reduced-motion: no-preference) {
@@ -176,12 +170,11 @@ export type OmbraGalleryProps = {
    * browser without View Transitions runs FLIP for `vt`, and reduced motion always fades.
    */
   engine?: MorphEngine;
-  slow: boolean;
-  spring: boolean;
-  onEngineChange: (engine: MorphEngine) => void;
-  onSlowChange: (slow: boolean) => void;
-  onSpringChange: (spring: boolean) => void;
-  /** Called after each open or close with its frame timing. The spike's benchmark collects these. */
+  /** Triples every morph duration, to inspect a transition frame by frame. */
+  slow?: boolean;
+  /** Spike experiment: a spring curve in place of the cubic easing (MAR-12 kept the cubic). */
+  spring?: boolean;
+  /** Called after each open or close with its frame timing. The spike's readout and benchmark collect these. */
   onFrameSample?: (kind: MorphKind, sample: FrameSample) => void;
   className?: string;
 };
@@ -215,129 +208,6 @@ function imageChild(element: HTMLElement): HTMLImageElement | null {
   if (child instanceof HTMLImageElement) return child;
 
   return null;
-}
-
-function EngineSwitch({
-  engine,
-  onEngineChange,
-}: {
-  engine: MorphEngine;
-  onEngineChange: (engine: MorphEngine) => void;
-}) {
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Morph engine"
-      data-slot="ombra-engine"
-      className="flex flex-wrap rounded-full bg-foreground/5 p-1"
-    >
-      {ENGINE_OPTIONS.map((option) => {
-        const selected = option.id === engine;
-
-        return (
-          <button
-            key={option.id}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            onClick={() => onEngineChange(option.id)}
-            className={cn(
-              "min-h-11 rounded-full px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2",
-              selected
-                ? "bg-foreground text-background"
-                : "text-foreground focus-visible:outline-foreground",
-            )}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function SpringToggle({
-  spring,
-  onSpringChange,
-}: {
-  spring: boolean;
-  onSpringChange: (spring: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={spring}
-      data-slot="ombra-spring"
-      onClick={() => onSpringChange(!spring)}
-      className={cn(
-        "min-h-11 rounded-full px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground",
-        spring ? "bg-foreground text-background" : "text-foreground",
-      )}
-    >
-      Spring
-    </button>
-  );
-}
-
-function formatLast(tally: FrameTally | undefined): string {
-  if (!tally) return "–";
-
-  const { last } = tally;
-
-  return `${last.longestMs.toFixed(1)} ms / ${last.dropped} @ ${last.intervalMs.toFixed(1)} ms`;
-}
-
-/** Where the last run's drops fell, e.g. "drops at 1, 29 of 30", to tell start-up and settle cost from mid-flight jank. */
-function formatDrops(sample: FrameSample): string {
-  return `drops at ${sample.droppedAt.join(", ")} of ${sample.frames - 1}`;
-}
-
-function TallyLine({ kind, tally }: { kind: MorphKind; tally: FrameTally | undefined }) {
-  // One line, always there: a first sample or a long list of drops would otherwise
-  // push the grid down just as a close lands on its thumbnail.
-  if (!tally) {
-    return (
-      <div aria-hidden="true" className="truncate pl-4 text-white/70">
-        –
-      </div>
-    );
-  }
-
-  const { last, runs, clean, mid } = tally;
-
-  return (
-    <div data-slot={`ombra-readout-${kind}-tally`} className="truncate pl-4 text-white/70">
-      clean {clean}/{runs} · mid {mid}/{runs}
-      {last.dropped > 0 && (
-        <>
-          {" · "}
-          <span data-slot={`ombra-readout-${kind}-drops`}>{formatDrops(last)}</span>
-        </>
-      )}
-    </div>
-  );
-}
-
-function FrameReadout({
-  samples,
-  engine,
-}: {
-  samples: Partial<Record<MorphKind, FrameTally>>;
-  engine: MorphEngine;
-}) {
-  return (
-    <div
-      data-slot="ombra-readout"
-      className="pointer-events-none w-max max-w-[min(100%,24rem)] rounded-md bg-black/80 px-3 py-2 font-mono text-[11px] leading-4 text-white"
-    >
-      <div>Longest frame / dropped @ frame interval</div>
-      <div data-slot="ombra-readout-open">Open {formatLast(samples.open)}</div>
-      <TallyLine kind="open" tally={samples.open} />
-      <div data-slot="ombra-readout-close">Close {formatLast(samples.close)}</div>
-      <TallyLine kind="close" tally={samples.close} />
-      <div>Engine {engine}</div>
-    </div>
-  );
 }
 
 function IconButton({
@@ -392,11 +262,8 @@ function IconButton({
 export function OmbraGallery({
   items,
   engine = "flip",
-  slow,
-  spring,
-  onEngineChange,
-  onSlowChange,
-  onSpringChange,
+  slow = false,
+  spring = false,
   onFrameSample,
   className,
 }: OmbraGalleryProps) {
@@ -406,7 +273,6 @@ export function OmbraGallery({
   const open = isOpen(gallery);
   const [view, sendView] = useReducerWithBailout(viewReducer, initialViewState);
   const { sharpIds, stripOverflows, trackNode } = view;
-  const [readout, sendReadout] = useReducer(frameReadoutReducer, initialFrameReadout);
 
   const triggers = useRef<Array<HTMLButtonElement | null>>([]);
   const images = useRef<Array<HTMLImageElement | null>>([]);
@@ -457,11 +323,6 @@ export function OmbraGallery({
   reducedRef.current = reduced;
 
   const effective: MorphEngine = reduced ? "fade" : engine;
-  const readoutCondition = `${effective}|${slow}|${spring}`;
-  const readoutConditionRef = useRef(readoutCondition);
-
-  readoutConditionRef.current = readoutCondition;
-
   const onFrameSampleRef = useRef(onFrameSample);
 
   onFrameSampleRef.current = onFrameSample;
@@ -1058,12 +919,7 @@ export function OmbraGallery({
     samplerRef.current = null;
 
     if (sample && sample.frames > 1) {
-      const kind = sampleKindRef.current;
-      const condition = readoutConditionRef.current;
-
-      onFrameSampleRef.current?.(kind, sample);
-
-      sendReadout({ type: "sampled", kind, condition, sample });
+      onFrameSampleRef.current?.(sampleKindRef.current, sample);
     }
   }
 
@@ -1913,28 +1769,6 @@ export function OmbraGallery({
     >
       {/* Outside the dialog, so a closing view transition still has it after the viewer unmounts. */}
       <style data-slot="ombra-morph-styles">{MORPH_STYLES}</style>
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex flex-col items-start gap-3">
-          <EngineSwitch engine={engine} onEngineChange={onEngineChange} />
-          <FrameReadout
-            samples={readout.condition === readoutCondition ? readout : {}}
-            engine={effective}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <SpringToggle spring={spring} onSpringChange={onSpringChange} />
-          <button
-            type="button"
-            aria-pressed={slow}
-            data-slot="ombra-slow"
-            onClick={() => onSlowChange(!slow)}
-            className="min-h-11 rounded-full px-3 text-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
-          >
-            {slow ? "Slow motion on" : "Slow motion"}
-          </button>
-        </div>
-      </div>
-
       <div className="columns-2 gap-3 md:columns-3">
         {items.map((item, itemIndex) => (
           <button
