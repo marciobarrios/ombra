@@ -23,6 +23,7 @@ type Harness = {
     activeAsks: string[];
   };
   free: { items: readonly OmbraItem[]; openAsks: boolean[]; activeAsks: string[] };
+  openOnly: { open: boolean; openAsks: boolean[] };
 };
 
 const initialHarness: Harness = {
@@ -37,6 +38,7 @@ const initialHarness: Harness = {
     activeAsks: [],
   },
   free: { items: initialItems, openAsks: [], activeAsks: [] },
+  openOnly: { open: false, openAsks: [] },
 };
 
 function withItems(state: Harness, section: Section, items: readonly OmbraItem[]): Harness {
@@ -50,6 +52,16 @@ function harnessReducer(state: Harness, action: HarnessAction): Harness {
 
   switch (action.type) {
     case "open-change-asked": {
+      if (action.section === "openOnly") {
+        const allowed = action.open ? controlled.allowOpen : controlled.allowClose;
+        const openAsks = [...state.openOnly.openAsks, action.open];
+
+        return {
+          ...state,
+          openOnly: { openAsks, open: allowed ? action.open : state.openOnly.open },
+        };
+      }
+
       if (action.section === "free") {
         return {
           ...state,
@@ -89,6 +101,10 @@ function harnessReducer(state: Harness, action: HarnessAction): Harness {
       };
 
     case "parent-opened":
+      if (action.section === "openOnly") {
+        return { ...state, openOnly: { ...state.openOnly, open: true } };
+      }
+
       return {
         ...state,
         controlled: { ...controlled, open: true, activeId: action.activeId ?? controlled.activeId },
@@ -117,7 +133,7 @@ function harnessReducer(state: Harness, action: HarnessAction): Harness {
 
 export function RootHarness() {
   const [state, dispatch] = useReducer(harnessReducer, initialHarness);
-  const { controlled, free } = state;
+  const { controlled, free, openOnly } = state;
 
   // The viewer is modal, so tests reach the parent through this rather than page buttons.
   useEffect(() => {
@@ -177,6 +193,26 @@ export function RootHarness() {
           }}
           onActiveIdChange={(itemId) => {
             dispatch({ type: "active-change-asked", section: "free", itemId });
+          }}
+        />
+      </section>
+
+      <section data-testid="open-only" className="grid gap-4">
+        <h2 className="text-lg text-foreground">Controlled open, uncontrolled item</h2>
+        <output
+          data-testid="open-only-readout"
+          data-open={String(openOnly.open)}
+          data-open-asks={JSON.stringify(openOnly.openAsks)}
+          className="font-mono text-xs text-foreground/70"
+        >
+          open {String(openOnly.open)}
+        </output>
+        <OmbraGallery
+          items={initialItems}
+          engine="fade"
+          open={openOnly.open}
+          onOpenChange={(open) => {
+            dispatch({ type: "open-change-asked", section: "openOnly", open });
           }}
         />
       </section>

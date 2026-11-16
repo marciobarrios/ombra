@@ -409,6 +409,20 @@ function GalleryViewer({
     (velocity) => {
       flickRef.current = velocity;
       rootRef.current.requestClose();
+
+      // A controlled parent may refuse the close. The pull hook already let go, so
+      // put the sheet back rather than leave it shrunk at the drag's pose.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          // A View Transition close stays "open" until its update callback runs.
+          if (vtClosingRef.current) return;
+
+          if (phaseRef.current !== "open" && phaseRef.current !== "opening") return;
+
+          flickRef.current = 0;
+          document.documentElement.style.setProperty("--ombra-pull-live", "0");
+        });
+      });
     },
   );
 

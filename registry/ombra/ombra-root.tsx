@@ -7,7 +7,6 @@ import {
   createGalleryState,
   duplicateIds,
   galleryReducer,
-  isOpen,
   isOpening,
   neighbourAfterRemoval,
 } from "./gallery-state";
@@ -72,14 +71,28 @@ export function useOmbraRoot(): OmbraRootContextValue {
 
 type Registration = { itemId: string; node: Element | null };
 
+type PendingOpen = {
+  itemId: string;
+  intent: OmbraOpenIntent;
+  /** Uncontrolled open, controlled active item: opens only if the parent selects `itemId`. */
+  awaitsActive: boolean;
+};
+
+/** Items with a node in document order, then items without one in registration order. */
 function documentOrder(registrations: Iterable<Registration>): string[] {
-  return [...registrations]
+  const all = [...registrations];
+
+  const placed = all
+    .filter((registration) => registration.node !== null)
     .sort((a, b) => {
       if (!a.node || !b.node || a.node === b.node) return 0;
 
       return a.node.compareDocumentPosition(b.node) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
-    })
-    .map((registration) => registration.itemId);
+    });
+
+  return [...placed, ...all.filter((registration) => registration.node === null)].map(
+    (registration) => registration.itemId,
+  );
 }
 
 function resolveActive(itemId: string | null, ids: readonly string[]): string | null {
@@ -104,16 +117,34 @@ export function OmbraRoot({
   const controlledOpen = openProp !== undefined;
   const controlledActive = activeProp !== undefined;
   const requested = controlledActive ? activeProp : state.activeId;
-  const activeId = resolveActive(requested, state.itemIds);
+
+  // The collection the requested item was last seen in, so a controlled item that was
+  // removed resolves to its neighbour before the parent has picked one.
+  const lastSeen = useRef<{ itemId: string; ids: readonly string[] } | null>(null);
+
+  let activeId: string | null;
+
+  if (requested !== null && state.itemIds.includes(requested)) {
+    activeId = requested;
+    lastSeen.current = { itemId: requested, ids: state.itemIds };
+  } else if (requested !== null && lastSeen.current?.itemId === requested) {
+    activeId =
+      neighbourAfterRemoval(lastSeen.current.ids, state.itemIds, requested) ??
+      state.itemIds[0] ??
+      null;
+  } else {
+    activeId = state.itemIds[0] ?? null;
+  }
 
   const registrations = useRef(new Map<symbol, Registration>());
   const idsRef = useRef(state.itemIds);
   const phaseRef = useRef(state.phase);
   const activeRef = useRef(activeId);
   const askedActive = useRef<string | null>(null);
-  const pendingOpen = useRef<{ itemId: string; intent: OmbraOpenIntent } | null>(null);
+  const pendingOpen = useRef<PendingOpen | null>(null);
   const drivenOpen = useRef(false);
   const defaultOpened = useRef(false);
+  const emptied = useRef(false);
   const warned = useRef(new Set<string>());
   const flushQueued = useRef(false);
   const driverRef = useRef<OmbraDriver | null>(null);
@@ -174,26 +205,32 @@ export function OmbraRoot({
     (itemId: string, node: Element | null = null) => {
       const key = Symbol(itemId);
 
-      registrations.current.set(key, { itemId, node });
+      const queueFlush = () => {
+        // The root's own layout effect flushes after its children's. A part that registers
+        // without the root rendering again still lands before the next frame.
+        if (flushQueued.current) return;
 
-      // The root's own layout effect flushes after its children's. A part that registers
-      // without the root rendering again still lands before the next frame.
-      if (!flushQueued.current) {
         flushQueued.current = true;
         queueMicrotask(flush);
-      }
+      };
+
+      registrations.current.set(key, { itemId, node });
+      queueFlush();
 
       return () => {
         registrations.current.delete(key);
-
-        if (!flushQueued.current) {
-          flushQueued.current = true;
-          queueMicrotask(flush);
-        }
+        queueFlush();
       };
     },
     [flush],
   );
+
+  const askParentForActive = useCallback((itemId: string) => {
+    if (askedActive.current === itemId) return;
+
+    askedActive.current = itemId;
+    props.current.onActiveIdChange?.(itemId);
+  }, []);
 
   const requestActive = useCallback(
     (itemId: string) => {
@@ -206,22 +243,48 @@ export function OmbraRoot({
         return;
       }
 
-      const { controlledActive: controlled, onActiveIdChange: notify } = props.current;
-
-      if (controlled) {
-        if (askedActive.current === itemId) return;
-
-        askedActive.current = itemId;
-        notify?.(itemId);
+      if (props.current.controlledActive) {
+        askParentForActive(itemId);
 
         return;
       }
 
       activeRef.current = itemId;
       send({ type: "active-changed", itemId });
-      notify?.(itemId);
+      props.current.onActiveIdChange?.(itemId);
     },
-    [send],
+    [send, askParentForActive],
+  );
+
+  /** A request the parent has to answer. It lapses once the parent has had its render. */
+  const holdForParent = useCallback((pending: PendingOpen) => {
+    pendingOpen.current = pending;
+
+    // React commits an update from an input event before a timer fires, so by then
+    // a parent that accepted has rendered, and one that did not has refused.
+    window.setTimeout(() => {
+      if (pendingOpen.current === pending) pendingOpen.current = null;
+    }, 0);
+  }, []);
+
+  /** Starts the driver, then reports what changed. */
+  const startOpen = useCallback(
+    (itemId: string, intent: OmbraOpenIntent) => {
+      const wasClosed = !isOpening(phaseRef.current);
+      const changed = itemId !== activeRef.current;
+
+      if (!driver().open(itemId, intent)) return false;
+
+      if (!props.current.controlledActive && changed) {
+        activeRef.current = itemId;
+        props.current.onActiveIdChange?.(itemId);
+      }
+
+      if (!props.current.controlledOpen && wasClosed) props.current.onOpenChange?.(true);
+
+      return true;
+    },
+    [driver],
   );
 
   const requestOpen = useCallback(
@@ -232,66 +295,70 @@ export function OmbraRoot({
         return false;
       }
 
-      const { controlledOpen: controlled, onOpenChange: notify } = props.current;
-      const closed = !isOpening(phaseRef.current);
+      const { controlledOpen: openIsControlled, controlledActive: activeIsControlled } =
+        props.current;
 
-      if (itemId !== activeRef.current) {
-        if (props.current.controlledActive) requestActive(itemId);
-        else props.current.onActiveIdChange?.(itemId);
-      }
+      if (activeIsControlled && itemId !== activeRef.current) askParentForActive(itemId);
 
-      if (controlled) {
+      if (openIsControlled) {
         // The parent decides. The effect below starts the morph once `open` arrives.
-        pendingOpen.current = { itemId, intent };
+        holdForParent({ itemId, intent, awaitsActive: false });
 
-        if (closed) notify?.(true);
+        if (!isOpening(phaseRef.current)) props.current.onOpenChange?.(true);
 
         return true;
       }
 
-      if (closed) notify?.(true);
+      if (activeIsControlled && itemId !== activeRef.current) {
+        // Refusing the item refuses the open, so the viewer never shows an item the parent declined.
+        holdForParent({ itemId, intent, awaitsActive: true });
 
-      return driver().open(itemId, intent);
+        return true;
+      }
+
+      return startOpen(itemId, intent);
     },
-    [driver, requestActive, warnOnce],
+    [askParentForActive, holdForParent, startOpen, warnOnce],
   );
 
   const requestClose = useCallback(() => {
     if (!isOpening(phaseRef.current)) return;
 
-    const { controlledOpen: controlled, onOpenChange: notify } = props.current;
-
     pendingOpen.current = null;
-    notify?.(false);
+    props.current.onOpenChange?.(false);
 
-    if (!controlled) driver().close();
+    if (!props.current.controlledOpen) driver().close();
   }, [driver]);
 
   useLayoutEffect(() => {
     flush();
   });
 
-  // Follows a controlled `open`, the initial `defaultOpen`, and an emptied collection.
+  // Follows a controlled `open`, a controlled active item an open waits on, the initial
+  // `defaultOpen`, and an emptied collection. Runs every commit, so a phase that drifted
+  // from the prop, as a View Transition opening can, is put right.
   useLayoutEffect(() => {
     const ids = idsRef.current;
+    const pending = pendingOpen.current;
 
-    if (controlledOpen && openProp !== drivenOpen.current) {
-      if (!openProp) {
-        drivenOpen.current = false;
-        pendingOpen.current = null;
-
-        if (isOpening(state.phase)) driver().close();
-      } else if (ids.length > 0) {
-        const pending = pendingOpen.current;
-
+    if (controlledOpen && openProp) {
+      if (!drivenOpen.current && ids.length > 0) {
         const itemId =
           pending && !controlledActive ? pending.itemId : resolveActive(requestedRef.current, ids);
 
-        if (itemId && driver().open(itemId, pending?.intent ?? { reason: "programmatic" })) {
+        if (itemId && startOpen(itemId, pending?.intent ?? { reason: "programmatic" })) {
           drivenOpen.current = true;
           pendingOpen.current = null;
         }
       }
+    } else if (controlledOpen) {
+      drivenOpen.current = false;
+
+      if (isOpening(state.phase)) driver().close();
+    } else if (pending?.awaitsActive) {
+      pendingOpen.current = null;
+
+      if (activeRef.current === pending.itemId) startOpen(pending.itemId, pending.intent);
     }
 
     const initial = resolveActive(requestedRef.current, ids);
@@ -300,33 +367,38 @@ export function OmbraRoot({
       defaultOpened.current = driver().open(initial, { reason: "programmatic" });
     }
 
-    if (isOpen(state) && ids.length === 0) requestClose();
+    if (ids.length > 0) {
+      emptied.current = false;
+    } else if (isOpening(state.phase) && !emptied.current) {
+      emptied.current = true;
+      requestClose();
+    }
   });
 
-  // A controlled active item that left the collection hands over to its neighbour.
-  const previousIds = useRef(state.itemIds);
+  // An active item that left the collection hands over to its neighbour. The consumer
+  // only hears about it here, because no request made the change.
+  const previousActive = useRef(activeId);
 
   useLayoutEffect(() => {
-    const previous = previousIds.current;
+    const previous = previousActive.current;
 
-    previousIds.current = state.itemIds;
+    previousActive.current = activeId;
 
-    if (!controlledActive || activeProp === null || activeProp === undefined) return;
+    if (previous === null || activeId === null || previous === activeId) return;
 
-    if (state.itemIds.includes(activeProp)) return;
+    if (state.itemIds.includes(previous)) return;
 
-    if (previous.includes(activeProp)) {
-      const neighbour = neighbourAfterRemoval(previous, state.itemIds, activeProp);
+    if (controlledActive) askParentForActive(activeId);
+    else onActiveIdChange?.(activeId);
+  }, [activeId, state.itemIds, controlledActive, askParentForActive, onActiveIdChange]);
 
-      if (neighbour !== null) requestActive(neighbour);
+  useLayoutEffect(() => {
+    if (!controlledActive || activeProp === null || state.itemIds.length === 0) return;
 
-      return;
-    }
+    if (state.itemIds.includes(activeProp) || lastSeen.current?.itemId === activeProp) return;
 
-    if (state.itemIds.length > 0) {
-      warnOnce(`unmatched:${activeProp}`, `activeId "${activeProp}" matches no registered item.`);
-    }
-  }, [state.itemIds, activeProp, controlledActive, requestActive, warnOnce]);
+    warnOnce(`unmatched:${activeProp}`, `activeId "${activeProp}" matches no registered item.`);
+  }, [state.itemIds, activeProp, controlledActive, warnOnce]);
 
   // Checked once, against the first items that register.
   const defaultChecked = useRef(false);

@@ -122,6 +122,56 @@ test.describe("OmbraRoot", () => {
     await expectActive(page, third.alt, "3 / 5");
   });
 
+  test("controlled: removing the active item asks the parent for its neighbour", async ({
+    page,
+  }) => {
+    await openFrom(page, "controlled", first.alt);
+
+    // The neighbour of the first item is the new first item.
+    await harness(page, { type: "item-removed", section: "controlled", itemId: first.id });
+    await expectActive(page, second.alt, "1 / 4");
+    await expect(page.getByTestId("controlled-readout")).toHaveAttribute("data-active", second.id);
+
+    await page.keyboard.press("ArrowRight");
+    await expectActive(page, third.alt, "2 / 4");
+
+    // A middle item hands over to the next one, not to the start.
+    await harness(page, { type: "item-removed", section: "controlled", itemId: third.id });
+    await expectActive(page, fourth.alt, "2 / 3");
+    await expect(page.getByTestId("controlled-readout")).toHaveAttribute("data-active", fourth.id);
+  });
+
+  test("controlled: emptying the collection while a close is refused asks once", async ({
+    page,
+  }) => {
+    const errors: string[] = [];
+
+    page.on("pageerror", (error) => errors.push(error.message));
+    await openFrom(page, "controlled", first.alt);
+    await harness(page, { type: "policy-changed", allowClose: false });
+    await harness(page, { type: "items-cleared", section: "controlled" });
+
+    await expect.poll(() => asks(page, "controlled-readout", "open")).toEqual([true, false]);
+    await page.waitForTimeout(300);
+    expect(await asks(page, "controlled-readout", "open")).toEqual([true, false]);
+    expect(errors).toEqual([]);
+  });
+
+  test("controlled open: a refused request does not linger for the parent's next open", async ({
+    page,
+  }) => {
+    await harness(page, { type: "policy-changed", allowOpen: false });
+    await page.getByTestId("open-only").getByRole("button", { name: fourth.alt }).click();
+    await expect.poll(() => asks(page, "open-only-readout", "open")).toEqual([true]);
+    await expect(viewer(page)).toHaveCount(0);
+
+    // The parent opens on its own later: that is the current item, not the refused one.
+    await page.waitForTimeout(100);
+    await harness(page, { type: "parent-opened", section: "openOnly" });
+    await expect(viewer(page)).toHaveAttribute("data-phase", "open");
+    await expectActive(page, first.alt, "1 / 5");
+  });
+
   test("controlled: the parent opens, navigates, and closes the viewer", async ({ page }) => {
     await harness(page, { type: "parent-opened", activeId: fourth.id });
     await expect(viewer(page)).toHaveAttribute("data-phase", "open");
