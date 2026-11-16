@@ -15,6 +15,7 @@ declare global {
     ombraFrames?: Frame[];
     ombraHome?: Frame;
     ombraHold?: () => void;
+    ombraHeldAt?: number;
   }
 }
 
@@ -137,8 +138,14 @@ async function recordFrames(page: Page) {
   });
 }
 
-/** Freezes the close in the page, so the input below cannot lose a race with the runner. */
-function holdClose() {
+/**
+ * Freezes the close in the page, so the input below cannot lose a race with the runner.
+ * With `fraction`, it also moves the close to that point of its animations. Returns
+ * how many animations of the photo itself it held.
+ */
+function holdClose(fraction?: number): number {
+  let photo = 0;
+
   for (const animation of document.getAnimations()) {
     const effect = animation.effect;
 
@@ -152,8 +159,68 @@ function holdClose() {
         "[data-slot=ombra-flight], [data-slot=ombra-backdrop], [data-slot=ombra-viewer]",
       );
 
-    if (ours) animation.pause();
+    if (!ours) continue;
+
+    animation.pause();
+
+    if (fraction !== undefined) {
+      animation.currentTime = Number(effect.getComputedTiming().endTime) * fraction;
+    }
+
+    if (
+      effect.pseudoElement === "::view-transition-group(ombra-shared)" ||
+      target?.matches("[data-slot=ombra-flight]")
+    ) {
+      photo += 1;
+    }
   }
+
+  return photo;
+}
+
+/**
+ * Holds the next close 40% of the way along, from the moment its animations exist.
+ * A loaded runner can stall long enough for a slow close to finish before a frame
+ * poll sees it move, and the gesture under test would then reverse nothing.
+ * `window.ombraHeldAt` marks the first frame recorded at the held pose.
+ */
+async function holdNextClose(page: Page) {
+  await page.evaluate(`(() => {
+    const hold = ${holdClose.toString()};
+    let armed = true;
+
+    window.ombraHeldAt = undefined;
+
+    // Disarms only once the photo itself is held. Otherwise waitForMidFlight's
+    // frame poll still holds it, as before.
+    const holdHere = () => {
+      if (!armed || hold(0.4) === 0) return;
+
+      armed = false;
+      observer.disconnect();
+      window.ombraHeldAt = window.ombraFrames?.length ?? 0;
+    };
+
+    // A FLIP close mounts its clone in the task that starts its fades.
+    const observer = new MutationObserver(() => {
+      if (document.querySelector("${flightSelector}")) holdHere();
+    });
+
+    observer.observe(document.body, { childList: true });
+
+    // A view transition's animations exist once it is ready, before they advance.
+    const start = document.startViewTransition?.bind(document);
+
+    if (start) {
+      document.startViewTransition = (update) => {
+        const transition = start(update);
+
+        transition.ready.then(holdHere, () => undefined);
+
+        return transition;
+      };
+    }
+  })()`);
 }
 
 async function waitForMidFlight(page: Page, travel = 40) {
@@ -162,6 +229,13 @@ async function waitForMidFlight(page: Page, travel = 40) {
     const started = performance.now();
 
     const tick = () => {
+      // holdNextClose already holds the close mid-flight.
+      if (window.ombraHeldAt !== undefined) {
+        resolve(undefined);
+
+        return;
+      }
+
       const frames = window.ombraFrames ?? [];
       // One live sample is enough with a captured resting reference. Waiting
       // for three frames can let the close finish on a busy WebKit runner.
@@ -259,13 +333,17 @@ async function pressCloseWithPointerReady(page: Page) {
 
 /** Checks a frame trace for the snap this issue is about: no large single-frame move. */
 async function expectNoJump(page: Page) {
-  const frames = await page.evaluate(() => {
+  const { frames, heldAt } = await page.evaluate(() => {
     const home = window.ombraHome;
 
     if (!home) throw new Error("the resting photo was not recorded");
 
-    return [home, ...(window.ombraFrames ?? [])];
+    return { frames: [home, ...(window.ombraFrames ?? [])], heldAt: window.ombraHeldAt };
   });
+
+  // A close held by holdNextClose was moved to its held pose in one step, so the
+  // frame-to-frame checks start at the first frame recorded there (+1 for home).
+  const firstChecked = heldAt === undefined ? 1 : heldAt + 2;
 
   expect(frames.length).toBeGreaterThan(10);
 
@@ -282,6 +360,10 @@ async function expectNoJump(page: Page) {
 
     if (!previous || !frame) continue;
 
+    if (first) farthest = Math.max(farthest, Math.hypot(frame.cx - first.cx, frame.cy - first.cy));
+
+    if (index < firstChecked) continue;
+
     // Mounting the viewer can drop a frame, and fast motion legitimately covers more
     // ground across a long one. A snap moves far without the time to explain it.
     const elapsed = frame.t - previous.t;
@@ -292,8 +374,6 @@ async function expectNoJump(page: Page) {
     largest = Math.max(largest, travel - elapsed * MAX_PX_PER_MS);
     largestResize = Math.max(largestResize, resize - elapsed * MAX_PX_PER_MS);
     scrimRise = Math.max(scrimRise, rise - elapsed * MAX_SCRIM_PER_MS);
-
-    if (first) farthest = Math.max(farthest, Math.hypot(frame.cx - first.cx, frame.cy - first.cy));
   }
 
   if (!first || !last) throw new Error("no frames");
@@ -343,6 +423,7 @@ for (const engine of ["flip", "vt"] as const) {
     test("an upward gesture reverses from the current pose", async ({ page }) => {
       await openViewer(page, `engine=${engine}&slow=1&spring=1`);
       await recordFrames(page);
+      await holdNextClose(page);
       await pressCloseWithPointerReady(page);
       await waitForMidFlight(page);
       await swipeUp(page);
@@ -353,6 +434,7 @@ for (const engine of ["flip", "vt"] as const) {
     test("an upward gesture reverses without the spring", async ({ page }) => {
       await openViewer(page, `engine=${engine}&slow=1`);
       await recordFrames(page);
+      await holdNextClose(page);
       await pressCloseWithPointerReady(page);
       await waitForMidFlight(page);
       await swipeUp(page);
@@ -366,6 +448,7 @@ for (const engine of ["flip", "vt"] as const) {
       }) => {
         await openViewer(page, `engine=${engine}&slow=1${spring ? "&spring=1" : ""}`);
         await recordFrames(page);
+        await holdNextClose(page);
         await pullToClose(page);
         await waitForMidFlight(page);
         await swipeUp(page);
@@ -382,6 +465,7 @@ for (const engine of ["flip", "vt"] as const) {
 
       if (!box) throw new Error("trigger had no box");
 
+      await holdNextClose(page);
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await page.locator("[data-slot=ombra-close]").evaluate((node) => {
         if (node instanceof HTMLElement) node.click();
