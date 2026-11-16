@@ -44,11 +44,11 @@ const MOMENTUM_STEADY_PX = 12;
 const WHEEL_FLICK_DISTANCE = 32;
 
 /**
- * A wheel event at least this tall, and more than twice as tall as it is wide, is a
- * vertical swipe beyond doubt. Sideways swipes and their momentum stay on rails, so
- * their vertical part is a pixel or two.
+ * A wheel event at least this long on one axis, and more than twice as long as on
+ * the other, is a swipe on that axis beyond doubt. Trackpad swipes and their
+ * momentum stay on rails, so their other axis is a pixel or two.
  */
-const WHEEL_VERTICAL_PX = 4;
+const WHEEL_PLAIN_PX = 4;
 
 const LINE_HEIGHT_PX = 16;
 
@@ -92,6 +92,13 @@ export function usePull(
   const slowRef = useRef(slow);
   const springRef = useRef(spring);
   const onDismissRef = useRef(onDismiss);
+
+  // When the last two wheel events anywhere on the page arrived, pinches aside.
+  const wheelClock = useRef({
+    previous: Number.NEGATIVE_INFINITY,
+    latest: Number.NEGATIVE_INFINITY,
+  });
+
   // A tap or swipe ends with `pull-ended` too, and the bail-out keeps it from rendering.
   const [pulling, dispatchPull] = useReducerWithBailout(pullReducer, false);
 
@@ -103,7 +110,26 @@ export function usePull(
   onDismissRef.current = onDismiss;
 
   useEffect(() => {
+    const clock = wheelClock.current;
+
+    // Capture on the window runs before the track's own listener, so `previous` is
+    // the event before the one the track is handling.
+    const tick = (event: WheelEvent) => {
+      if (event.ctrlKey) return;
+
+      clock.previous = clock.latest;
+      clock.latest = event.timeStamp;
+    };
+
+    window.addEventListener("wheel", tick, { capture: true, passive: true });
+
+    return () => window.removeEventListener("wheel", tick, { capture: true });
+  }, []);
+
+  useEffect(() => {
     if (!track) return;
+
+    const clock = wheelClock.current;
 
     // One gesture at a time: a pointer drag or a trackpad swipe.
     let source: "pointer" | "wheel" | null = null;
@@ -121,6 +147,12 @@ export function usePull(
     // these listeners, a momentum event would start a new pull from the pulled pose,
     // cross the threshold at once, and close a second time.
     let dismissed = false;
+    // The last wheel event the track saw, and whether the stream it belongs to began
+    // somewhere else: a page scroll that keeps going after a click opened the viewer
+    // would cut the opening and close it at once. Such a stream is ignored until it
+    // pauses.
+    let seenAt = Number.NEGATIVE_INFINITY;
+    let foreign = false;
     const samples: Sample[] = [];
 
     let snap: Animation | null = null;
@@ -192,16 +224,26 @@ export function usePull(
     };
 
     const begin = (kind: "pointer" | "wheel", t: number) => {
-      cancelSnap();
       source = kind;
       axis = null;
-      // A gesture that catches a snap-back carries on from where the photo is. A
-      // trackpad's momentum often arrives as a second burst after the wheel went
-      // quiet, and starting it from zero would jump the photo to the centre.
-      base = reducedRef.current ? 0 : readProgress() * window.innerHeight * PULL_SPAN;
-      offset = base;
+      base = 0;
+      offset = 0;
       samples.length = 0;
-      samples.push({ y: offset, t });
+      samples.push({ y: 0, t });
+    };
+
+    /**
+     * A gesture takes the photo over only once it turns out vertical, so a tap or a
+     * sideways swipe leaves a snap-back running instead of freezing the photo off
+     * centre. The pull carries on from where the photo is: a trackpad's momentum
+     * often arrives as a second burst after the wheel went quiet, and starting it
+     * from zero would jump the photo to the centre.
+     */
+    const takeOver = () => {
+      cancelSnap();
+      base = reducedRef.current ? 0 : readProgress() * window.innerHeight * PULL_SPAN;
+
+      for (const sample of samples) sample.y += base;
     };
 
     const record = (t: number) => {
@@ -264,8 +306,9 @@ export function usePull(
       dispatchPull({ type: "pull-ended" });
 
       if (!vertical) {
-        // A tap that caught a snap-back mid-way still has to finish it.
-        if (!reducedRef.current) settleBack(0);
+        // A running snap-back goes on by itself. A press that cut a wheel pull short
+        // leaves the photo where the wheel had it, so that one springs back.
+        if (!reducedRef.current && !snap) settleBack(0);
 
         return;
       }
@@ -292,7 +335,7 @@ export function usePull(
     };
 
     const onPointerDown = (event: PointerEvent) => {
-      if (dismissed || !enabledRef.current || !readyRef.current) return;
+      if (dismissed || !enabledRef.current) return;
 
       if (event.pointerType === "mouse" && event.button !== 0) return;
 
@@ -315,16 +358,22 @@ export function usePull(
 
       const dx = event.clientX - startX;
       const dy = event.clientY - startY;
-      const pulled = base + dy;
 
       if (!axis) {
         if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) return;
 
-        axis = Math.abs(dy) > Math.abs(dx) ? "y" : "x";
+        // While the track still snaps after a slide change, the next flick often
+        // starts before it settles, and a slightly diagonal one must not close the
+        // viewer. Only a plainly vertical drag pulls then.
+        const ratio = readyRef.current ? 1 : 2;
+
+        axis = Math.abs(dy) > Math.abs(dx) * ratio ? "y" : "x";
 
         if (axis === "x") return;
 
-        if (!lockVertical(pulled, event.timeStamp)) return;
+        takeOver();
+
+        if (!lockVertical(base + dy, event.timeStamp)) return;
 
         try {
           track.setPointerCapture(event.pointerId);
@@ -336,7 +385,7 @@ export function usePull(
 
       if (axis !== "y") return;
 
-      follow(pulled, event.timeStamp);
+      follow(base + dy, event.timeStamp);
     };
 
     const finish = (event: PointerEvent) => {
@@ -347,15 +396,25 @@ export function usePull(
 
     const onWheel = (event: WheelEvent) => {
       // A trackpad pinch arrives as ctrl+wheel, and the zoom hook owns it.
-      if (event.ctrlKey || source === "pointer") return;
+      if (event.ctrlKey) return;
+
+      if (event.timeStamp - clock.previous >= WHEEL_IDLE_MS) foreign = false;
+      else if (clock.previous !== seenAt) foreign = true;
+
+      seenAt = event.timeStamp;
+
+      if (source === "pointer" || (foreign && source === null)) return;
 
       const unit = wheelUnit(event);
       const upright = isVerticalSwipe(event, unit);
 
-      // A sideways swipe's momentum keeps arriving faster than the wheel can go quiet,
-      // so a vertical swipe straight after it would join the sideways gesture. It ends
-      // that gesture and starts a pull of its own.
+      // A swipe's momentum keeps arriving faster than the wheel can go quiet, so a
+      // swipe the other way straight after it would join the first gesture. A plainly
+      // vertical event ends a sideways gesture and starts a pull, and a plainly
+      // sideways one ends a pull, which springs back, and goes to the track.
       if (source === "wheel" && axis === "x" && upright) release();
+
+      if (source === "wheel" && axis === "y" && isSidewaysSwipe(event, unit)) release();
 
       if (source === null) {
         // The track keeps scrolling while it snaps after a sideways swipe. A finger
@@ -370,22 +429,23 @@ export function usePull(
       // The content follows the fingers, as a scroll does: fingers down pull the photo down.
       wheelX -= event.deltaX * unit;
 
-      const dy = offset - event.deltaY * unit;
+      // Before the axis locks, `offset` is still zero and this is the travel alone.
+      let dy = offset - event.deltaY * unit;
 
       window.clearTimeout(wheelTimer);
       wheelTimer = window.setTimeout(release, WHEEL_IDLE_MS);
 
       if (!axis) {
-        const wheelY = dy - base;
-
-        if (wheelX === 0 && wheelY === 0) return;
+        if (wheelX === 0 && dy === 0) return;
 
         // A trackpad swipe says its direction in its first event; waiting would let
         // the first pixels of a horizontal swipe go missing from the native scroll.
-        axis = Math.abs(wheelY) > Math.abs(wheelX) ? "y" : "x";
+        axis = Math.abs(dy) > Math.abs(wheelX) ? "y" : "x";
 
         if (axis === "y") {
           event.preventDefault();
+          takeOver();
+          dy += base;
 
           if (!lockVertical(dy, event.timeStamp)) {
             window.clearTimeout(wheelTimer);
@@ -455,7 +515,13 @@ function verticalSpeed(samples: readonly Sample[]): number {
 function isVerticalSwipe(event: WheelEvent, unit: number): boolean {
   const height = Math.abs(event.deltaY * unit);
 
-  return height >= WHEEL_VERTICAL_PX && height > Math.abs(event.deltaX * unit) * 2;
+  return height >= WHEEL_PLAIN_PX && height > Math.abs(event.deltaX * unit) * 2;
+}
+
+function isSidewaysSwipe(event: WheelEvent, unit: number): boolean {
+  const width = Math.abs(event.deltaX * unit);
+
+  return width >= WHEEL_PLAIN_PX && width > Math.abs(event.deltaY * unit) * 2;
 }
 
 function wheelUnit(event: WheelEvent): number {

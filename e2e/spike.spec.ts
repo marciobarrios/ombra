@@ -9,6 +9,7 @@ declare global {
     ombraWheelLog?: { t: number; prevented: boolean; viewer: boolean }[];
     ombraFirstFlight?: Promise<number>;
     ombraWheelCatch?: { before: number; after: number }[];
+    ombraStreamGap?: number;
   }
 }
 
@@ -1221,6 +1222,101 @@ test.describe("spike viewer", () => {
       await expect(page.getByRole("dialog")).toBeHidden();
     });
 
+    test("a sideways swipe straight after a short vertical one changes the photo", async ({
+      page,
+    }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await openAndHover(page, "engine=flip");
+
+      // A small push up, then sideways with no pause, while the wheel is still busy.
+      await swipe(page, 0, 8, 3);
+      await swipe(page, 40, 0, 8);
+
+      await expect
+        .poll(() => page.locator("[data-slot=ombra-track]").evaluate((track) => track.scrollLeft))
+        .toBeGreaterThan(100);
+      await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    });
+
+    test("a sideways swipe lets a snap-back finish", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await openAndHover(page, "engine=flip");
+
+      // A short pull, then the wheel goes quiet and the photo starts springing back.
+      await swipe(page, 0, 10, 6);
+      await page.waitForTimeout(160);
+
+      // A long sideways swipe while it springs back: the photo goes on settling.
+      for (let step = 0; step < 30; step += 1) {
+        await page.mouse.wheel(step % 2 === 0 ? 30 : -30, 0);
+        await page.waitForTimeout(16);
+      }
+
+      const live = await page.evaluate(() =>
+        Number(getComputedStyle(document.documentElement).getPropertyValue("--ombra-pull-live")),
+      );
+
+      expect(live).toBe(0);
+    });
+
+    test("a page scroll that runs on into the opening leaves the viewer open", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await page.goto("/spike?engine=flip");
+      await page.waitForLoadState("networkidle");
+
+      const trigger = page.getByRole("button", { name: firstPhoto });
+
+      await trigger.scrollIntoViewIfNeeded();
+
+      const box = await trigger.boundingBox();
+
+      if (!box) throw new Error("thumbnail had no box");
+
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+
+      // A free-spinning wheel keeps sending events through the click that opens the
+      // viewer. They come from the page's own clock, so a busy test runner cannot open
+      // gaps in the stream that a real wheel would not have.
+      await page.evaluate(
+        ({ x, y }) => {
+          let last = performance.now();
+
+          window.ombraStreamGap = 0;
+
+          const stream = window.setInterval(() => {
+            const now = performance.now();
+
+            window.ombraStreamGap = Math.max(window.ombraStreamGap ?? 0, now - last);
+            last = now;
+            document.elementFromPoint(x, y)?.dispatchEvent(
+              new WheelEvent("wheel", {
+                deltaY: 4,
+                clientX: x,
+                clientY: y,
+                bubbles: true,
+                cancelable: true,
+              }),
+            );
+          }, 16);
+
+          window.setTimeout(() => window.clearInterval(stream), 900);
+        },
+        { x, y },
+      );
+      await page.waitForTimeout(150);
+      await page.mouse.click(x, y);
+      await page.waitForTimeout(900);
+
+      const gap = await page.evaluate(() => window.ombraStreamGap ?? 0);
+
+      // A stalled page delays the timer, and a gap that long rightly starts a new
+      // stream. Real wheel events keep their own timestamps and have no such gap.
+      test.skip(gap >= 140, `the page stalled for ${Math.round(gap)} ms`);
+
+      await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    });
+
     test("a pinch does not pull", async ({ page }) => {
       await page.emulateMedia({ reducedMotion: "reduce" });
       await openAndHover(page, "engine=fade");
@@ -1507,5 +1603,58 @@ test.describe("spike viewer", () => {
     );
 
     expect(jump).toBeLessThan(0.08);
+  });
+});
+
+test.describe("touch pull", () => {
+  test("a drag down straight after a flick to the next photo dismisses", async ({
+    page,
+    context,
+    browserName,
+  }) => {
+    test.skip(
+      browserName !== "chromium" || !test.info().project.name.includes("mobile"),
+      "Needs CDP touch input",
+    );
+
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip");
+    await page.getByRole("button", { name: firstPhoto }).tap();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    const cdp = await context.newCDPSession(page);
+    const box = await page.locator("[data-slot=ombra-track]").boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+
+    // A quick flick to the next photo.
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+
+    for (let step = 1; step <= 6; step += 1) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: x - step * 30, y }],
+      });
+    }
+
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+    // Straight down while the track still snaps.
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+
+    for (let step = 1; step <= 10; step += 1) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x, y: y + step * 20 }],
+      });
+    }
+
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+    await expect(page.getByRole("dialog")).toBeHidden();
   });
 });
