@@ -6,7 +6,7 @@ import { photos } from "../apps/docs/app/spike/photos";
 declare global {
   interface Window {
     ombraWheelSeen?: { prevented: number; events: number; pull: number };
-    ombraWheelLog?: { t: number; prevented: boolean }[];
+    ombraWheelLog?: { t: number; prevented: boolean; viewer: boolean }[];
     ombraFirstFlight?: Promise<number>;
     ombraWheelCatch?: { before: number; after: number }[];
   }
@@ -1157,8 +1157,8 @@ test.describe("spike viewer", () => {
 
       // Fingers up push the photo up, short of the threshold.
       await swipe(page, 0, 10, 6);
-      // The wheel goes quiet and the photo starts springing back.
-      await page.waitForTimeout(220);
+      // The wheel goes quiet (140 ms) and the photo starts springing back.
+      await page.waitForTimeout(160);
       // The momentum arrives as a second burst while it springs back.
       await page.mouse.wheel(0, 10);
 
@@ -1227,13 +1227,17 @@ test.describe("spike viewer", () => {
     });
 
     /** Logs whether each wheel event was claimed, then sends `deltas` one by one. */
-    async function sendLogged(page: Page, deltas: readonly number[]) {
+    async function sendLogged(page: Page, deltas: readonly number[], untilClosed = true) {
       await page.evaluate(() => {
         const log: { t: number; prevented: boolean }[] = [];
 
         window.ombraWheelLog = log;
         window.addEventListener("wheel", (event) => {
-          log.push({ t: event.timeStamp, prevented: event.defaultPrevented });
+          log.push({
+            t: event.timeStamp,
+            prevented: event.defaultPrevented,
+            viewer: document.querySelector("[data-slot=ombra-viewer]") !== null,
+          });
         });
       });
 
@@ -1241,6 +1245,8 @@ test.describe("spike viewer", () => {
         await page.mouse.wheel(0, delta);
         await page.waitForTimeout(16);
       }
+
+      if (!untilClosed) return [];
 
       await expect(page.getByRole("dialog")).toBeHidden();
 
@@ -1270,14 +1276,42 @@ test.describe("spike viewer", () => {
       expect(log.filter((entry) => entry.unbroken && !entry.prevented)).toEqual([]);
     });
 
+    /** Keeps a faint tail coming until the viewer has gone, as a long flick's momentum does. */
+    async function tailUntilClosed(page: Page) {
+      for (let step = 0; step < 60; step += 1) {
+        if ((await page.locator("[data-slot=ombra-viewer]").count()) === 0) return;
+
+        await page.mouse.wheel(0, 2);
+        await page.waitForTimeout(16);
+      }
+
+      throw new Error("the viewer never closed");
+    }
+
     test("a scroll started right after the close reaches the page", async ({ page }) => {
       await page.emulateMedia({ reducedMotion: "reduce" });
       await openAndHover(page, "engine=fade");
 
+      await sendLogged(page, [...close, ...tail], false);
+      await tailUntilClosed(page);
+
       // The fingers land again while the tail decays and scroll on: the wheel picks up.
       const rising = [3, 6, 12, 20, 30, 40, 40, 40];
-      const log = await sendLogged(page, [...close, ...tail, ...rising]);
-      const fresh = log.slice(close.length + tail.length + 2);
+      const count = await page.evaluate(() => window.ombraWheelLog?.length ?? 0);
+
+      for (const delta of rising) {
+        await page.mouse.wheel(0, delta);
+        await page.waitForTimeout(16);
+      }
+
+      await expect
+        .poll(() => page.evaluate(() => window.ombraWheelLog?.length ?? 0))
+        .toBe(count + rising.length);
+
+      const fresh = await page.evaluate(
+        (from) => window.ombraWheelLog?.slice(from) ?? [],
+        count + 2,
+      );
 
       expect(fresh.filter((entry) => entry.prevented)).toEqual([]);
     });
@@ -1295,10 +1329,30 @@ test.describe("spike viewer", () => {
       await page.emulateMedia({ reducedMotion: "reduce" });
       await openAndHover(page, "engine=fade");
 
-      // Notches do not decay, so a steady run of them is a scroll, not momentum.
-      const log = await sendLogged(page, [100, 100, 100, 100, 100, 100, 100, 100]);
+      // Notches do not decay, so a steady run of them is a scroll, not momentum. The
+      // ones that land while the viewer is still closing are held back with the rest.
+      const log = await sendLogged(page, [100, 100, 100, 100, 100, 100, 100, 100, 100, 100]);
+      const after = log.filter((entry) => !entry.viewer);
 
-      expect(log.slice(5).filter((entry) => entry.prevented)).toEqual([]);
+      // Three notches that hold steady prove a scroll, and they may all fall in the close.
+      expect(after.length).toBeGreaterThan(2);
+      expect(after.slice(2).filter((entry) => entry.prevented)).toEqual([]);
+    });
+
+    test("a noisy momentum stays off the page while the viewer closes", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await openAndHover(page, "engine=flip");
+      // The last photo's thumbnail is below the fold, so the close leaves the page unlocked.
+      await page.keyboard.press("End");
+      await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 400)));
+
+      // A recorded Chrome trackpad flick up: past the threshold on the sixth event,
+      // then momentum that jumps from 24 to 114 where Chrome merged events.
+      const flick = [1, 1, 3, 11, 64, 49, 39, 24, 52, 114, 56, 54, 51, 52, 49, 47, 43, 39];
+      const momentum = [37, 33, 31, 28, 26, 24, 21, 19, 17, 16, 14, 14, 13, 12, 10, 18, 8, 7];
+      const log = await sendLogged(page, [...flick, ...momentum]);
+
+      expect(log.filter((entry) => entry.viewer && !entry.prevented)).toEqual([]);
     });
   });
 
