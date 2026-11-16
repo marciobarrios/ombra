@@ -1209,6 +1209,18 @@ test.describe("spike viewer", () => {
       expect(seen.pull).toBe(0);
     });
 
+    test("a vertical swipe straight after a sideways one dismisses", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await openAndHover(page, "engine=flip");
+
+      // To the next photo, then down with no pause: the sideways momentum and the
+      // track's snap are both still running when the vertical swipe begins.
+      await swipe(page, 40, 0, 6);
+      await swipe(page, 0, -40, 8);
+
+      await expect(page.getByRole("dialog")).toBeHidden();
+    });
+
     test("a pinch does not pull", async ({ page }) => {
       await page.emulateMedia({ reducedMotion: "reduce" });
       await openAndHover(page, "engine=fade");

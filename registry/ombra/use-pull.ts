@@ -43,6 +43,13 @@ const MOMENTUM_STEADY_PX = 12;
 /** A wheel flick also has to travel this far, so a single fast event cannot close. */
 const WHEEL_FLICK_DISTANCE = 32;
 
+/**
+ * A wheel event at least this tall, and more than twice as tall as it is wide, is a
+ * vertical swipe beyond doubt. Sideways swipes and their momentum stay on rails, so
+ * their vertical part is a pixel or two.
+ */
+const WHEEL_VERTICAL_PX = 4;
+
 const LINE_HEIGHT_PX = 16;
 
 type Sample = {
@@ -342,14 +349,23 @@ export function usePull(
       // A trackpad pinch arrives as ctrl+wheel, and the zoom hook owns it.
       if (event.ctrlKey || source === "pointer") return;
 
+      const unit = wheelUnit(event);
+      const upright = isVerticalSwipe(event, unit);
+
+      // A sideways swipe's momentum keeps arriving faster than the wheel can go quiet,
+      // so a vertical swipe straight after it would join the sideways gesture. It ends
+      // that gesture and starts a pull of its own.
+      if (source === "wheel" && axis === "x" && upright) release();
+
       if (source === null) {
-        if (dismissed || !enabledRef.current || !readyRef.current) return;
+        // The track keeps scrolling while it snaps after a sideways swipe. A finger
+        // that catches it waits for it to settle, but a swipe that is plainly
+        // vertical cannot be a slide change, so it pulls at once.
+        if (dismissed || !enabledRef.current || (!readyRef.current && !upright)) return;
 
         begin("wheel", event.timeStamp);
         wheelX = 0;
       }
-
-      const unit = wheelUnit(event);
 
       // The content follows the fingers, as a scroll does: fingers down pull the photo down.
       wheelX -= event.deltaX * unit;
@@ -434,6 +450,12 @@ function verticalSpeed(samples: readonly Sample[]): number {
   if (!oldest || !newest || newest.t <= oldest.t) return 0;
 
   return ((newest.y - oldest.y) / (newest.t - oldest.t)) * 1000;
+}
+
+function isVerticalSwipe(event: WheelEvent, unit: number): boolean {
+  const height = Math.abs(event.deltaY * unit);
+
+  return height >= WHEEL_VERTICAL_PX && height > Math.abs(event.deltaX * unit) * 2;
 }
 
 function wheelUnit(event: WheelEvent): number {
