@@ -148,15 +148,21 @@
   initial-value: 0;
 }
 
+/* The pull is signed: positive pulled down, negative pushed up. max(x, -x) is its
+   size, which works where CSS abs() does not yet. */
+:root {
+  --ombra-pull-amount: max(var(--ombra-pull-live), -1 * var(--ombra-pull-live));
+}
+
 [data-slot="ombra-sheet"] {
   transform: translate3d(0, calc(var(--ombra-pull-live) * 22dvh), 0)
-    scale(calc(1 - var(--ombra-pull-live) * 0.07));
+    scale(calc(1 - var(--ombra-pull-amount) * 0.07));
   transform-origin: center center;
-  border-radius: calc(var(--ombra-pull-live) * 24px);
+  border-radius: calc(var(--ombra-pull-amount) * 24px);
 }
 
 [data-slot="ombra-backdrop"] {
-  opacity: calc(1 - var(--ombra-pull-live) * 0.7);
+  opacity: calc(1 - var(--ombra-pull-amount) * 0.7);
 }
 
 @media (prefers-reduced-motion: reduce) {
