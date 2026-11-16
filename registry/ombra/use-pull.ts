@@ -7,10 +7,21 @@ import { MORPH_EASING } from "./morph";
 import { SNAP_SPRING, normalizeVelocity, springCurve } from "./spring";
 import { useReducerWithBailout } from "./use-reducer-with-bailout";
 
+/** A drag picks its axis once it has moved this far, so a tap or a jitter never pulls. */
 const AXIS_LOCK_PX = 8;
+
+/** A release farther than this from where the photo started dismisses, however slow. */
 const DISMISS_DISTANCE = 110;
+
+/** A release moving outward faster than this, in pixels per second, dismisses as a flick. */
 const DISMISS_VELOCITY = 700;
+
+/** The release velocity is measured over the last this many milliseconds of the drag. */
 const VELOCITY_WINDOW_MS = 130;
+
+/** A release below the thresholds springs back in this long, or this long in slow motion. */
+const SNAP_BACK_MS = 320;
+const SNAP_BACK_SLOW_MS = 900;
 
 /** A pull of this share of the viewport height is full progress. */
 const PULL_SPAN = 0.62;
@@ -184,7 +195,7 @@ export function usePull(
 
       if (from === 0) return;
 
-      let duration = reducedRef.current ? 0 : slowRef.current ? 900 : 320;
+      let duration = reducedRef.current ? 0 : slowRef.current ? SNAP_BACK_SLOW_MS : SNAP_BACK_MS;
       let easing: string = MORPH_EASING;
 
       if (springRef.current && !reducedRef.current) {

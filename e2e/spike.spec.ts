@@ -10,6 +10,7 @@ declare global {
     ombraFirstFlight?: Promise<number>;
     ombraWheelCatch?: { before: number; after: number }[];
     ombraStreamGap?: number;
+    ombraPullSeen?: { pulled: boolean; peak: number };
   }
 }
 
@@ -1123,6 +1124,85 @@ test.describe("spike viewer", () => {
     await expect(page.getByRole("dialog")).toBeHidden();
   });
 
+  test("a fast flick shorter than the dismiss distance dismisses", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    const box = await page.locator("[data-slot=ombra-track]").boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+
+    // 70px, well under the 110px distance, in 40ms: only its speed (about 1750px/s) can
+    // close it. Sent in one task with a fixed wait between events, so a loaded runner
+    // cannot spread the moves out and slow the measured flick below the threshold.
+    await page.evaluate(
+      ({ x, y }) => {
+        const track = document.querySelector("[data-slot=ombra-track]");
+
+        if (!track) throw new Error("no track");
+
+        const send = (type: string, clientY: number) => {
+          const init = { bubbles: true, pointerId: 1, pointerType: "mouse", isPrimary: true };
+
+          track.dispatchEvent(new PointerEvent(type, { ...init, button: 0, clientX: x, clientY }));
+        };
+
+        const wait = (ms: number) => {
+          const until = performance.now() + ms;
+
+          while (performance.now() < until) {
+            // A busy wait: the events must stay in this task, a fixed time apart.
+          }
+        };
+
+        send("pointerdown", y);
+
+        for (let step = 1; step <= 4; step += 1) {
+          wait(10);
+          send("pointermove", y + step * 17.5);
+        }
+
+        send("pointerup", y + 70);
+      },
+      { x, y },
+    );
+    await expect(page.getByRole("dialog")).toBeHidden();
+  });
+
+  test("a sideways mouse drag never pulls", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    await watchPull(page);
+
+    const box = await page.locator("[data-slot=ombra-track]").boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x - 200, y + 40, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+
+    const seen = await readPull(page);
+
+    expect(seen.pulled).toBe(false);
+    expect(seen.peak).toBe(0);
+  });
+
   test.describe("trackpad", () => {
     test.skip(({ isMobile }) => isMobile, "a trackpad swipe is a desktop input");
 
@@ -1511,7 +1591,8 @@ test.describe("spike viewer", () => {
       const momentum = [37, 33, 31, 28, 26, 24, 21, 19, 17, 16, 14, 14, 13, 12, 10, 18, 8, 7];
       const log = await sendLogged(page, [...flick, ...momentum]);
 
-      expect(log.filter((entry) => entry.viewer && !entry.prevented)).toEqual([]);
+      // As in the other momentum specs, an event after a runner stall is free to pass.
+      expect(log.filter((entry) => entry.viewer && entry.unbroken && !entry.prevented)).toEqual([]);
     });
   });
 
@@ -1708,4 +1789,148 @@ test.describe("touch pull", () => {
 
     await expect(page.getByRole("dialog")).toBeHidden();
   });
+
+  test("a sideways swipe changes the photo and never starts a pull", async ({
+    page,
+    context,
+    browserName,
+  }) => {
+    test.skip(
+      browserName !== "chromium" || !test.info().project.name.includes("mobile"),
+      "Needs CDP touch input",
+    );
+
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip");
+    await page.getByRole("button", { name: firstPhoto }).tap();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    await watchPull(page);
+
+    const cdp = await context.newCDPSession(page);
+    const box = await page.locator("[data-slot=ombra-track]").boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+
+    // Sideways with some vertical drift, as a real thumb swipe has.
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+
+    for (let step = 1; step <= 8; step += 1) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: x - step * 25, y: y + step * 6 }],
+      });
+    }
+
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+    await expect(page.locator("[data-slot=ombra-slide][data-active=true]")).not.toHaveAttribute(
+      "aria-label",
+      /^1 of /,
+    );
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+
+    const seen = await readPull(page);
+
+    expect(seen.pulled).toBe(false);
+    expect(seen.peak).toBe(0);
+  });
+
+  test("a short slow pull with sideways drift springs back on the same photo", async ({
+    page,
+    context,
+    browserName,
+  }) => {
+    test.skip(
+      browserName !== "chromium" || !test.info().project.name.includes("mobile"),
+      "Needs CDP touch input",
+    );
+
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip");
+    await page.getByRole("button", { name: firstPhoto }).tap();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+    await watchPull(page);
+
+    const track = page.locator("[data-slot=ombra-track]");
+    const startLeft = await track.evaluate((element) => element.scrollLeft);
+    const cdp = await context.newCDPSession(page);
+    const box = await track.boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+
+    // Mostly down, drifting sideways, short and slow: under both thresholds.
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+
+    for (let step = 1; step <= 8; step += 1) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: x + step * 4, y: y + step * 9 }],
+      });
+      await page.waitForTimeout(30);
+    }
+
+    // Hold still, so the release has no speed left.
+    await page.waitForTimeout(200);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Number(getComputedStyle(document.documentElement).getPropertyValue("--ombra-pull-live")),
+        ),
+      )
+      .toBe(0);
+    await page.waitForTimeout(400);
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await expect(page.locator("[data-slot=ombra-slide][data-active=true]")).toHaveAttribute(
+      "aria-label",
+      /^1 of /,
+    );
+    expect(await track.evaluate((element) => element.scrollLeft)).toBe(startLeft);
+
+    const seen = await readPull(page);
+
+    expect(seen.pulled).toBe(true);
+    expect(seen.peak).toBeGreaterThan(0.05);
+  });
 });
+
+/** Records, every frame, whether the viewer ever pulled and the largest pull it showed. */
+async function watchPull(page: Page) {
+  await page.evaluate(() => {
+    const seen = { pulled: false, peak: 0 };
+
+    window.ombraPullSeen = seen;
+
+    const tick = () => {
+      const viewer = document.querySelector("[data-slot=ombra-viewer]");
+
+      const live = Number(
+        getComputedStyle(document.documentElement).getPropertyValue("--ombra-pull-live") || "0",
+      );
+
+      if (viewer?.getAttribute("data-pulling") === "true") seen.pulled = true;
+
+      seen.peak = Math.max(seen.peak, Math.abs(live));
+      requestAnimationFrame(tick);
+    };
+
+    requestAnimationFrame(tick);
+  });
+}
+
+async function readPull(page: Page) {
+  const seen = await page.evaluate(() => window.ombraPullSeen);
+
+  if (!seen) throw new Error("watchPull was not installed");
+
+  return seen;
+}
