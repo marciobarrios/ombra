@@ -1138,11 +1138,40 @@ test.describe("spike viewer", () => {
     const x = box.x + box.width / 2;
     const y = box.y + box.height / 2;
 
-    // 70px, well under the 110px distance, in a few quick moves: only its speed can close it.
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    await page.mouse.move(x, y + 70, { steps: 4 });
-    await page.mouse.up();
+    // 70px, well under the 110px distance, in 40ms: only its speed (about 1750px/s) can
+    // close it. Sent in one task with a fixed wait between events, so a loaded runner
+    // cannot spread the moves out and slow the measured flick below the threshold.
+    await page.evaluate(
+      ({ x, y }) => {
+        const track = document.querySelector("[data-slot=ombra-track]");
+
+        if (!track) throw new Error("no track");
+
+        const send = (type: string, clientY: number) => {
+          const init = { bubbles: true, pointerId: 1, pointerType: "mouse", isPrimary: true };
+
+          track.dispatchEvent(new PointerEvent(type, { ...init, button: 0, clientX: x, clientY }));
+        };
+
+        const wait = (ms: number) => {
+          const until = performance.now() + ms;
+
+          while (performance.now() < until) {
+            // A busy wait: the events must stay in this task, a fixed time apart.
+          }
+        };
+
+        send("pointerdown", y);
+
+        for (let step = 1; step <= 4; step += 1) {
+          wait(10);
+          send("pointermove", y + step * 17.5);
+        }
+
+        send("pointerup", y + 70);
+      },
+      { x, y },
+    );
     await expect(page.getByRole("dialog")).toBeHidden();
   });
 
