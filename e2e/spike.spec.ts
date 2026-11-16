@@ -1337,7 +1337,7 @@ test.describe("spike viewer", () => {
     /** Logs whether each wheel event was claimed, then sends `deltas` one by one. */
     async function sendLogged(page: Page, deltas: readonly number[], untilClosed = true) {
       await page.evaluate(() => {
-        const log: { t: number; prevented: boolean }[] = [];
+        const log: { t: number; prevented: boolean; viewer: boolean }[] = [];
 
         window.ombraWheelLog = log;
         window.addEventListener("wheel", (event) => {
