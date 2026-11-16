@@ -960,7 +960,20 @@ test.describe("spike viewer", () => {
             return;
           }
 
+          // Measured at the flight's first frame, however late this frame comes: on a
+          // slow runner the flight can already be on its way by the first one seen here.
+          const animations = flight.getAnimations();
+          const times = animations.map((animation) => animation.currentTime);
+
+          for (const animation of animations) animation.currentTime = 0;
+
           const box = flight.getBoundingClientRect();
+
+          animations.forEach((animation, index) => {
+            const time = times[index];
+
+            if (time !== null) animation.currentTime = time;
+          });
 
           resolve(box.y + box.height / 2);
         };
