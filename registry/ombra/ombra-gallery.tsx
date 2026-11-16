@@ -394,7 +394,7 @@ function GalleryViewer({
   // Before the morph layout effects, so FLIP measures the viewer where it is shown.
   usePageZoomGuard(open, popupRef);
 
-  // A FLIP or fade opening can be cut by a downward drag. A view transition opening
+  // A FLIP or fade opening can be cut by a vertical drag. A view transition opening
   // hands its presses to the root, which already dismisses as an outside press.
   const pullCutsOpening = phase === "opening" && driverRef.current !== "vt";
 
@@ -949,7 +949,7 @@ function GalleryViewer({
 
       if (flight) {
         from = flight.hold();
-      } else if (pulledBox && pull > 0.02) {
+      } else if (pulledBox && Math.abs(pull) > 0.02) {
         from = poseBetween(pulledBox, home, { inline: 0, block: 0 });
       }
 
@@ -1123,15 +1123,18 @@ function GalleryViewer({
     sheetAnimationRef.current?.cancel();
     sheetAnimationRef.current = null;
 
-    if (pull <= 0.02) return;
+    // The pull is signed: negative while the photo is pushed up.
+    const amount = Math.abs(pull);
+
+    if (amount <= 0.02) return;
 
     const sheet = sheetElement();
 
     if (!sheet) return;
 
-    sheet.style.transform = `translate3d(0, ${pull * 22}dvh, 0) scale(${1 - pull * 0.07})`;
+    sheet.style.transform = `translate3d(0, ${pull * 22}dvh, 0) scale(${1 - amount * 0.07})`;
     sheet.style.transformOrigin = "center center";
-    sheet.style.borderRadius = `${pull * 24}px`;
+    sheet.style.borderRadius = `${amount * 24}px`;
   }
 
   function clearSheetHold() {

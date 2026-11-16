@@ -1,6 +1,17 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import { photos } from "../apps/docs/app/spike/photos";
+
+declare global {
+  interface Window {
+    ombraWheelSeen?: { prevented: number; events: number; pull: number };
+    ombraWheelLog?: { t: number; prevented: boolean; viewer: boolean }[];
+    ombraFirstFlight?: Promise<number>;
+    ombraWheelCatch?: { before: number; after: number }[];
+    ombraStreamGap?: number;
+  }
+}
 
 const photoCount = photos.length;
 
@@ -927,6 +938,96 @@ test.describe("spike viewer", () => {
     await page.mouse.up();
   });
 
+  test("a pull after a finished snap-back still moves the photo and closes from there", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    const box = await page.locator("[data-slot=ombra-track]").boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+
+    const sheetY = () =>
+      page.evaluate(() => {
+        const sheet = document.querySelector("[data-slot=ombra-sheet]");
+
+        if (!(sheet instanceof HTMLElement)) throw new Error("the viewer closed");
+
+        return new DOMMatrix(getComputedStyle(sheet).transform).m42;
+      });
+
+    // A short, slow pull, so it is not a flick: released and left to spring all the way back.
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+
+    for (let step = 1; step <= 6; step += 1) {
+      await page.mouse.move(x, y + step * 10);
+      await page.waitForTimeout(30);
+    }
+
+    await page.waitForTimeout(160);
+    await page.mouse.up();
+    await expect.poll(sheetY).toBe(0);
+    await page.waitForTimeout(200);
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+
+    const rest = await page.locator("[data-slot=ombra-slide][data-active=true]").boundingBox();
+
+    // The next pull, the other way, must still move the photo with the pointer.
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y - 200, { steps: 10 });
+    expect(await sheetY()).toBeLessThan(-24);
+
+    // And the close leaves from where the pull let go, not from the centre.
+    await page.evaluate(() => {
+      window.ombraFirstFlight = new Promise((resolve) => {
+        const tick = () => {
+          const flight = document.querySelector("[data-slot=ombra-flight]");
+
+          if (!flight) {
+            requestAnimationFrame(tick);
+
+            return;
+          }
+
+          // Measured at the flight's first frame, however late this frame comes: on a
+          // slow runner the flight can already be on its way by the first one seen here.
+          const animations = flight.getAnimations();
+          const times = animations.map((animation) => animation.currentTime);
+
+          for (const animation of animations) animation.currentTime = 0;
+
+          const box = flight.getBoundingClientRect();
+
+          animations.forEach((animation, index) => {
+            const time = times[index];
+
+            if (time !== null) animation.currentTime = time;
+          });
+
+          resolve(box.y + box.height / 2);
+        };
+
+        requestAnimationFrame(tick);
+      });
+    });
+    await page.mouse.up();
+
+    const flightCentre = await page.evaluate(() => window.ombraFirstFlight);
+
+    if (!rest || flightCentre === undefined) throw new Error("no slide or flight");
+
+    expect(flightCentre).toBeLessThan(rest.y + rest.height / 2 - 24);
+  });
+
   test("a pointerup outside the track does not swallow the next pull", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/spike?engine=fade");
@@ -977,6 +1078,441 @@ test.describe("spike viewer", () => {
     await page.mouse.move(x, y + 200, { steps: 8 });
     await page.mouse.up();
     await expect(page.getByRole("dialog")).toBeHidden();
+  });
+
+  test("an upward pull pushes the sheet up and dismisses", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip");
+    await page.getByRole("button", { name: firstPhoto }).click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    const track = page.locator("[data-slot=ombra-track]");
+    const box = await track.boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height - Math.min(72, box.height / 3);
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y - 200, { steps: 10 });
+
+    const pulled = await page.evaluate(() => {
+      const backdrop = document.querySelector("[data-slot=ombra-backdrop]");
+      const sheet = document.querySelector("[data-slot=ombra-sheet]");
+
+      const matrix =
+        sheet instanceof HTMLElement ? new DOMMatrix(getComputedStyle(sheet).transform) : null;
+
+      return {
+        progress: Number(document.documentElement.style.getPropertyValue("--ombra-pull-live")),
+        opacity: backdrop instanceof HTMLElement ? Number(getComputedStyle(backdrop).opacity) : 1,
+        ty: matrix?.m42 ?? 0,
+        scale: matrix?.a ?? 1,
+      };
+    });
+
+    expect(pulled.progress).toBeLessThan(-0.1);
+    expect(pulled.ty).toBeLessThan(-24);
+    // The sheet shrinks and the scrim fades by the size of the pull, whichever way it goes.
+    expect(pulled.scale).toBeLessThan(1);
+    expect(pulled.opacity).toBeLessThan(0.92);
+    await page.mouse.up();
+    await expect(page.getByRole("dialog")).toBeHidden();
+  });
+
+  test.describe("trackpad", () => {
+    test.skip(({ isMobile }) => isMobile, "a trackpad swipe is a desktop input");
+
+    async function openAndHover(page: Page, query: string) {
+      await page.goto(`/spike?${query}`);
+      await page.getByRole("button", { name: firstPhoto }).click();
+      await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+      await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+      const box = await page.locator("[data-slot=ombra-track]").boundingBox();
+
+      if (!box) throw new Error("track had no box");
+
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    }
+
+    async function swipe(page: Page, deltaX: number, deltaY: number, events: number) {
+      for (let step = 0; step < events; step += 1) {
+        await page.mouse.wheel(deltaX, deltaY);
+        await page.waitForTimeout(16);
+      }
+    }
+
+    for (const [direction, deltaY] of [
+      ["down", -40],
+      ["up", 40],
+    ] as const) {
+      test(`a two-finger swipe ${direction} dismisses`, async ({ page }) => {
+        await page.emulateMedia({ reducedMotion: "no-preference" });
+        await openAndHover(page, "engine=flip");
+        await swipe(page, 0, deltaY, 8);
+        await expect(page.getByRole("dialog")).toBeHidden();
+      });
+    }
+
+    test("the photo follows the fingers and springs back after a short swipe", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await openAndHover(page, "engine=flip");
+
+      // Short: under the distance threshold, and too short to count as a flick.
+      await swipe(page, 0, -8, 3);
+
+      // The snap-back animates the variable but leaves the inline value until it ends.
+      const progress = await page.evaluate(() =>
+        Number(document.documentElement.style.getPropertyValue("--ombra-pull-live")),
+      );
+
+      // Fingers moving down scroll with negative deltaY, and pull the photo down.
+      expect(progress).toBeGreaterThan(0.01);
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            Number(
+              getComputedStyle(document.documentElement).getPropertyValue("--ombra-pull-live"),
+            ),
+          ),
+        )
+        .toBe(0);
+      await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute(
+        "data-pulling",
+        "false",
+      );
+      await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    });
+
+    test("a second burst during the snap-back carries on from where the photo is", async ({
+      page,
+    }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      // Slow motion keeps the snap-back running across the runner's gaps.
+      await openAndHover(page, "engine=flip&slow=1");
+      await page.evaluate(() => {
+        const live = () =>
+          Number(getComputedStyle(document.documentElement).getPropertyValue("--ombra-pull-live"));
+
+        const log: { before: number; after: number }[] = [];
+        let before = 0;
+
+        window.ombraWheelCatch = log;
+        // Capture runs before the track's handler and the bubble listener after it.
+        window.addEventListener("wheel", () => (before = live()), { capture: true });
+        window.addEventListener("wheel", () => log.push({ before, after: live() }));
+      });
+
+      // Fingers up push the photo up, short of the threshold.
+      await swipe(page, 0, 10, 6);
+      // The wheel goes quiet (140 ms) and the photo starts springing back.
+      await page.waitForTimeout(160);
+      // The momentum arrives as a second burst while it springs back.
+      await page.mouse.wheel(0, 10);
+
+      await expect.poll(() => page.evaluate(() => window.ombraWheelCatch?.length ?? 0)).toBe(7);
+
+      const caught = await page.evaluate(() => window.ombraWheelCatch?.[6]);
+
+      if (!caught) throw new Error("the second burst was not logged");
+
+      // The photo was still on its way back, so the catch is meaningful.
+      expect(caught.before).toBeLessThan(-0.02);
+      // It moves on up from there instead of jumping back to the centre first.
+      expect(caught.after).toBeLessThan(caught.before);
+    });
+
+    test("a horizontal swipe leaves the pull alone", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await openAndHover(page, "engine=flip");
+
+      // Where the scroll lands differs between engines, so watch what the pull does
+      // instead: it must leave every event to the native scroll and never move.
+      await page.evaluate(() => {
+        const seen = { prevented: 0, events: 0, pull: 0 };
+
+        window.ombraWheelSeen = seen;
+        window.addEventListener("wheel", (event) => {
+          seen.events += 1;
+
+          if (event.defaultPrevented) seen.prevented += 1;
+
+          const pull = Number(
+            document.documentElement.style.getPropertyValue("--ombra-pull-live") || "0",
+          );
+
+          seen.pull = Math.max(seen.pull, Math.abs(pull));
+        });
+      });
+      await swipe(page, 40, 6, 12);
+      await page.waitForTimeout(300);
+      await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+
+      const seen = await page.evaluate(() => window.ombraWheelSeen);
+
+      if (!seen) throw new Error("no wheel log");
+
+      expect(seen.events).toBe(12);
+      expect(seen.prevented).toBe(0);
+      expect(seen.pull).toBe(0);
+    });
+
+    test("a vertical swipe straight after a sideways one dismisses", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await openAndHover(page, "engine=flip");
+
+      // To the next photo, then down with no pause: the sideways momentum and the
+      // track's snap are both still running when the vertical swipe begins.
+      await swipe(page, 40, 0, 6);
+      await swipe(page, 0, -40, 8);
+
+      await expect(page.getByRole("dialog")).toBeHidden();
+    });
+
+    test("a sideways swipe straight after a short vertical one changes the photo", async ({
+      page,
+    }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await openAndHover(page, "engine=flip");
+
+      // A small push up, then sideways with no pause, while the wheel is still busy.
+      await swipe(page, 0, 8, 3);
+      await swipe(page, 40, 0, 8);
+
+      await expect
+        .poll(() => page.locator("[data-slot=ombra-track]").evaluate((track) => track.scrollLeft))
+        .toBeGreaterThan(100);
+      await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    });
+
+    test("a sideways swipe lets a snap-back finish", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await openAndHover(page, "engine=flip");
+
+      // A short pull, then the wheel goes quiet and the photo starts springing back.
+      await swipe(page, 0, 10, 6);
+      await page.waitForTimeout(160);
+
+      // A long sideways swipe while it springs back: the photo goes on settling.
+      for (let step = 0; step < 30; step += 1) {
+        await page.mouse.wheel(step % 2 === 0 ? 30 : -30, 0);
+        await page.waitForTimeout(16);
+      }
+
+      const live = await page.evaluate(() =>
+        Number(getComputedStyle(document.documentElement).getPropertyValue("--ombra-pull-live")),
+      );
+
+      expect(live).toBe(0);
+    });
+
+    test("a page scroll that runs on into the opening leaves the viewer open", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await page.goto("/spike?engine=flip");
+      await page.waitForLoadState("networkidle");
+
+      const trigger = page.getByRole("button", { name: firstPhoto });
+
+      await trigger.scrollIntoViewIfNeeded();
+
+      const box = await trigger.boundingBox();
+
+      if (!box) throw new Error("thumbnail had no box");
+
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+
+      // A free-spinning wheel keeps sending events through the click that opens the
+      // viewer. They come from the page's own clock, so a busy test runner cannot open
+      // gaps in the stream that a real wheel would not have.
+      await page.evaluate(
+        ({ x, y }) => {
+          let last = performance.now();
+
+          window.ombraStreamGap = 0;
+
+          const stream = window.setInterval(() => {
+            const now = performance.now();
+
+            window.ombraStreamGap = Math.max(window.ombraStreamGap ?? 0, now - last);
+            last = now;
+            document.elementFromPoint(x, y)?.dispatchEvent(
+              new WheelEvent("wheel", {
+                deltaY: 4,
+                clientX: x,
+                clientY: y,
+                bubbles: true,
+                cancelable: true,
+              }),
+            );
+          }, 16);
+
+          window.setTimeout(() => window.clearInterval(stream), 900);
+        },
+        { x, y },
+      );
+      await page.waitForTimeout(150);
+      await page.mouse.click(x, y);
+      await page.waitForTimeout(900);
+
+      const gap = await page.evaluate(() => window.ombraStreamGap ?? 0);
+
+      // A stalled page delays the timer, and a gap that long rightly starts a new
+      // stream. Real wheel events keep their own timestamps and have no such gap.
+      test.skip(gap >= 140, `the page stalled for ${Math.round(gap)} ms`);
+
+      await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    });
+
+    test("a pinch does not pull", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await openAndHover(page, "engine=fade");
+      await page.keyboard.down("Control");
+      await swipe(page, 0, 20, 8);
+      await page.keyboard.up("Control");
+      await page.waitForTimeout(300);
+      await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    });
+
+    test("reduced motion still dismisses on a swipe", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await openAndHover(page, "engine=flip");
+      await swipe(page, 0, -40, 8);
+      await expect(page.getByRole("dialog")).toBeHidden();
+    });
+
+    /** Logs whether each wheel event was claimed, then sends `deltas` one by one. */
+    async function sendLogged(page: Page, deltas: readonly number[], untilClosed = true) {
+      await page.evaluate(() => {
+        const log: { t: number; prevented: boolean; viewer: boolean }[] = [];
+
+        window.ombraWheelLog = log;
+        window.addEventListener("wheel", (event) => {
+          log.push({
+            t: event.timeStamp,
+            prevented: event.defaultPrevented,
+            viewer: document.querySelector("[data-slot=ombra-viewer]") !== null,
+          });
+        });
+      });
+
+      for (const delta of deltas) {
+        await page.mouse.wheel(0, delta);
+        await page.waitForTimeout(16);
+      }
+
+      if (!untilClosed) return [];
+
+      await expect(page.getByRole("dialog")).toBeHidden();
+
+      const log = await page.evaluate(() => window.ombraWheelLog ?? []);
+
+      expect(log).toHaveLength(deltas.length);
+
+      // A real trackpad sends every frame. Under a loaded test runner events can
+      // arrive far apart, and a gap that long rightly ends the swallow on its own,
+      // so a claim is only required of events that follow the previous one closely.
+      return log.map((entry, index) => ({
+        ...entry,
+        unbroken: log.slice(1, index + 1).every((next, at) => next.t - log[at].t < 250),
+      }));
+    }
+
+    // Past the threshold on the third event, then a tail that decays the way a trackpad's does.
+    const close = [40, 40, 40, 40];
+    const tail = [30, 22, 16, 11, 7, 4, 2];
+
+    test("the swipe's momentum does not scroll the page after the close", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await openAndHover(page, "engine=fade");
+
+      const log = await sendLogged(page, [...close, ...tail]);
+
+      expect(log.filter((entry) => entry.unbroken && !entry.prevented)).toEqual([]);
+    });
+
+    /** Keeps a faint tail coming until the viewer has gone, as a long flick's momentum does. */
+    async function tailUntilClosed(page: Page) {
+      for (let step = 0; step < 60; step += 1) {
+        if ((await page.locator("[data-slot=ombra-viewer]").count()) === 0) return;
+
+        await page.mouse.wheel(0, 2);
+        await page.waitForTimeout(16);
+      }
+
+      throw new Error("the viewer never closed");
+    }
+
+    test("a scroll started right after the close reaches the page", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await openAndHover(page, "engine=fade");
+
+      await sendLogged(page, [...close, ...tail], false);
+      await tailUntilClosed(page);
+
+      // The fingers land again while the tail decays and scroll on: the wheel picks up.
+      const rising = [3, 6, 12, 20, 30, 40, 40, 40];
+      const count = await page.evaluate(() => window.ombraWheelLog?.length ?? 0);
+
+      for (const delta of rising) {
+        await page.mouse.wheel(0, delta);
+        await page.waitForTimeout(16);
+      }
+
+      await expect
+        .poll(() => page.evaluate(() => window.ombraWheelLog?.length ?? 0))
+        .toBe(count + rising.length);
+
+      const fresh = await page.evaluate(
+        (from) => window.ombraWheelLog?.slice(from) ?? [],
+        count + 2,
+      );
+
+      expect(fresh.filter((entry) => entry.prevented)).toEqual([]);
+    });
+
+    test("a scroll the other way right after the close reaches the page", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await openAndHover(page, "engine=fade");
+
+      const log = await sendLogged(page, [...close, 30, 22, -4, -10, -20, -30]);
+
+      expect(log.slice(close.length + 2).filter((entry) => entry.prevented)).toEqual([]);
+    });
+
+    test("mouse wheel notches right after the close reach the page", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await openAndHover(page, "engine=fade");
+
+      // Notches do not decay, so a steady run of them is a scroll, not momentum. The
+      // ones that land while the viewer is still closing are held back with the rest.
+      const log = await sendLogged(page, [100, 100, 100, 100, 100, 100, 100, 100, 100, 100]);
+      const after = log.filter((entry) => !entry.viewer);
+
+      // Three notches that hold steady prove a scroll, and they may all fall in the close.
+      expect(after.length).toBeGreaterThan(2);
+      expect(after.slice(2).filter((entry) => entry.prevented)).toEqual([]);
+    });
+
+    test("a noisy momentum stays off the page while the viewer closes", async ({ page }) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await openAndHover(page, "engine=flip");
+      // The last photo's thumbnail is below the fold, so the close leaves the page unlocked.
+      await page.keyboard.press("End");
+      await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 400)));
+
+      // A recorded Chrome trackpad flick up: past the threshold on the sixth event,
+      // then momentum that jumps from 24 to 114 where Chrome merged events.
+      const flick = [1, 1, 3, 11, 64, 49, 39, 24, 52, 114, 56, 54, 51, 52, 49, 47, 43, 39];
+      const momentum = [37, 33, 31, 28, 26, 24, 21, 19, 17, 16, 14, 14, 13, 12, 10, 18, 8, 7];
+      const log = await sendLogged(page, [...flick, ...momentum]);
+
+      expect(log.filter((entry) => entry.viewer && !entry.prevented)).toEqual([]);
+    });
   });
 
   test("keeps a zoomed photo inside its slide while panning", async ({ page }) => {
@@ -1118,5 +1654,58 @@ test.describe("spike viewer", () => {
     );
 
     expect(jump).toBeLessThan(0.08);
+  });
+});
+
+test.describe("touch pull", () => {
+  test("a drag down straight after a flick to the next photo dismisses", async ({
+    page,
+    context,
+    browserName,
+  }) => {
+    test.skip(
+      browserName !== "chromium" || !test.info().project.name.includes("mobile"),
+      "Needs CDP touch input",
+    );
+
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/spike?engine=flip");
+    await page.getByRole("button", { name: firstPhoto }).tap();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 200)));
+
+    const cdp = await context.newCDPSession(page);
+    const box = await page.locator("[data-slot=ombra-track]").boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+
+    // A quick flick to the next photo.
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+
+    for (let step = 1; step <= 6; step += 1) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: x - step * 30, y }],
+      });
+    }
+
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+    // Straight down while the track still snaps.
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+
+    for (let step = 1; step <= 10; step += 1) {
+      await cdp.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x, y: y + step * 20 }],
+      });
+    }
+
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+    await expect(page.getByRole("dialog")).toBeHidden();
   });
 });
