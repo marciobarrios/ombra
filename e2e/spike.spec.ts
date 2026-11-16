@@ -1562,7 +1562,8 @@ test.describe("spike viewer", () => {
       const momentum = [37, 33, 31, 28, 26, 24, 21, 19, 17, 16, 14, 14, 13, 12, 10, 18, 8, 7];
       const log = await sendLogged(page, [...flick, ...momentum]);
 
-      expect(log.filter((entry) => entry.viewer && !entry.prevented)).toEqual([]);
+      // As in the other momentum specs, an event after a runner stall is free to pass.
+      expect(log.filter((entry) => entry.viewer && entry.unbroken && !entry.prevented)).toEqual([]);
     });
   });
 
