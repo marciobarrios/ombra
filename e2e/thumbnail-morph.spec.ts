@@ -23,12 +23,19 @@ type Frame = {
 type MorphProbe = {
   freezeFrames: () => void;
   thawFrames: () => void;
-  pauseFlight: (at: "start" | "end") => Promise<void>;
+  pauseFlight: (at: "start" | "middle" | "end") => Promise<void>;
   resume: (at: "start" | "end") => void;
+  scrollPageBy: (delta: number) => Promise<void>;
+  resumeAfterRetarget: () => Promise<void>;
   record: (thumbIndex: number) => void;
   frames: Frame[];
+  landings: Landing[];
   sawFlight: boolean;
+  mountedFlight: boolean;
 };
+
+/** Where a flight finished, read before the gallery removes the clone. */
+type Landing = { flight: Rect; thumb: Rect | null };
 
 declare global {
   interface Window {
@@ -39,18 +46,53 @@ declare global {
 /**
  * Test hooks. `freezeFrames` queues animation frame callbacks until `thawFrames`,
  * so the close's arrival check cannot end a close held at its last frame.
+ *
+ * A loaded CI runner can go hundreds of milliseconds between frames, and each
+ * runner call is a round trip, so a wall-clock wait cannot place an action
+ * mid-flight. `pauseFlight("middle")` holds the flight 40% along from the moment it
+ * mounts, and `resumeAfterRetarget` lets it go once the follow has re-aimed it.
+ * A frame the runner never paints is never sampled either, so each flight's
+ * landing is read when its animation finishes, not from the frame trace.
  */
 function installProbe() {
   const original = window.requestAnimationFrame.bind(window);
   const originalCancel = window.cancelAnimationFrame.bind(window);
   let queued: Map<number, FrameRequestCallback> | null = null;
   let nextId = 1;
+  let paused: Animation[] = [];
+  let thumbIndex = 0;
   const flightSelector = "[data-slot=ombra-flight]";
 
   const box = (element: Element): Rect => {
     const rect = element.getBoundingClientRect();
 
     return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  };
+
+  const thumbAt = (index: number) =>
+    document.querySelectorAll("[data-slot=ombra-trigger] img")[index] ?? null;
+
+  // This handler runs before the gallery's, which only starts waiting for a decode,
+  // so the clone is still mounted, at its final pose, when it is read.
+  const animate = Element.prototype.animate;
+
+  Element.prototype.animate = function (this: Element, ...args) {
+    const animation = animate.apply(this, args);
+
+    if (this.matches(flightSelector)) {
+      animation.finished.then(
+        () => {
+          if (!this.isConnected) return;
+
+          const thumb = thumbAt(thumbIndex);
+
+          probe.landings.push({ flight: box(this), thumb: thumb ? box(thumb) : null });
+        },
+        () => undefined,
+      );
+    }
+
+    return animation;
   };
 
   // The morph's own animations: finite and on the document clock. Scroll-driven
@@ -64,7 +106,9 @@ function installProbe() {
 
   const probe: MorphProbe = {
     frames: [],
+    landings: [],
     sawFlight: false,
+    mountedFlight: false,
     freezeFrames() {
       queued = new Map();
       window.requestAnimationFrame = (callback) => {
@@ -93,12 +137,15 @@ function installProbe() {
     pauseFlight(at) {
       return new Promise((resolve) => {
         const pause = () => {
-          for (const animation of morphAnimations()) {
+          paused = morphAnimations();
+
+          for (const animation of paused) {
             animation.pause();
 
             const end = Number(animation.effect?.getComputedTiming().endTime ?? 0);
+            const fraction = { start: 0, middle: 0.4, end: 1 }[at];
 
-            animation.currentTime = at === "start" ? 0 : end;
+            animation.currentTime = end * fraction;
           }
 
           resolve();
@@ -127,14 +174,93 @@ function installProbe() {
         else animation.play();
       }
     },
-    record(thumbIndex) {
+    scrollPageBy(delta) {
+      // Retried each frame until the page has moved, and fails if it never does.
+      const from = window.scrollY;
+
+      return new Promise((resolve, reject) => {
+        const started = performance.now();
+
+        const tick = () => {
+          window.scrollTo(0, from + delta);
+
+          if (window.scrollY !== from) {
+            resolve();
+
+            return;
+          }
+
+          if (performance.now() - started > 5_000) {
+            reject(new Error("the page never scrolled"));
+
+            return;
+          }
+
+          original(tick);
+        };
+
+        tick();
+      });
+    },
+    resumeAfterRetarget() {
+      // Everything was paused, so the follow is what cancels the flight's animations
+      // when it re-aims them. The new flight may already have landed by the next check.
+      const retargeted = () =>
+        paused.some(
+          (animation) =>
+            animation.effect instanceof KeyframeEffect &&
+            animation.effect.target?.matches(flightSelector) &&
+            animation.playState === "idle",
+        );
+
+      return new Promise((resolve, reject) => {
+        const started = performance.now();
+
+        const tick = () => {
+          if (retargeted()) {
+            // Only what is still held: play() on a finished replay would run it again.
+            for (const animation of paused) {
+              if (animation.playState === "paused") animation.play();
+            }
+
+            resolve();
+
+            return;
+          }
+
+          if (performance.now() - started > 5_000) {
+            reject(new Error("the flight was never re-aimed"));
+
+            return;
+          }
+
+          original(tick);
+        };
+
+        tick();
+      });
+    },
+    record(index) {
+      thumbIndex = index;
       probe.frames = [];
+      probe.landings = [];
       probe.sawFlight = false;
+      probe.mountedFlight = false;
+
+      // A loaded runner can skip painting a whole flight, so no frame below sees it.
+      const observer = new MutationObserver(() => {
+        if (!document.querySelector(flightSelector)) return;
+
+        probe.mountedFlight = true;
+        observer.disconnect();
+      });
+
+      observer.observe(document.body, { childList: true });
 
       const tick = () => {
         const flight = document.querySelector(flightSelector);
         const image = flight?.querySelector("img");
-        const thumb = document.querySelectorAll("[data-slot=ombra-trigger] img")[thumbIndex];
+        const thumb = thumbAt(thumbIndex);
 
         const hero = document.querySelector<HTMLImageElement>(
           "[data-slot=ombra-image][data-active=true]",
@@ -358,20 +484,21 @@ test.describe("thumbnail morph", () => {
     await page.evaluate(() => {
       window.morphProbe?.record(0);
     });
+
+    const paused = page.evaluate(() => window.morphProbe?.pauseFlight("middle"));
+
     await tap(page, triggers(page).first());
-    await expect(page.locator(flightSelector)).toHaveCount(1);
-    await page.waitForTimeout(300);
+    await paused;
     // An address bar returning takes height from the viewport the viewer fills.
     await page.setViewportSize({ width: 900, height: 860 });
-    await expect(page.locator(flightSelector)).toHaveCount(1);
+    await page.evaluate(() => window.morphProbe?.resumeAfterRetarget());
     await waitOpen(page);
 
-    const frames = await page.evaluate(() => window.morphProbe?.frames ?? []);
-    const last = frames.findLast((frame) => frame.flight)?.flight;
+    const landing = await page.evaluate(() => window.morphProbe?.landings.at(-1));
     const hero = await boxOf(page.locator("[data-slot=ombra-image][data-active=true]"));
 
-    expect(last).toBeTruthy();
-    expectSameBox(last ?? hero, hero, 1);
+    expect(landing).toBeTruthy();
+    expectSameBox(landing?.flight ?? hero, hero, 1);
   });
 
   test("lands on the thumbnail when the page scrolls mid-close", async ({ page }) => {
@@ -382,24 +509,31 @@ test.describe("thumbnail morph", () => {
     await page.evaluate(() => {
       window.morphProbe?.record(0);
     });
+
+    const paused = page.evaluate(() => window.morphProbe?.pauseFlight("middle"));
+
     await page.keyboard.press("Escape");
-    await expect(page.locator(flightSelector)).toHaveCount(1);
-    await page.waitForTimeout(300);
-    await page.evaluate(() => window.scrollBy(0, -80));
+    await paused;
+    await page.evaluate(async () => {
+      await window.morphProbe?.scrollPageBy(-80);
+      await window.morphProbe?.resumeAfterRetarget();
+    });
     await expect(viewer(page)).toHaveCount(0, { timeout: 8_000 });
 
-    const frames = await page.evaluate(() => window.morphProbe?.frames ?? []);
-    const last = frames.findLast((frame) => frame.flight);
+    const { before, landing } = await page.evaluate(() => ({
+      // Read when recording started, before the close.
+      before: window.morphProbe?.frames[0]?.thumb,
+      landing: window.morphProbe?.landings.at(-1),
+    }));
+
     const thumb = await boxOf(thumbImage(page, 0));
 
-    const first = frames.find((frame) => frame.flight);
-
     // The scroll moved the thumbnail while the photo was in the air.
-    expect(Math.abs((first?.thumb?.y ?? 0) - (last?.thumb?.y ?? 0))).toBeGreaterThan(60);
-    expect(last?.flight).toBeTruthy();
+    expect(Math.abs((before?.y ?? 0) - (landing?.thumb?.y ?? 0))).toBeGreaterThan(60);
+    expect(landing).toBeTruthy();
     // A close ends once the photo is within 1.5px of home, on its last frame and after.
-    expectSameBox(last?.flight ?? thumb, last?.thumb ?? thumb, 1.5);
-    expectSameBox(last?.flight ?? thumb, thumb, 1.5);
+    expectSameBox(landing?.flight ?? thumb, landing?.thumb ?? thumb, 1.5);
+    expectSameBox(landing?.flight ?? thumb, thumb, 1.5);
   });
 
   test("leaves the page where it was, so the close needs no scroll", async ({ page }) => {
@@ -430,9 +564,13 @@ test.describe("thumbnail morph", () => {
     await waitOpen(page);
     await page.waitForTimeout(100);
 
-    const frames = await page.evaluate(() => window.morphProbe?.frames ?? []);
+    const { frames, mountedFlight } = await page.evaluate(() => ({
+      frames: window.morphProbe?.frames ?? [],
+      mountedFlight: window.morphProbe?.mountedFlight ?? false,
+    }));
 
-    expect(frames.some((frame) => frame.flight)).toBe(true);
+    // The clone flew, even where a loaded runner painted none of its frames.
+    expect(mountedFlight).toBe(true);
 
     for (const frame of frames) {
       if (frame.flight) expect(frame.flightReady).toBe(true);
