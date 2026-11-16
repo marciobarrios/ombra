@@ -24,6 +24,7 @@ type Harness = {
   };
   free: { items: readonly OmbraItem[]; openAsks: boolean[]; activeAsks: string[] };
   openOnly: { open: boolean; openAsks: boolean[] };
+  activeOnly: { activeId: string | null };
 };
 
 const initialHarness: Harness = {
@@ -39,6 +40,7 @@ const initialHarness: Harness = {
   },
   free: { items: initialItems, openAsks: [], activeAsks: [] },
   openOnly: { open: false, openAsks: [] },
+  activeOnly: { activeId: initialItems[0]?.id ?? null },
 };
 
 function withItems(state: Harness, section: Section, items: readonly OmbraItem[]): Harness {
@@ -114,6 +116,10 @@ function harnessReducer(state: Harness, action: HarnessAction): Harness {
       return { ...state, controlled: { ...controlled, open: false } };
 
     case "parent-selected":
+      if (action.section === "activeOnly") {
+        return { ...state, activeOnly: { activeId: action.activeId } };
+      }
+
       return { ...state, controlled: { ...controlled, activeId: action.activeId } };
 
     case "items-reversed":
@@ -133,7 +139,7 @@ function harnessReducer(state: Harness, action: HarnessAction): Harness {
 
 export function RootHarness() {
   const [state, dispatch] = useReducer(harnessReducer, initialHarness);
-  const { controlled, free, openOnly } = state;
+  const { controlled, free, openOnly, activeOnly } = state;
 
   // The viewer is modal, so tests reach the parent through this rather than page buttons.
   useEffect(() => {
@@ -213,6 +219,28 @@ export function RootHarness() {
           open={openOnly.open}
           onOpenChange={(open) => {
             dispatch({ type: "open-change-asked", section: "openOnly", open });
+          }}
+        />
+      </section>
+
+      <section data-testid="active-only" className="grid gap-4">
+        <h2 className="text-lg text-foreground">Controlled item, answered later</h2>
+        <output
+          data-testid="active-only-readout"
+          data-active={activeOnly.activeId ?? ""}
+          className="font-mono text-xs text-foreground/70"
+        >
+          active {activeOnly.activeId ?? "none"}
+        </output>
+        {/* Like a parent that keeps the item in the URL: the answer lands a little later. */}
+        <OmbraGallery
+          items={initialItems}
+          engine="fade"
+          activeId={activeOnly.activeId}
+          onActiveIdChange={(itemId) => {
+            window.setTimeout(() => {
+              dispatch({ type: "parent-selected", section: "activeOnly", activeId: itemId });
+            }, 200);
           }}
         />
       </section>

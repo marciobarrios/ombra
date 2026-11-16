@@ -8,7 +8,7 @@ export type HarnessAction =
   | { type: "policy-changed"; allowOpen?: boolean; allowActive?: boolean; allowClose?: boolean }
   | { type: "parent-opened"; activeId?: string; section?: "openOnly" }
   | { type: "parent-closed" }
-  | { type: "parent-selected"; activeId: string }
+  | { type: "parent-selected"; activeId: string; section?: "activeOnly" }
   | { type: "items-reversed"; section: Section }
   | { type: "item-removed"; section: Section; itemId: string }
   | { type: "items-cleared"; section: Section };

@@ -34,7 +34,10 @@ export type OmbraRootProps = {
   /** Controlled open state. A closing viewer already counts as closed. */
   open?: boolean;
   defaultOpen?: boolean;
-  /** Called when the viewer asks to open or close. A controlled parent may ignore it. */
+  /**
+   * Called when the viewer asks to open or close. A controlled parent may ignore it, or
+   * answer later: a request made from a trigger is kept for about a second.
+   */
   onOpenChange?: (open: boolean) => void;
   /** Controlled active item. */
   activeId?: string | null;
@@ -76,7 +79,15 @@ type PendingOpen = {
   intent: OmbraOpenIntent;
   /** Uncontrolled open, controlled active item: opens only if the parent selects `itemId`. */
   awaitsActive: boolean;
+  /** The controlled `activeId` when the request was made, to tell a refusal from a wait. */
+  activeBefore: string | null | undefined;
 };
+
+/**
+ * How long a request waits for a controlled parent that answers later, such as one that
+ * puts `activeId` in the URL. A parent that never answers has refused once this passes.
+ */
+const REQUEST_LAPSE_MS = 1000;
 
 /** Items with a node in document order, then items without one in registration order. */
 function documentOrder(registrations: Iterable<Registration>): string[] {
@@ -143,6 +154,7 @@ export function OmbraRoot({
   const askedActive = useRef<string | null>(null);
   const pendingOpen = useRef<PendingOpen | null>(null);
   const drivenOpen = useRef(false);
+  const drivenClose = useRef(false);
   const defaultOpened = useRef(false);
   const emptied = useRef(false);
   const warned = useRef(new Set<string>());
@@ -256,15 +268,13 @@ export function OmbraRoot({
     [send, askParentForActive],
   );
 
-  /** A request the parent has to answer. It lapses once the parent has had its render. */
+  /** A request the parent has to answer. A newer request, a close, or silence replaces it. */
   const holdForParent = useCallback((pending: PendingOpen) => {
     pendingOpen.current = pending;
 
-    // React commits an update from an input event before a timer fires, so by then
-    // a parent that accepted has rendered, and one that did not has refused.
     window.setTimeout(() => {
       if (pendingOpen.current === pending) pendingOpen.current = null;
-    }, 0);
+    }, REQUEST_LAPSE_MS);
   }, []);
 
   /** Starts the driver, then reports what changed. */
@@ -274,6 +284,8 @@ export function OmbraRoot({
       const changed = itemId !== activeRef.current;
 
       if (!driver().open(itemId, intent)) return false;
+
+      drivenClose.current = false;
 
       if (!props.current.controlledActive && changed) {
         activeRef.current = itemId;
@@ -302,7 +314,7 @@ export function OmbraRoot({
 
       if (openIsControlled) {
         // The parent decides. The effect below starts the morph once `open` arrives.
-        holdForParent({ itemId, intent, awaitsActive: false });
+        holdForParent({ itemId, intent, awaitsActive: false, activeBefore: requestedRef.current });
 
         if (!isOpening(phaseRef.current)) props.current.onOpenChange?.(true);
 
@@ -311,7 +323,7 @@ export function OmbraRoot({
 
       if (activeIsControlled && itemId !== activeRef.current) {
         // Refusing the item refuses the open, so the viewer never shows an item the parent declined.
-        holdForParent({ itemId, intent, awaitsActive: true });
+        holdForParent({ itemId, intent, awaitsActive: true, activeBefore: requestedRef.current });
 
         return true;
       }
@@ -339,7 +351,17 @@ export function OmbraRoot({
   // from the prop, as a View Transition opening can, is put right.
   useLayoutEffect(() => {
     const ids = idsRef.current;
+
+    // A request for an item that has since left the collection is void.
+    if (pendingOpen.current && !ids.includes(pendingOpen.current.itemId)) {
+      pendingOpen.current = null;
+    }
+
     const pending = pendingOpen.current;
+
+    // A View Transition close stays "open" until its update callback runs. One close per
+    // closing, so a commit in between does not start a second transition.
+    if (!isOpening(state.phase)) drivenClose.current = false;
 
     if (controlledOpen && openProp) {
       if (!drivenOpen.current && ids.length > 0) {
@@ -354,11 +376,18 @@ export function OmbraRoot({
     } else if (controlledOpen) {
       drivenOpen.current = false;
 
-      if (isOpening(state.phase)) driver().close();
+      if (isOpening(state.phase) && !drivenClose.current) {
+        drivenClose.current = true;
+        driver().close();
+      }
     } else if (pending?.awaitsActive) {
-      pendingOpen.current = null;
-
-      if (activeRef.current === pending.itemId) startOpen(pending.itemId, pending.intent);
+      // Accepted: open on it. Answered with another item: refused. Otherwise still waiting.
+      if (activeRef.current === pending.itemId) {
+        pendingOpen.current = null;
+        startOpen(pending.itemId, pending.intent);
+      } else if (requestedRef.current !== pending.activeBefore) {
+        pendingOpen.current = null;
+      }
     }
 
     const initial = resolveActive(requestedRef.current, ids);
@@ -388,9 +417,12 @@ export function OmbraRoot({
 
     if (state.itemIds.includes(previous)) return;
 
+    // The parent picked the replacement itself in the same update.
+    if (controlledActive && activeId === activeProp) return;
+
     if (controlledActive) askParentForActive(activeId);
     else onActiveIdChange?.(activeId);
-  }, [activeId, state.itemIds, controlledActive, askParentForActive, onActiveIdChange]);
+  }, [activeId, activeProp, state.itemIds, controlledActive, askParentForActive, onActiveIdChange]);
 
   useLayoutEffect(() => {
     if (!controlledActive || activeProp === null || state.itemIds.length === 0) return;

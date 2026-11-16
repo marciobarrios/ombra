@@ -165,11 +165,19 @@ test.describe("OmbraRoot", () => {
     await expect.poll(() => asks(page, "open-only-readout", "open")).toEqual([true]);
     await expect(viewer(page)).toHaveCount(0);
 
-    // The parent opens on its own later: that is the current item, not the refused one.
-    await page.waitForTimeout(100);
+    // The parent opens on its own once the request has lapsed: that is the current item,
+    // not the refused one.
+    await page.waitForTimeout(1_200);
     await harness(page, { type: "parent-opened", section: "openOnly" });
     await expect(viewer(page)).toHaveAttribute("data-phase", "open");
     await expectActive(page, first.alt, "1 / 5");
+  });
+
+  test("a parent that answers later still opens the item it accepted", async ({ page }) => {
+    await page.getByTestId("active-only").getByRole("button", { name: third.alt }).click();
+    await expect(viewer(page)).toHaveAttribute("data-phase", "open");
+    await expectActive(page, third.alt, "3 / 5");
+    await expect(page.getByTestId("active-only-readout")).toHaveAttribute("data-active", third.id);
   });
 
   test("controlled: the parent opens, navigates, and closes the viewer", async ({ page }) => {
