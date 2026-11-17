@@ -6,6 +6,50 @@ This is the target contract, not an implemented API. The current `OmbraGallery` 
 
 Implementation is tracked in [MAR-64](https://linear.app/marciobarrios/issue/MAR-64/migrate-the-lightbox-spike-to-composable-primitives-and-gallery), in Ombra's v0.1 MVP milestone. The [Linear architecture document](https://linear.app/marciobarrios/document/ombra-composition-architecture-primitives-styled-parts-and-recipes-e67e6acc5788) records the same recommendation for project planning.
 
+## Implemented dialog shell (MAR-139)
+
+`registry/ombra/ombra-dialog.tsx` exports `OmbraPortal`, `OmbraBackdrop`,
+`OmbraContent`, and `OmbraClose`. They wrap the matching Base UI Dialog parts
+(`OmbraContent` wraps `Dialog.Popup`) and accept their native props, refs,
+state-aware `className`, and `render` contracts. Base UI merges handlers and refs
+on render elements. A render callback must spread the received props, including
+its ref; a custom component must forward them to its actual DOM node.
+
+These shell parts live under a Base UI `Dialog.Root`. The gallery supplies that
+root and connects it to `OmbraRoot`'s state and morph driver. Extracting the other
+viewer behaviors remains part of the subsequent migration slices. A shell-only
+composition can use Base UI directly:
+
+```tsx
+<Dialog.Root>
+  <Dialog.Trigger>Ver fotos</Dialog.Trigger>
+  <OmbraPortal>
+    <OmbraBackdrop />
+    <OmbraContent aria-label="Fotografías" render={<CustomSurface />}>
+      <header>Viaje</header>
+      <OmbraClose aria-label="Cerrar fotos">×</OmbraClose>
+    </OmbraContent>
+  </OmbraPortal>
+</Dialog.Root>
+```
+
+The slots are `ombra-portal`, `ombra-backdrop`, `ombra-content`, and `ombra-close`.
+The existing gallery keeps its `ombra-viewer` content slot for its current
+selectors. Base UI supplies open/closed and transition attributes on backdrop
+and content, and `data-disabled` on close; the portal has no independent state.
+The gallery also supplies `data-phase`, `data-engine`, `data-pulling`, and
+`data-zoomed` on its content.
+
+Content defaults to a full viewport with safe-area padding and the page's
+background/foreground tokens. The gallery overrides that padding because its
+header and footer already account for safe areas. Classes merge through `cn()`;
+structural styles ship in the registry payload. The default initial focus is the
+first enabled `ombra-close` inside content, with `preventScroll`; without a close
+part it focuses content. An explicit `initialFocus` overrides that default.
+`OmbraClose` supplies no text or accessible label: consumers own both. The
+`/spike/dialog` bench exercises custom surfaces, labels, refs, dismissal, and pull
+targeting.
+
 ## Architecture decision — 6 November 2026
 
 Use three layers, all distributed as copied registry source:

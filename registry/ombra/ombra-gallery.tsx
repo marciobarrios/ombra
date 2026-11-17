@@ -3,7 +3,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "cn";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import type { KeyboardEvent, ReactNode, RefObject } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { flushSync } from "react-dom";
 
 import { listenForCloseInput } from "./close-input";
@@ -51,6 +51,7 @@ import {
   whenDecoded,
 } from "./morph";
 import type { Flight } from "./morph";
+import { OmbraBackdrop, OmbraClose, OmbraContent, OmbraPortal } from "./ombra-dialog";
 import { OmbraRoot, useOmbraRoot } from "./ombra-root";
 import type { OmbraRootProps } from "./ombra-root";
 import { MORPH_SPRING, normalizeVelocity, springCurve } from "./spring";
@@ -192,15 +193,6 @@ function releaseVelocity(pixelsPerSecond: number, from: Box, to: Box): number {
   return normalizeVelocity((pixelsPerSecond * dy) / distance, distance);
 }
 
-/**
- * The viewer takes the page's background and foreground, so it is light on a
- * light theme and dark on a dark one. iOS Safari picks its bar colour while the
- * backdrop is still fading in and falls back to the page's own surface, so any
- * other backdrop colour leaves mismatched bars around the viewer (MAR-105).
- */
-const VIEWER_THEME =
-  "[--ombra-surface:var(--color-background,white)] [--ombra-ink:var(--color-foreground,black)]";
-
 function opacityOf(element: HTMLElement | null): number {
   return element ? Number.parseFloat(getComputedStyle(element).opacity) : 0;
 }
@@ -218,19 +210,15 @@ function IconButton({
   className,
   onClick,
   disabled,
-  buttonRef,
   slot,
   children,
-  close,
 }: {
   label: string;
   className?: string;
   onClick?: () => void;
   disabled?: boolean;
-  buttonRef?: RefObject<HTMLButtonElement | null>;
   slot: string;
   children: ReactNode;
-  close?: boolean;
 }) {
   const classes = cn(
     // Repeated toolbar taps must not invoke Safari's native double-tap zoom.
@@ -239,17 +227,8 @@ function IconButton({
     className,
   );
 
-  if (close) {
-    return (
-      <Dialog.Close ref={buttonRef} data-slot={slot} aria-label={label} className={classes}>
-        {children}
-      </Dialog.Close>
-    );
-  }
-
   return (
     <button
-      ref={buttonRef}
       type="button"
       data-slot={slot}
       aria-label={label}
@@ -319,7 +298,6 @@ function GalleryViewer({
   const backdropAnimationRef = useRef<Animation | null>(null);
   const popupAnimationRef = useRef<Animation | null>(null);
   const sheetAnimationRef = useRef<Animation | null>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
   const actionsRef = useRef<{ unmount: () => void; close: () => void } | null>(null);
   const flightRef = useRef<Flight | null>(null);
@@ -1530,17 +1508,6 @@ function GalleryViewer({
     });
   }, [phase]);
 
-  /**
-   * Base UI focuses the close button without `preventScroll`, which scrolled the page
-   * under the viewer to the end of the document, where the portal lives. The close
-   * then had to scroll the page back to find its thumbnail, and lost the reader's place.
-   */
-  function focusInitial() {
-    closeRef.current?.focus({ preventScroll: true });
-
-    return false;
-  }
-
   function stopCloseInput() {
     closeInputRef.current?.();
     closeInputRef.current = null;
@@ -1955,34 +1922,22 @@ function GalleryViewer({
           root.requestClose();
         }}
       >
-        <Dialog.Portal>
-          <Dialog.Backdrop
+        <OmbraPortal>
+          <OmbraBackdrop
             ref={bindBackdrop}
             data-slot="ombra-backdrop"
-            className={cn(
-              // No page pinch on the backdrop; page zoom returns after close.
-              VIEWER_THEME,
-              "fixed inset-0 z-50 touch-pan-x touch-pan-y bg-(--ombra-surface)",
-              phase === "closing" && "pointer-events-none",
-            )}
+            className={cn(phase === "closing" && "pointer-events-none")}
           />
-          <Dialog.Popup
+          <OmbraContent
             ref={bindPopup}
             data-slot="ombra-viewer"
             data-engine={effective}
             data-phase={phase}
             data-zoomed={zoom.zoomed ? "true" : "false"}
             data-pulling={pulling ? "true" : "false"}
-            initialFocus={focusInitial}
             finalFocus={() => focusTarget() ?? true}
             onKeyDown={onKeyDown}
-            className={cn(
-              // pan-x pan-y without pinch-zoom: the page under the viewer cannot pinch-zoom.
-              // Descendants intersect with it; the track narrows it to pan-x for its own pinch.
-              VIEWER_THEME,
-              "fixed inset-0 z-50 flex h-dvh w-full touch-pan-x touch-pan-y flex-col overflow-hidden bg-transparent text-(--ombra-ink) outline-none",
-              phase === "closing" && "pointer-events-none",
-            )}
+            className={cn("p-0", phase === "closing" && "pointer-events-none")}
           >
             <Dialog.Title className="sr-only">{active?.alt ?? "Photo"}</Dialog.Title>
             <Dialog.Description className="sr-only">{active?.caption ?? ""}</Dialog.Description>
@@ -2009,9 +1964,9 @@ function GalleryViewer({
                     <IconButton label="Zoom in" slot="ombra-zoom-in" onClick={() => zoom.zoomIn()}>
                       <PlusIcon />
                     </IconButton>
-                    <IconButton label="Close" slot="ombra-close" buttonRef={closeRef} close>
+                    <OmbraClose aria-label="Close">
                       <CloseIcon />
-                    </IconButton>
+                    </OmbraClose>
                   </div>
                 </div>
               </header>
@@ -2162,8 +2117,8 @@ function GalleryViewer({
             <p role="status" data-slot="ombra-live" className="sr-only">
               {open ? `${index + 1} of ${count}. ${active?.caption ?? ""}` : ""}
             </p>
-          </Dialog.Popup>
-        </Dialog.Portal>
+          </OmbraContent>
+        </OmbraPortal>
       </Dialog.Root>
     </div>
   );
