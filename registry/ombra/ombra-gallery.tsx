@@ -200,19 +200,16 @@ function opacityOf(element: HTMLElement | null): number {
 }
 
 /**
- * Where a photo rests: its media's own box, so a media the caller sized or placed itself is
- * still where the morph lands. While a zoom or a hand-off moves the media, its box is not the
- * resting one, so this falls back to the largest box of its ratio centred in its frame.
+ * Where a photo rests: its media's own box, so a media the caller sized, placed or
+ * transformed is still where the morph lands. A zoomed surface scales the media away from
+ * rest, so then this falls back to the largest box of its ratio centred in its frame. Every
+ * measurement runs after the viewer has cancelled its own hand-off animations.
  */
 function restingBox(media: OmbraMediaSource, frame: HTMLElement): Box {
-  for (
-    let node: HTMLElement | null = media.element;
-    node && node !== frame;
-    node = node.parentElement
-  ) {
-    if (getComputedStyle(node).transform !== "none" || node.getAnimations().length > 0) {
-      return containBox(boxFromRect(frame.getBoundingClientRect()), media.width / media.height);
-    }
+  const zoom = media.element.closest<HTMLElement>("[data-slot=ombra-zoom]");
+
+  if (zoom && frame.contains(zoom) && getComputedStyle(zoom).transform !== "none") {
+    return containBox(boxFromRect(frame.getBoundingClientRect()), media.width / media.height);
   }
 
   return boxFromRect(media.element.getBoundingClientRect());
