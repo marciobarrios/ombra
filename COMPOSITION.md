@@ -2,7 +2,7 @@
 
 Ombra's public API should let the caller assemble a lightbox from React components. Layout, media, captions, and controls belong in JSX. Props configure the behavior of the part receiving them.
 
-This is the target contract, not an implemented API. The current `OmbraGallery` remains a morph and gesture spike. The names and examples below describe the next registry API. `OmbraRoot` and its state contract (controlled and uncontrolled open and active item, stable IDs, registration behaviour) are implemented, and `OmbraGallery` runs on it; the other parts are not yet.
+This is the target contract, not an implemented API. The current `OmbraGallery` remains a morph and gesture spike. The names and examples below describe the next registry API. `OmbraRoot` and its state contract (controlled and uncontrolled open and active item, stable IDs, registration behaviour) are implemented, and `OmbraGallery` runs on it. So are the dialog shell parts and `OmbraTrigger`; the other parts are not yet.
 
 Implementation is tracked in [MAR-64](https://linear.app/marciobarrios/issue/MAR-64/migrate-the-lightbox-spike-to-composable-primitives-and-gallery), in Ombra's v0.1 MVP milestone. The [Linear architecture document](https://linear.app/marciobarrios/document/ombra-composition-architecture-primitives-styled-parts-and-recipes-e67e6acc5788) records the same recommendation for project planning.
 
@@ -15,10 +15,10 @@ state-aware `className`, and `render` contracts. Base UI merges handlers and ref
 on render elements. A render callback must spread the received props, including
 its ref; a custom component must forward them to its actual DOM node.
 
-These shell parts live under a Base UI `Dialog.Root`. The gallery supplies that
-root and connects it to `OmbraRoot`'s state and morph driver. Extracting the other
-viewer behaviors remains part of the subsequent migration slices. A shell-only
-composition can use Base UI directly:
+These shell parts live under a Base UI `Dialog.Root`. `OmbraRoot` renders that
+root and connects it to its state and morph driver (see the trigger section below).
+Extracting the other viewer behaviors remains part of the subsequent migration
+slices. A shell-only composition can use Base UI directly:
 
 ```tsx
 <Dialog.Root>
@@ -49,6 +49,55 @@ part it focuses content. An explicit `initialFocus` overrides that default.
 `OmbraClose` supplies no text or accessible label: consumers own both. The
 `/spike/dialog` bench exercises custom surfaces, labels, refs, dismissal, and pull
 targeting.
+
+## Implemented trigger (MAR-66)
+
+`registry/ombra/ombra-trigger.tsx` exports `OmbraTrigger`, built on Base UI's
+`Dialog.Trigger`. `OmbraRoot` renders the one `Dialog.Root` that every trigger and
+shell part shares, so a composition needs no Base UI root of its own:
+
+```tsx
+<OmbraRoot>
+  {photos.map((photo) => (
+    <OmbraTrigger key={photo.id} itemId={photo.id}>
+      <img src={photo.thumbnail} alt={photo.alt} />
+    </OmbraTrigger>
+  ))}
+  <OmbraPortal>
+    <OmbraBackdrop />
+    <OmbraContent>{/* title, slides, controls */}</OmbraContent>
+  </OmbraPortal>
+</OmbraRoot>
+```
+
+- **Semantics.** Base UI supplies the button behaviour, `disabled`, `id`,
+  `aria-haspopup="dialog"`, `aria-expanded`, `aria-controls` and `data-popup-open`.
+  Ombra adds no ARIA of its own.
+- **One open path.** A press reaches the Base UI root's `onOpenChange(true)`. The
+  root cancels Base UI's own open and calls `requestOpen` for the pressed trigger's
+  item, so a controlled parent can refuse it and a press starts one morph. A
+  `Dialog.Trigger` without an `itemId` opens the active item.
+- **Ownership.** While the viewer is open, the root passes the current item's
+  trigger as Base UI's `triggerId`. `aria-expanded` and Base UI's default focus
+  return follow navigation, not the press that opened the viewer. When the current
+  item has no trigger on the page, no trigger owns the dialog.
+- **Focus return.** The gallery focuses the current item's trigger, or the nearest
+  trigger still rendered when it is gone. A composition without the gallery's
+  viewer gets Base UI's default instead, which focuses no other item's trigger.
+- **Composition.** Native props, `className`, `style`, the forwarded ref and
+  `render` pass to `Dialog.Trigger`. A handler that calls
+  `event.preventBaseUIHandler()` cancels the open. A trigger rendered as a
+  non-button element needs `nativeButton={false}`.
+- **Source media.** The morph flies from the trigger's first `<img>`. For other
+  markup, pass `mediaRef` pointing at the element to measure and hide. Media that
+  is not an image skips the decode wait.
+- **Registration.** A trigger registers its element as its item's morph source and
+  focus target. It does not register the item: the gallery does that for now, and
+  slides will (MAR-140). The first connected trigger in document order wins when
+  several share an item.
+
+The `/spike/trigger` bench composes `OmbraRoot`, triggers and the shell without the
+gallery's viewer.
 
 ## Architecture decision — 6 November 2026
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { Dialog } from "@base-ui/react/dialog";
 import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef } from "react";
 import type { ReactNode, RefObject } from "react";
 
@@ -7,6 +8,7 @@ import {
   createGalleryState,
   duplicateIds,
   galleryReducer,
+  isOpen,
   isOpening,
   neighbourAfterRemoval,
 } from "./gallery-state";
@@ -46,6 +48,20 @@ export type OmbraRootProps = {
   onActiveIdChange?: (itemId: string) => void;
 };
 
+/** A trigger's element, and the media a morph flies from. */
+export type OmbraTriggerSource = {
+  itemId: string;
+  element: HTMLElement;
+  media: HTMLElement | null;
+};
+
+export type OmbraTriggerRegistration = {
+  itemId: string;
+  element: HTMLElement;
+  /** The thumbnail a morph starts from. Defaults to the first image inside the trigger. */
+  media?: () => HTMLElement | null;
+};
+
 export type OmbraRootContextValue = {
   /** The phase and collection. `activeId` here is the resolved one, controlled or not. */
   state: GalleryState;
@@ -59,7 +75,13 @@ export type OmbraRootContextValue = {
   latestActiveId: () => string | null;
   /** Registers an item. Its node, when given, places it in navigation order by document position. */
   registerItem: (itemId: string, node?: Element | null) => () => void;
+  /** Registers a trigger as its item's morph source and focus target. */
+  registerTrigger: (trigger: OmbraTriggerRegistration) => () => void;
+  /** The first trigger still on the page for `itemId`, in document order. */
+  triggerFor: (itemId: string) => OmbraTriggerSource | null;
   driverRef: RefObject<OmbraDriver | null>;
+  /** The Base UI dialog's actions. The root unmounts the dialog once the phase is "closed". */
+  dialogActionsRef: RefObject<Dialog.Root.Actions | null>;
 };
 
 const OmbraRootContext = createContext<OmbraRootContextValue | null>(null);
@@ -108,6 +130,12 @@ function documentOrder(registrations: Iterable<Registration>): string[] {
 
 function resolveActive(itemId: string | null, ids: readonly string[]): string | null {
   return itemId !== null && ids.includes(itemId) ? itemId : (ids[0] ?? null);
+}
+
+function sourceOf(trigger: OmbraTriggerRegistration): OmbraTriggerSource {
+  const media = trigger.media?.() ?? trigger.element.querySelector("img");
+
+  return { itemId: trigger.itemId, element: trigger.element, media };
 }
 
 function warn(message: string) {
@@ -160,6 +188,8 @@ export function OmbraRoot({
   const warned = useRef(new Set<string>());
   const flushQueued = useRef(false);
   const driverRef = useRef<OmbraDriver | null>(null);
+  const dialogActionsRef = useRef<Dialog.Root.Actions | null>(null);
+  const triggers = useRef(new Set<OmbraTriggerRegistration>());
   const props = useRef({ controlledOpen, controlledActive, onOpenChange, onActiveIdChange });
 
   props.current = { controlledOpen, controlledActive, onOpenChange, onActiveIdChange };
@@ -236,6 +266,30 @@ export function OmbraRoot({
     },
     [flush],
   );
+
+  const registerTrigger = useCallback((trigger: OmbraTriggerRegistration) => {
+    triggers.current.add(trigger);
+
+    return () => {
+      triggers.current.delete(trigger);
+    };
+  }, []);
+
+  const triggerFor = useCallback((itemId: string): OmbraTriggerSource | null => {
+    let first: OmbraTriggerRegistration | null = null;
+
+    for (const trigger of triggers.current) {
+      if (trigger.itemId !== itemId || !trigger.element.isConnected) continue;
+
+      const before =
+        first !== null &&
+        trigger.element.compareDocumentPosition(first.element) & Node.DOCUMENT_POSITION_FOLLOWING;
+
+      if (first === null || before) first = trigger;
+    }
+
+    return first && sourceOf(first);
+  }, []);
 
   const askParentForActive = useCallback((itemId: string) => {
     if (askedActive.current === itemId) return;
@@ -345,6 +399,12 @@ export function OmbraRoot({
   useLayoutEffect(() => {
     flush();
   });
+
+  // The dialog stays mounted until the driver reports its close landed. This runs after the
+  // Base UI root below has seen `open` turn false, which a child's effect would precede.
+  useLayoutEffect(() => {
+    if (state.phase === "closed") dialogActionsRef.current?.unmount();
+  }, [state.phase]);
 
   // Follows a controlled `open`, a controlled active item an open waits on, the initial
   // `defaultOpen`, and an emptied collection. Runs every commit, so a phase that drifted
@@ -459,10 +519,62 @@ export function OmbraRoot({
       requestActive,
       latestActiveId: () => activeRef.current,
       registerItem,
+      registerTrigger,
+      triggerFor,
       driverRef,
+      dialogActionsRef,
     }),
-    [state, activeId, send, requestOpen, requestClose, requestActive, registerItem],
+    [
+      state,
+      activeId,
+      send,
+      requestOpen,
+      requestClose,
+      requestActive,
+      registerItem,
+      registerTrigger,
+      triggerFor,
+    ],
   );
 
-  return <OmbraRootContext.Provider value={value}>{children}</OmbraRootContext.Provider>;
+  const dialogOpen = isOpen(state);
+
+  // Base UI marks the current item's trigger as the one that owns the dialog, so its
+  // `aria-expanded` and default focus return follow navigation, not the opening press.
+  const activeTrigger = dialogOpen && activeId !== null ? triggerFor(activeId) : null;
+
+  return (
+    <OmbraRootContext.Provider value={value}>
+      <Dialog.Root
+        open={dialogOpen}
+        triggerId={activeTrigger?.element.id || null}
+        // A close that releases the page lets it scroll while the photo fades out.
+        modal={state.phase === "closing" && state.releaseScroll ? false : true}
+        actionsRef={dialogActionsRef}
+        onOpenChange={(next, details) => {
+          if (next) {
+            // The root opens the viewer, so Base UI does not open it a second time.
+            details.cancel();
+
+            const pressed = [...triggers.current].find(
+              (trigger) => trigger.element === details.trigger,
+            );
+
+            const itemId = pressed?.itemId ?? activeRef.current;
+
+            if (itemId !== null) requestOpen(itemId, { reason: "trigger" });
+
+            return;
+          }
+
+          // The viewer stays mounted until the driver's close morph lands.
+          details.preventUnmountOnClose();
+
+          requestClose();
+        }}
+      >
+        {children}
+      </Dialog.Root>
+    </OmbraRootContext.Provider>
+  );
 }
