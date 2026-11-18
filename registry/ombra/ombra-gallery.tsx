@@ -2,8 +2,15 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "cn";
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from "react";
+import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { flushSync } from "react-dom";
 
 import { listenForCloseInput } from "./close-input";
@@ -14,7 +21,6 @@ import {
   clipInset,
   containBox,
   coverCrop,
-  indexFromScroll,
   isRendered,
   mostlyUnclipped,
   mostlyVisible,
@@ -54,7 +60,8 @@ import type { Flight } from "./morph";
 import { OmbraBackdrop, OmbraClose, OmbraContent, OmbraPortal } from "./ombra-dialog";
 import { OmbraRoot, useOmbraRoot } from "./ombra-root";
 import { OmbraTrigger } from "./ombra-trigger";
-import type { OmbraRootProps } from "./ombra-root";
+import type { OmbraMediaSource, OmbraRootProps } from "./ombra-root";
+import { OmbraMedia, OmbraSlide, OmbraSlides } from "./ombra-slides";
 import { MORPH_SPRING, normalizeVelocity, springCurve } from "./spring";
 import type { Box, FlipPose, FrameSample, MorphEngine, MorphKind, OmbraItem } from "./types";
 import { motionDuration } from "./types";
@@ -122,16 +129,11 @@ type ViewState = {
   /** Photos whose full-size source has decoded, so the slide can drop its thumbnail. */
   sharpIds: ReadonlySet<string>;
   stripOverflows: boolean;
-  /** The mounted slide track, which the pull hook listens on. */
-  trackNode: HTMLDivElement | null;
 };
 
-type ViewAction =
-  | { type: "decoded"; id: string }
-  | { type: "strip-measured"; overflows: boolean }
-  | { type: "track-bound"; node: HTMLDivElement | null };
+type ViewAction = { type: "decoded"; id: string } | { type: "strip-measured"; overflows: boolean };
 
-const initialViewState: ViewState = { sharpIds: new Set(), stripOverflows: false, trackNode: null };
+const initialViewState: ViewState = { sharpIds: new Set(), stripOverflows: false };
 
 function viewReducer(state: ViewState, action: ViewAction): ViewState {
   switch (action.type) {
@@ -144,11 +146,6 @@ function viewReducer(state: ViewState, action: ViewAction): ViewState {
       if (state.stripOverflows === action.overflows) return state;
 
       return { ...state, stripOverflows: action.overflows };
-
-    case "track-bound":
-      if (state.trackNode === action.node) return state;
-
-      return { ...state, trackNode: action.node };
   }
 }
 
@@ -158,7 +155,7 @@ const ARRIVED_PX = 1.5;
 const FADED_OPACITY = 0.02;
 
 /** The rest of an opening morph, running on the real photo after a swipe took over. */
-type HeroMorph = { index: number; hero: HTMLImageElement; animations: Animation[] };
+type HeroMorph = { index: number; hero: HTMLElement; animations: Animation[] };
 
 // Placing the track and snapping can land a fraction of a pixel off.
 const SWIPE_START_PX = 2;
@@ -167,9 +164,7 @@ const SWIPE_START_PX = 2;
 // swap. A cached bitmap is ready within a frame; this only caps a slow network.
 const DECODE_WAIT_MS = 120;
 
-export type OmbraGalleryProps = Omit<OmbraRootProps, "children"> & {
-  /** Each item's `id` is its stable identity: a reorder keeps the open photo open. */
-  items: readonly OmbraItem[];
+export type OmbraViewerOptions = {
   /**
    * The morph between a thumbnail and the viewer. FLIP is the default (MAR-12). A
    * browser without View Transitions runs FLIP for `vt`, and reduced motion always fades.
@@ -181,8 +176,14 @@ export type OmbraGalleryProps = Omit<OmbraRootProps, "children"> & {
   spring?: boolean;
   /** Called after each open or close with its frame timing. The spike's readout and benchmark collect these. */
   onFrameSample?: (kind: MorphKind, sample: FrameSample) => void;
-  className?: string;
 };
+
+export type OmbraGalleryProps = Omit<OmbraRootProps, "children"> &
+  OmbraViewerOptions & {
+    /** Each item's `id` is its stable identity: a reorder keeps the open photo open. */
+    items: readonly OmbraItem[];
+    className?: string;
+  };
 
 function releaseVelocity(pixelsPerSecond: number, from: Box, to: Box): number {
   const dx = to.x + to.width / 2 - (from.x + from.width / 2);
@@ -196,6 +197,71 @@ function releaseVelocity(pixelsPerSecond: number, from: Box, to: Box): number {
 
 function opacityOf(element: HTMLElement | null): number {
   return element ? Number.parseFloat(getComputedStyle(element).opacity) : 0;
+}
+
+/**
+ * Where a photo rests: its media's own box, so a media the caller sized, placed or
+ * transformed is still where the morph lands. A zoomed surface scales the media away from
+ * rest, so then this falls back to the largest box of its ratio centred in its frame. Every
+ * measurement runs after the viewer has cancelled its own hand-off animations.
+ */
+function restingBox(media: OmbraMediaSource, frame: HTMLElement): Box {
+  const zoom = media.element.closest<HTMLElement>("[data-slot=ombra-zoom]");
+
+  if (zoom && frame.contains(zoom) && getComputedStyle(zoom).transform !== "none") {
+    return containBox(boxFromRect(frame.getBoundingClientRect()), media.width / media.height);
+  }
+
+  return boxFromRect(media.element.getBoundingClientRect());
+}
+
+/**
+ * Paints `src`, a decoded thumbnail, on an image still loading its own source. An image with
+ * a `srcset` (Next.js Image always has one) would keep choosing from it, so the set comes
+ * off until the browser's own choice has decoded, then goes back.
+ */
+function showDecoded(image: HTMLImageElement, src: string) {
+  const srcset = image.getAttribute("srcset");
+
+  if (srcset === null) {
+    image.src = src;
+
+    return;
+  }
+
+  const sizes = image.getAttribute("sizes");
+  const own = image.getAttribute("src");
+  const loader = new Image();
+
+  if (sizes !== null) loader.sizes = sizes;
+
+  loader.srcset = srcset;
+
+  if (own !== null) loader.src = own;
+
+  image.removeAttribute("srcset");
+  image.src = src;
+
+  void loader
+    .decode()
+    .catch(() => undefined)
+    .then(() => {
+      // Something else, such as a render, has set a source since.
+      if (image.getAttribute("src") !== src || image.hasAttribute("srcset")) return;
+
+      image.setAttribute("srcset", srcset);
+
+      if (own !== null) image.setAttribute("src", own);
+    });
+}
+
+/** The image inside a slide's media, which can take a decoded source while it still loads. */
+function imageIn(media: HTMLElement | null): HTMLImageElement | null {
+  if (!media) return null;
+
+  if (media instanceof HTMLImageElement) return media;
+
+  return media.querySelector("img");
 }
 
 function IconButton({
@@ -257,40 +323,45 @@ export function OmbraGallery({
   );
 }
 
-function GalleryViewer({
-  items,
+/**
+ * The viewer's morph driver: it runs the open and close morphs, the pull to dismiss and zoom,
+ * and finds the photos through the parts. `OmbraSlides` supplies the track, each `OmbraSlide`
+ * its snap box and each `OmbraMedia` the box a morph lands on. Spike-stage: MAR-143 moves it
+ * behind the public parts, so a composition will not call it.
+ */
+export function useOmbraViewer({
   engine = "flip",
   slow = false,
   spring = false,
   onFrameSample,
-  className,
-}: Omit<OmbraGalleryProps, keyof OmbraRootProps>) {
+}: OmbraViewerOptions = {}) {
   const reduced = useReducedMotion();
   const root = useOmbraRoot();
-  const { state: gallery, send, registerItem } = root;
-  const { phase, activeId, epoch: animEpoch } = gallery;
+  const { state: gallery, send } = root;
+  const { phase, activeId, epoch: animEpoch, itemIds: ids } = gallery;
 
-  // Positions still address the DOM lists below; the active ID chooses which one.
-  const index = Math.max(
-    0,
-    items.findIndex((item) => item.id === activeId),
-  );
+  // Positions still address the parts' DOM lists; the active ID chooses which one.
+  const index = Math.max(0, activeId === null ? 0 : ids.indexOf(activeId));
 
   const open = isOpen(gallery);
-  const [view, sendView] = useReducerWithBailout(viewReducer, initialViewState);
-  const { sharpIds, stripOverflows, trackNode } = view;
 
-  const images = useRef<Array<HTMLImageElement | null>>([]);
-  const slides = useRef<Array<HTMLDivElement | null>>([]);
-  const trackRef = useRef<HTMLDivElement>(null);
-  const trackCleanup = useRef<(() => void) | null>(null);
+  // The pull hook listens on the track, so the viewer renders again when it mounts.
+  const trackNode = useSyncExternalStore(
+    root.subscribeSlides,
+    () => root.slides()?.element ?? null,
+    () => null,
+  );
+
+  const trackRef = useRef<HTMLElement | null>(null);
+
+  trackRef.current = trackNode;
+
   const layerRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const backdropAnimationRef = useRef<Animation | null>(null);
   const popupAnimationRef = useRef<Animation | null>(null);
   const sheetAnimationRef = useRef<Animation | null>(null);
-  const stripRef = useRef<HTMLDivElement>(null);
   const flightRef = useRef<Flight | null>(null);
   const retiringFlightRef = useRef<Flight | null>(null);
   const closeInputRef = useRef<(() => void) | null>(null);
@@ -310,20 +381,19 @@ function GalleryViewer({
   const flickRef = useRef(0);
   const reducedRef = useRef(reduced);
   const driverRef = useRef<MorphEngine>("flip");
-  const settledRef = useRef(true);
   const zoomGestureRef = useRef(false);
+  const sizesRef = useRef(new Map<string, { width: number; height: number }>());
   const samplerRef = useRef<FrameSampler | null>(null);
   const sampleKindRef = useRef<MorphKind>("open");
   const vtRef = useRef<ViewTransition | null>(null);
   const seenId = useRef(activeId);
   const rootRef = useRef(root);
-  const itemsRef = useRef(items);
-  const navigationTarget = useRef<number | null>(null);
+  const idsRef = useRef(ids);
 
   phaseRef.current = phase;
   indexRef.current = index;
   rootRef.current = root;
-  itemsRef.current = items;
+  idsRef.current = ids;
   engineRef.current = engine;
   slowRef.current = slow;
   springRef.current = spring;
@@ -333,20 +403,21 @@ function GalleryViewer({
   const onFrameSampleRef = useRef(onFrameSample);
 
   onFrameSampleRef.current = onFrameSample;
-  const count = items.length;
-  const active = items[index];
+  const count = ids.length;
+
+  // The track reports whether it has come to rest; the pull waits for that.
+  const settledRef = useMemo<RefObject<boolean>>(
+    () => ({
+      get current() {
+        return rootRef.current.slides()?.settled() ?? true;
+      },
+      set current(_: boolean) {},
+    }),
+    [],
+  );
 
   const settleTrack = () => {
-    const track = trackRef.current;
-    const nearest = track ? indexFromScroll(track) : indexRef.current;
-    const slide = slides.current[nearest];
-
-    slide?.scrollIntoView({
-      inline: "center",
-      block: "nearest",
-      behavior: reducedRef.current ? "auto" : "smooth",
-    });
-    selectIndex(nearest);
+    rootRef.current.slides()?.settle();
   };
 
   const zoom = useZoom(
@@ -399,6 +470,21 @@ function GalleryViewer({
 
   zoomRef.current = zoom;
 
+  // A zoom gesture owns the track's scroll position, and a zoomed photo stays where it is.
+  useLayoutEffect(() => {
+    const hold = root.trackHoldRef;
+
+    hold.current = () => {
+      if (zoomGestureRef.current) return "gesture";
+
+      return zoomRef.current.zoomed ? "zoomed" : "free";
+    };
+
+    return () => {
+      hold.current = null;
+    };
+  }, [root.trackHoldRef]);
+
   useLayoutEffect(() => {
     if (seenId.current === activeId) return;
 
@@ -406,21 +492,10 @@ function GalleryViewer({
     zoomRef.current.reset();
   }, [activeId]);
 
-  // The trigger grid is always mounted, so it registers the collection in document order.
-  useLayoutEffect(() => {
-    const stops = items.map((item) =>
-      registerItem(item.id, rootRef.current.triggerFor(item.id)?.element ?? null),
-    );
-
-    return () => {
-      for (const stop of stops) stop();
-    };
-  }, [items, registerItem]);
-
   useLayoutEffect(() => {
     root.driverRef.current = {
       open: (itemId, intent) => {
-        const nextIndex = itemsRef.current.findIndex((item) => item.id === itemId);
+        const nextIndex = idsRef.current.indexOf(itemId);
 
         if (nextIndex < 0) return false;
 
@@ -441,97 +516,6 @@ function GalleryViewer({
       driver.current = null;
     };
   }, [root.driverRef]);
-
-  // A reorder or a removal moves the active slide under the track. Put it back at once.
-  const itemsKey = items.map((item) => item.id).join("\n");
-
-  useLayoutEffect(() => {
-    snapToActive("auto");
-    // Keyed on the order, not the array: a new array with the same IDs moves nothing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsKey]);
-
-  // A controlled parent can choose another item while the viewer is open.
-  useLayoutEffect(() => {
-    if (navigationTarget.current !== null) return;
-
-    snapToActive(reducedRef.current ? "auto" : "smooth");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
-
-  useLayoutEffect(() => {
-    if (!open) return;
-
-    let cancelled = false;
-
-    // Decode the neighbors before they enter the viewport, and retain decoded
-    // sources so changing selection never downgrades an outgoing photo.
-    for (const item of items.slice(Math.max(0, index - 1), index + 2)) {
-      const loader = new Image();
-
-      loader.sizes = "100vw";
-      loader.srcset = item.srcSet;
-      loader.src = item.src;
-
-      void loader.decode().then(
-        () => {
-          if (cancelled) return;
-
-          sendView({ type: "decoded", id: item.id });
-        },
-        () => undefined,
-      );
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, index, items]);
-
-  useLayoutEffect(() => {
-    const strip = stripRef.current;
-
-    if (!open || !strip) return;
-
-    const row = strip.querySelector<HTMLElement>("[data-slot=ombra-thumbnails-row]");
-
-    if (!row) return;
-
-    const measure = () => {
-      const style = getComputedStyle(row);
-
-      const pad = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
-
-      const content = row.scrollWidth - pad;
-
-      sendView({ type: "strip-measured", overflows: content > strip.clientWidth + 1 });
-    };
-
-    measure();
-
-    const observer = new ResizeObserver(measure);
-
-    observer.observe(strip);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [open, phase, items.length, stripOverflows]);
-
-  useLayoutEffect(() => {
-    const strip = stripRef.current;
-
-    if (!open || !strip) return;
-
-    const current = strip.querySelector<HTMLElement>("[data-active=true]");
-
-    if (!current) return;
-
-    const delta = current.getBoundingClientRect().left - strip.getBoundingClientRect().left;
-    const left = strip.scrollLeft + delta - (strip.clientWidth - current.clientWidth) / 2;
-
-    strip.scrollTo({ left: Math.max(0, left), behavior: reduced ? "auto" : "smooth" });
-  }, [index, open, phase, reduced, stripOverflows]);
 
   // The dialog can take more than one frame to mount, and the fade only starts once
   // it has. Mount at the fade's first value so the resting opacity never paints.
@@ -557,69 +541,6 @@ function GalleryViewer({
     const opacity = openingOpacity("popup");
 
     if (node && opacity !== null) node.style.opacity = opacity;
-  }, []);
-
-  const bindTrack = useCallback((node: HTMLDivElement | null) => {
-    trackRef.current = node;
-    sendView({ type: "track-bound", node });
-    navigationTarget.current = null;
-    const previous = trackCleanup.current;
-
-    previous?.();
-    trackCleanup.current = null;
-
-    if (!node) return;
-
-    settledRef.current = true;
-
-    let timer = 0;
-
-    const publish = () => {
-      if (zoomGestureRef.current) return;
-
-      selectIndex(indexFromScroll(node));
-    };
-
-    const settle = () => {
-      settledRef.current = true;
-      navigationTarget.current = null;
-      publish();
-      // A controlled parent may keep the active item. Glide back to it once the parent
-      // has had its render, rather than rest on a slide it refused.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          snapToActive(reducedRef.current ? "auto" : "smooth");
-        });
-      });
-    };
-
-    const onScroll = () => {
-      settledRef.current = false;
-      window.clearTimeout(timer);
-      timer = window.setTimeout(settle, 140);
-      publish();
-    };
-
-    const onScrollEnd = () => {
-      window.clearTimeout(timer);
-      settle();
-    };
-
-    const onTrackInput = () => {
-      navigationTarget.current = null;
-    };
-
-    node.addEventListener("scroll", onScroll, { passive: true });
-    node.addEventListener("scrollend", onScrollEnd);
-    node.addEventListener("wheel", onTrackInput, { passive: true });
-    node.addEventListener("pointerdown", onTrackInput, { passive: true });
-    trackCleanup.current = () => {
-      node.removeEventListener("scroll", onScroll);
-      node.removeEventListener("scrollend", onScrollEnd);
-      node.removeEventListener("wheel", onTrackInput);
-      node.removeEventListener("pointerdown", onTrackInput);
-      window.clearTimeout(timer);
-    };
   }, []);
 
   useLayoutEffect(() => {
@@ -689,8 +610,8 @@ function GalleryViewer({
       restoreVisibility();
 
       const itemIndex = indexRef.current;
-      const item = items[itemIndex];
-      const slide = slides.current[itemIndex];
+      const item = mediaAt(itemIndex);
+      const slide = frameAt(itemIndex);
       // Measured again now the viewer is mounted: locking the page scroll can move
       // the thumbnail, and a retried open starts frames after the tap.
       const origin = thumbnailBox(itemIndex) ?? originRef.current;
@@ -701,12 +622,12 @@ function GalleryViewer({
         return;
       }
 
-      placeTrack(itemIndex);
+      placeTrack(item.itemId);
 
       // Measure the slide at rest, not at the pose a reversed pull close still holds:
       // the photo would land offset by the drag and jump when the hero replaces it.
       const animateSheetBack = releaseSheetHold();
-      const home = containBox(boxFromRect(slide.getBoundingClientRect()), item.width / item.height);
+      const home = restingBox(item, slide);
       const fadeDuration = motionDuration(480, slowRef.current, reducedRef.current);
       const existing = flightRef.current;
       const flick = flickRef.current;
@@ -755,20 +676,21 @@ function GalleryViewer({
       flightRef.current = flight;
       hideThumb(itemIndex);
 
-      const hero = images.current[itemIndex];
+      const hero = item.element;
+      const heroImage = imageIn(hero);
 
-      if (hero) {
-        hero.style.visibility = "hidden";
+      hero.style.visibility = "hidden";
 
-        // The slide may still be loading its own source. The clone's is decoded, so
-        // the photo under it is ready to paint when the clone goes.
-        if (!hero.complete || hero.naturalWidth === 0) hero.src = flight.image.src;
+      // The slide may still be loading its own source. The clone's is decoded, so
+      // the photo under it is ready to paint when the clone goes.
+      if (heroImage && (!heroImage.complete || heroImage.naturalWidth === 0)) {
+        showDecoded(heroImage, flight.image.src);
       }
 
       const settle = () => {
         if (!alive || tokenRef.current !== token) return;
 
-        if (hero) hero.style.visibility = "";
+        hero.style.visibility = "";
 
         settleOpen(itemIndex);
       };
@@ -777,13 +699,13 @@ function GalleryViewer({
       const land = (completed: boolean) => {
         if (!completed) return;
 
-        if (!hero) {
+        if (!heroImage) {
           settle();
 
           return;
         }
 
-        void whenDecoded(hero, DECODE_WAIT_MS).then(settle);
+        void whenDecoded(heroImage, DECODE_WAIT_MS).then(settle);
       };
 
       void playFlight(flight, startPose, RESTING_POSE, timing.duration, timing.easing).then(land);
@@ -794,10 +716,7 @@ function GalleryViewer({
       followLayout(() => {
         if (flightRef.current !== flight) return;
 
-        const next = containBox(
-          boxFromRect(slide.getBoundingClientRect()),
-          item.width / item.height,
-        );
+        const next = restingBox(item, slide);
 
         const remaining = flightRemaining(flight);
 
@@ -817,7 +736,7 @@ function GalleryViewer({
       restoreVisibility();
 
       const itemIndex = indexRef.current;
-      const item = items[itemIndex];
+      const item = mediaAt(itemIndex);
       const trigger = triggerAt(itemIndex);
       const thumb = thumbAt(itemIndex);
       // A trigger that unmounted, or one a scroll container still clips after
@@ -844,7 +763,7 @@ function GalleryViewer({
 
         // A photo still in the air fades where it is, so it never jumps to rest.
         if (flying) {
-          const hero = images.current[itemIndex];
+          const hero = heroAt(itemIndex);
 
           if (hero) hero.style.visibility = "hidden";
 
@@ -870,17 +789,13 @@ function GalleryViewer({
       // Revealing it may have brought a thumbnail the page had not decoded yet.
       if (thumb instanceof HTMLImageElement) void thumb.decode().catch(() => undefined);
 
-      const slide = slides.current[itemIndex];
+      const slide = frameAt(itemIndex);
 
-      const pulledBox = slide
-        ? containBox(boxFromRect(slide.getBoundingClientRect()), item.width / item.height)
-        : null;
+      const pulledBox = slide ? restingBox(item, slide) : null;
 
       document.documentElement.style.setProperty("--ombra-pull-live", "0");
 
-      const home = slide
-        ? containBox(boxFromRect(slide.getBoundingClientRect()), item.width / item.height)
-        : flightRef.current?.home;
+      const home = slide ? restingBox(item, slide) : flightRef.current?.home;
 
       if (!home) {
         finishClose();
@@ -899,9 +814,9 @@ function GalleryViewer({
       const fromBox = pulledBox ?? home;
       const velocity = releaseVelocity(flick, fromBox, thumbBox);
       const timing = morphTiming(420, velocity);
-      const hero = images.current[itemIndex];
+      const hero = item.element;
 
-      if (hero) hero.style.visibility = "hidden";
+      hero.style.visibility = "hidden";
 
       hideThumb(itemIndex);
       fadeBackdrop(scrimFrom, 0, timing.duration, timing.easing);
@@ -1004,33 +919,85 @@ function GalleryViewer({
 
   /** The trigger on the page for a photo, which is also its focus target. */
   function triggerAt(itemIndex: number): HTMLElement | null {
-    const item = itemsRef.current[itemIndex];
+    const itemId = idsRef.current[itemIndex];
 
-    return item ? (rootRef.current.triggerFor(item.id)?.element ?? null) : null;
+    return itemId === undefined ? null : (rootRef.current.triggerFor(itemId)?.element ?? null);
   }
 
   /** The thumbnail a photo's morph flies from and lands on. */
   function thumbAt(itemIndex: number): HTMLElement | null {
-    const item = itemsRef.current[itemIndex];
+    const itemId = idsRef.current[itemIndex];
 
-    return item ? (rootRef.current.triggerFor(item.id)?.media ?? null) : null;
+    return itemId === undefined ? null : (rootRef.current.triggerFor(itemId)?.media ?? null);
+  }
+
+  /**
+   * The box a photo's media fits and centres itself in: its parent, or the zoom surface's
+   * parent, since zooming scales the surface and never the resting box. In the gallery that
+   * is the slide; a slide with a caption gives the media a box of its own.
+   */
+  function frameAt(itemIndex: number): HTMLElement | null {
+    const itemId = idsRef.current[itemIndex];
+
+    if (itemId === undefined || !rootRef.current.slideFor(itemId)) return null;
+
+    let frame = rootRef.current.mediaFor(itemId)?.element.parentElement ?? null;
+
+    while (frame?.dataset.slot === "ombra-zoom") frame = frame.parentElement;
+
+    return frame;
+  }
+
+  /** The media a photo's morph lands on, with its intrinsic size. Only while the viewer is mounted. */
+  function mediaAt(itemIndex: number): OmbraMediaSource | null {
+    const itemId = idsRef.current[itemIndex];
+    const media = itemId === undefined ? null : rootRef.current.mediaFor(itemId);
+
+    if (itemId !== undefined && media) {
+      sizesRef.current.set(itemId, { width: media.width, height: media.height });
+    }
+
+    return media;
+  }
+
+  /**
+   * A photo's intrinsic size. It outlives the media, because a view transition close leaves
+   * nothing mounted behind it while the photo is still in flight.
+   */
+  function sizeAt(itemIndex: number): { width: number; height: number } | null {
+    const itemId = idsRef.current[itemIndex];
+
+    return (
+      mediaAt(itemIndex) ?? (itemId === undefined ? null : sizesRef.current.get(itemId)) ?? null
+    );
+  }
+
+  function heroAt(itemIndex: number): HTMLElement | null {
+    return mediaAt(itemIndex)?.element ?? null;
   }
 
   function cachedSrc(itemIndex: number): string {
     const thumb = thumbAt(itemIndex);
-    const item = items[itemIndex];
     const src = thumb instanceof HTMLImageElement ? thumb.currentSrc : "";
 
-    return src || item?.thumbSrc || "";
+    return src || imageIn(heroAt(itemIndex))?.currentSrc || "";
   }
 
   /** The source the viewer shows for a photo, which is decoded, or the thumbnail's. */
   function shownSrc(itemIndex: number): string {
-    const hero = images.current[itemIndex];
+    const image = imageIn(heroAt(itemIndex));
 
-    if (hero?.complete && hero.naturalWidth > 0 && hero.currentSrc) return hero.currentSrc;
+    if (image?.complete && image.naturalWidth > 0 && image.currentSrc) return image.currentSrc;
 
     return cachedSrc(itemIndex);
+  }
+
+  function showHeroes() {
+    for (const itemId of idsRef.current) {
+      const hero = rootRef.current.mediaFor(itemId)?.element;
+
+      if (hero) hero.style.visibility = "";
+    }
   }
 
   function thumbnailBox(itemIndex: number): Box | null {
@@ -1044,7 +1011,7 @@ function GalleryViewer({
 
   /** The current slide's trigger, or the nearest one still on the page if it is gone. */
   function focusTarget(): HTMLElement | null {
-    const count = itemsRef.current.length;
+    const count = idsRef.current.length;
     const current = indexRef.current;
 
     for (let distance = 0; distance < count; distance += 1) {
@@ -1081,15 +1048,13 @@ function GalleryViewer({
   }
 
   function restoreVisibility() {
-    for (const itemIndex of itemsRef.current.keys()) {
+    for (const itemIndex of idsRef.current.keys()) {
       const thumb = thumbAt(itemIndex);
 
       if (thumb) thumb.style.visibility = "";
     }
 
-    for (const image of images.current) {
-      if (image) image.style.visibility = "";
-    }
+    showHeroes();
   }
 
   function sheetElement(): HTMLElement | null {
@@ -1208,13 +1173,21 @@ function GalleryViewer({
       "header, footer, [data-slot=ombra-nav], [data-slot=ombra-slide]",
     );
 
-    return [...(parts ?? [])].filter((part) => !part.contains(hero));
+    // A caption beside the photo, inside its own slide, fades with the rest.
+    const slide = hero.closest("[data-slot=ombra-slide]");
+    const besides = slide ? [...slide.children].filter((part) => part instanceof HTMLElement) : [];
+
+    return [...(parts ?? []), ...besides].filter(
+      (part): part is HTMLElement => part instanceof HTMLElement && !part.contains(hero),
+    );
   }
 
-  function revealHero(hero: HTMLImageElement, src: string) {
+  function revealHero(hero: HTMLElement, src: string) {
+    const image = imageIn(hero);
+
     // A swipe can arrive before the slide's own source has loaded. The thumbnail
     // the morph started from is already decoded, and the sharp source replaces it.
-    if (!hero.complete || hero.naturalWidth === 0) hero.src = src;
+    if (image && (!image.complete || image.naturalWidth === 0)) showDecoded(image, src);
 
     hero.style.visibility = "";
   }
@@ -1224,7 +1197,7 @@ function GalleryViewer({
   // pixels. The popup fade would turn it translucent, so that moves to the rest.
   function handOffFlight(itemIndex: number): Animation | null {
     const flight = flightRef.current;
-    const hero = images.current[itemIndex];
+    const hero = heroAt(itemIndex);
 
     if (!flight || !hero) return null;
 
@@ -1256,8 +1229,8 @@ function GalleryViewer({
   // A view transition cannot move onto an element, so this restarts from its live
   // frame and scrim. The curve changes, but the photo stays on the same pixels.
   function handOffViewTransition(itemIndex: number, token: number) {
-    const item = items[itemIndex];
-    const hero = images.current[itemIndex];
+    const item = mediaAt(itemIndex);
+    const hero = item?.element;
     const box = readViewTransitionBox();
     const remaining = viewTransitionRemaining();
 
@@ -1328,8 +1301,8 @@ function GalleryViewer({
     if (phaseRef.current !== "opening" || driverRef.current !== "vt" || !vtRef.current) return;
 
     const itemIndex = indexRef.current;
-    const item = items[itemIndex];
-    const slide = slides.current[itemIndex];
+    const item = mediaAt(itemIndex);
+    const slide = frameAt(itemIndex);
     const box = readViewTransitionBox();
 
     if (!item || !slide || !box || flightRef.current || reducedRef.current) return;
@@ -1339,14 +1312,14 @@ function GalleryViewer({
     );
 
     // The clone's home is the photo at rest, where the FLIP close expects it.
-    const home = containBox(boxFromRect(slide.getBoundingClientRect()), item.width / item.height);
+    const home = restingBox(item, slide);
     const crop = coverCrop(item.width, item.height, box.width, box.height);
     const pose = poseBetween(box, home, crop);
 
     flightRef.current = mountFlight(home, pose, cachedSrc(itemIndex));
     hideThumb(itemIndex);
     // The opening's own clean-up only runs when it settles, which it no longer will.
-    unnameSharedElement(images.current[itemIndex]);
+    unnameSharedElement(item.element);
     vtRef.current.skipTransition();
     vtRef.current = null;
 
@@ -1367,20 +1340,8 @@ function GalleryViewer({
     [],
   );
 
-  function placeTrack(itemIndex: number) {
-    scrollTrackTo(itemIndex, "auto");
-  }
-
-  function scrollTrackTo(itemIndex: number, behavior: ScrollBehavior) {
-    const track = trackRef.current;
-    const slide = slides.current[itemIndex];
-
-    if (!track || !slide) return;
-
-    const delta = slide.getBoundingClientRect().left - track.getBoundingClientRect().left;
-    const left = track.scrollLeft + delta - (track.clientWidth - slide.clientWidth) / 2;
-
-    track.scrollTo({ left: Math.max(0, left), behavior });
+  function placeTrack(itemId: string) {
+    rootRef.current.slides()?.scrollTo(itemId, "auto");
   }
 
   function morphTiming(baseMs: number, velocity: number) {
@@ -1480,16 +1441,7 @@ function GalleryViewer({
     clearSheetHold();
     document.documentElement.style.setProperty("--ombra-pull-live", "0");
 
-    for (const itemIndex of itemsRef.current.keys()) {
-      const thumb = thumbAt(itemIndex);
-
-      if (thumb) thumb.style.visibility = "";
-    }
-
-    for (const image of images.current) {
-      if (image) image.style.visibility = "";
-    }
-
+    restoreVisibility();
     restoreFocusRef.current = true;
     send({ type: "closed" });
   }
@@ -1538,9 +1490,11 @@ function GalleryViewer({
 
   /** A reversal is an open request too, so a controlled parent can refuse it. */
   function reopenItem(itemIndex: number, speed: number): boolean {
-    const item = itemsRef.current[itemIndex];
+    const itemId = idsRef.current[itemIndex];
 
-    return item !== undefined && rootRef.current.requestOpen(item.id, { reason: "reverse", speed });
+    return (
+      itemId !== undefined && rootRef.current.requestOpen(itemId, { reason: "reverse", speed })
+    );
   }
 
   function closeTapTarget(x: number, y: number): number | null {
@@ -1553,7 +1507,7 @@ function GalleryViewer({
     // The flying photo covers whatever is under it, so it wins the hit test.
     if (live && boxContains(live, x, y)) return indexRef.current;
 
-    const itemIndex = itemsRef.current.findIndex((_, candidate) => {
+    const itemIndex = idsRef.current.findIndex((_, candidate) => {
       const trigger = triggerAt(candidate);
 
       return trigger && boxContains(boxFromRect(trigger.getBoundingClientRect()), x, y);
@@ -1568,7 +1522,7 @@ function GalleryViewer({
     let resume = { backdrop: opacityOf(backdropRef.current), popup: opacityOf(popupRef.current) };
 
     if (vtClosingRef.current) {
-      const item = items[closingIndex];
+      const item = sizeAt(closingIndex);
       const box = readViewTransitionBox();
 
       if (!item || !box) return false;
@@ -1610,33 +1564,12 @@ function GalleryViewer({
     return openAt(nextIndex, true);
   }
 
-  function selectIndex(itemIndex: number) {
-    const item = itemsRef.current[itemIndex];
-
-    if (item) rootRef.current.requestActive(item.id);
-  }
-
-  /** Scrolls the track to the root's active item when it rests on another slide. */
-  function snapToActive(behavior: ScrollBehavior) {
-    const track = trackRef.current;
-    const activeItem = rootRef.current.latestActiveId();
-    const itemIndex = itemsRef.current.findIndex((item) => item.id === activeItem);
-
-    if (!track || itemIndex < 0 || phaseRef.current !== "open") return;
-
-    if (!settledRef.current || zoomGestureRef.current || zoomRef.current.zoomed) return;
-
-    if (indexFromScroll(track) === itemIndex) return;
-
-    scrollTrackTo(itemIndex, behavior);
-  }
-
   function openAt(nextIndex: number, handoff = false): boolean {
     const trigger = triggerAt(nextIndex);
     const thumb = thumbAt(nextIndex);
-    const item = items[nextIndex];
+    const itemId = idsRef.current[nextIndex];
 
-    if (!trigger || !thumb || !item) return false;
+    if (!trigger || !thumb || itemId === undefined) return false;
 
     vtRef.current?.skipTransition();
     // A thumbnail mostly cut off by a scroll container would fly out with its hidden
@@ -1648,7 +1581,7 @@ function GalleryViewer({
     originRef.current = boxFromRect(thumb.getBoundingClientRect());
 
     if (!handoff && driverRef.current === "vt" && !flightRef.current) {
-      openWithViewTransition(nextIndex, item.id, thumb);
+      openWithViewTransition(nextIndex, itemId, thumb);
 
       return true;
     }
@@ -1659,7 +1592,7 @@ function GalleryViewer({
 
     preserveFlightRef.current = flightRef.current !== null;
     tokenRef.current += 1;
-    send({ type: "open-requested", itemId: item.id, restart: true });
+    send({ type: "open-requested", itemId, restart: true });
 
     return true;
   }
@@ -1682,11 +1615,11 @@ function GalleryViewer({
         send({ type: "open-requested", itemId, restart: false });
       });
 
-      const hero = images.current[nextIndex];
+      const hero = heroAt(nextIndex);
 
       nameSharedElement(hero);
 
-      placeTrack(nextIndex);
+      placeTrack(itemId);
       watchTrackForSwipe(() => {
         handOffViewTransition(nextIndex, token);
       });
@@ -1710,9 +1643,7 @@ function GalleryViewer({
         stopTrackWatch();
         unnameSharedElement(thumb);
 
-        const hero = images.current[nextIndex];
-
-        unnameSharedElement(hero);
+        unnameSharedElement(heroAt(nextIndex));
 
         endSample();
         send({ type: "opened" });
@@ -1760,7 +1691,7 @@ function GalleryViewer({
 
   function closeWithViewTransition(thumb: HTMLElement) {
     const token = ++tokenRef.current;
-    const hero = images.current[indexRef.current];
+    const hero = heroAt(indexRef.current);
     const flick = flickRef.current;
 
     flickRef.current = 0;
@@ -1833,18 +1764,29 @@ function GalleryViewer({
     );
   }
 
-  function goTo(nextIndex: number, behavior: ScrollBehavior) {
-    if (nextIndex < 0 || nextIndex >= count) return;
+  /** Where navigation starts from: a smooth scroll's destination, or the active photo. */
+  function navigationFrom(): number {
+    const target = rootRef.current.slides()?.navigationTarget() ?? null;
+    const at = target === null ? -1 : idsRef.current.indexOf(target);
 
-    if (nextIndex === indexRef.current && navigationTarget.current === null) return;
+    return at < 0 ? indexRef.current : at;
+  }
+
+  function goTo(nextIndex: number, behavior: ScrollBehavior) {
+    const slides = rootRef.current.slides();
+    const itemId = idsRef.current[nextIndex];
+
+    if (!slides || itemId === undefined) return;
+
+    if (nextIndex === indexRef.current && slides.navigationTarget() === null) return;
 
     zoomRef.current.reset();
-    navigationTarget.current = behavior === "smooth" ? nextIndex : null;
+    slides.navigate(itemId, behavior);
+  }
 
-    // Smooth scrolling publishes the centered slide as it moves. Selecting the
-    // destination now would flash its border before the first scroll event.
-    if (behavior !== "smooth") selectIndex(nextIndex);
-    scrollTrackTo(nextIndex, behavior);
+  /** Goes one photo back or forward from where navigation is heading. */
+  function step(by: -1 | 1) {
+    goTo(navigationFrom() + by, reducedRef.current ? "auto" : "smooth");
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -1852,10 +1794,10 @@ function GalleryViewer({
 
     if (event.key === "ArrowRight") {
       event.preventDefault();
-      goTo((navigationTarget.current ?? indexRef.current) + 1, reduced ? "auto" : "smooth");
+      step(1);
     } else if (event.key === "ArrowLeft") {
       event.preventDefault();
-      goTo((navigationTarget.current ?? indexRef.current) - 1, reduced ? "auto" : "smooth");
+      step(-1);
     } else if (event.key === "Home") {
       event.preventDefault();
       goTo(0, "auto");
@@ -1874,14 +1816,144 @@ function GalleryViewer({
     }
   }
 
+  return {
+    phase,
+    open,
+    /** The active photo's position in the collection. */
+    index,
+    count,
+    zoom,
+    pulling,
+    /** Goes to a position, smoothly unless `behavior` says otherwise. */
+    goTo,
+    step,
+    /** Attach to the active slide's zoom surface. */
+    layerRef,
+    /** Render once, outside the dialog, so a closing view transition still has it. */
+    morphStyles: <style data-slot="ombra-morph-styles">{MORPH_STYLES}</style>,
+    backdropProps: {
+      ref: bindBackdrop,
+      className: cn(phase === "closing" && "pointer-events-none"),
+    },
+    contentProps: {
+      ref: bindPopup,
+      "data-engine": effective,
+      "data-phase": phase,
+      "data-zoomed": zoom.zoomed ? "true" : "false",
+      "data-pulling": pulling ? "true" : "false",
+      finalFocus: () => focusTarget() ?? true,
+      onKeyDown,
+      className: cn(phase === "closing" && "pointer-events-none"),
+    },
+  };
+}
+
+function GalleryViewer({
+  items,
+  className,
+  ...options
+}: Omit<OmbraGalleryProps, keyof OmbraRootProps>) {
+  const viewer = useOmbraViewer(options);
+  const { phase, open, index, count, zoom } = viewer;
+  const { registerItem } = useOmbraRoot();
+  const reduced = useReducedMotion();
+  const [view, sendView] = useReducerWithBailout(viewReducer, initialViewState);
+  const { sharpIds, stripOverflows } = view;
+  const stripRef = useRef<HTMLDivElement>(null);
+  const active = items[index];
+
+  // The slides only mount with the viewer, so the gallery registers its collection in the
+  // order of `items`. Registered without nodes, that order holds even when a trigger leaves
+  // the page, which would otherwise move its item in the document-ordered list.
+  useLayoutEffect(() => {
+    const stops = items.map((item) => registerItem(item.id));
+
+    return () => {
+      for (const stop of stops) stop();
+    };
+  }, [items, registerItem]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+
+    // Decode the neighbors before they enter the viewport, and retain decoded
+    // sources so changing selection never downgrades an outgoing photo.
+    for (const item of items.slice(Math.max(0, index - 1), index + 2)) {
+      const loader = new Image();
+
+      loader.sizes = "100vw";
+      loader.srcset = item.srcSet;
+      loader.src = item.src;
+
+      void loader.decode().then(
+        () => {
+          if (cancelled) return;
+
+          sendView({ type: "decoded", id: item.id });
+        },
+        () => undefined,
+      );
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, index, items]);
+
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+
+    if (!open || !strip) return;
+
+    const row = strip.querySelector<HTMLElement>("[data-slot=ombra-thumbnails-row]");
+
+    if (!row) return;
+
+    const measure = () => {
+      const style = getComputedStyle(row);
+
+      const pad = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
+
+      const content = row.scrollWidth - pad;
+
+      sendView({ type: "strip-measured", overflows: content > strip.clientWidth + 1 });
+    };
+
+    measure();
+
+    const observer = new ResizeObserver(measure);
+
+    observer.observe(strip);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [open, phase, items.length, stripOverflows]);
+
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+
+    if (!open || !strip) return;
+
+    const current = strip.querySelector<HTMLElement>("[data-active=true]");
+
+    if (!current) return;
+
+    const delta = current.getBoundingClientRect().left - strip.getBoundingClientRect().left;
+    const left = strip.scrollLeft + delta - (strip.clientWidth - current.clientWidth) / 2;
+
+    strip.scrollTo({ left: Math.max(0, left), behavior: reduced ? "auto" : "smooth" });
+  }, [index, open, phase, reduced, stripOverflows]);
+
   return (
     <div
       data-slot="ombra-root"
-      data-spring={spring ? "on" : "off"}
+      data-spring={options.spring ? "on" : "off"}
       className={cn("text-foreground", className)}
     >
-      {/* Outside the dialog, so a closing view transition still has it after the viewer unmounts. */}
-      <style data-slot="ombra-morph-styles">{MORPH_STYLES}</style>
+      {viewer.morphStyles}
       <div className="columns-2 gap-3 md:columns-3">
         {items.map((item) => (
           <OmbraTrigger
@@ -1910,21 +1982,11 @@ function GalleryViewer({
 
       {/* OmbraRoot supplies the Base UI dialog root, shared with the triggers above. */}
       <OmbraPortal>
-        <OmbraBackdrop
-          ref={bindBackdrop}
-          data-slot="ombra-backdrop"
-          className={cn(phase === "closing" && "pointer-events-none")}
-        />
+        <OmbraBackdrop {...viewer.backdropProps} />
         <OmbraContent
-          ref={bindPopup}
+          {...viewer.contentProps}
           data-slot="ombra-viewer"
-          data-engine={effective}
-          data-phase={phase}
-          data-zoomed={zoom.zoomed ? "true" : "false"}
-          data-pulling={pulling ? "true" : "false"}
-          finalFocus={() => focusTarget() ?? true}
-          onKeyDown={onKeyDown}
-          className={cn("p-0", phase === "closing" && "pointer-events-none")}
+          className={cn("p-0", viewer.contentProps.className)}
         >
           <Dialog.Title className="sr-only">{active?.alt ?? "Photo"}</Dialog.Title>
           <Dialog.Description className="sr-only">{active?.caption ?? ""}</Dialog.Description>
@@ -1959,42 +2021,32 @@ function GalleryViewer({
             </header>
 
             <div className="relative min-h-0 min-w-0 flex-1">
-              <div className="@container h-full min-w-0">
-                <div
-                  ref={bindTrack}
-                  data-slot="ombra-track"
-                  className="flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                >
-                  <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
-                  {items.map((item, itemIndex) => {
-                    const sharp = sharpIds.has(item.id);
+              <OmbraSlides>
+                {items.map((item, itemIndex) => {
+                  const sharp = sharpIds.has(item.id);
+                  const current = itemIndex === index;
 
-                    return (
+                  return (
+                    <OmbraSlide
+                      key={item.id}
+                      itemId={item.id}
+                      aria-label={`${itemIndex + 1} of ${count}`}
+                    >
+                      {/* Keep Safari's native double-tap zoom off this surface.
+                            The ancestor track still owns horizontal scrolling. */}
                       <div
-                        key={item.id}
-                        ref={(node) => {
-                          slides.current[itemIndex] = node;
-                        }}
-                        data-slot="ombra-slide"
-                        data-active={itemIndex === index ? "true" : "false"}
-                        role="group"
-                        aria-roledescription="slide"
-                        aria-label={`${itemIndex + 1} of ${count}`}
-                        className="flex h-full min-h-0 w-[86cqi] shrink-0 snap-center snap-always items-center justify-center"
+                        ref={current ? viewer.layerRef : undefined}
+                        data-slot="ombra-zoom"
+                        className="flex h-full min-h-0 w-full min-w-0 touch-manipulation items-center justify-center"
                       >
-                        {/* Keep Safari's native double-tap zoom off this surface.
-                              The ancestor track still owns horizontal scrolling. */}
-                        <div
-                          ref={itemIndex === index ? layerRef : undefined}
-                          data-slot="ombra-zoom"
-                          className="flex h-full min-h-0 w-full min-w-0 touch-manipulation items-center justify-center"
+                        <OmbraMedia
+                          width={item.width}
+                          height={item.height}
+                          className="rounded-[6px] outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
                         >
                           <img
-                            ref={(node) => {
-                              images.current[itemIndex] = node;
-                            }}
                             data-slot="ombra-image"
-                            data-active={itemIndex === index ? "true" : "false"}
+                            data-active={current ? "true" : "false"}
                             src={sharp ? item.src : item.thumbSrc}
                             srcSet={sharp ? item.srcSet : undefined}
                             sizes="100vw"
@@ -2002,16 +2054,15 @@ function GalleryViewer({
                             width={item.width}
                             height={item.height}
                             draggable={false}
-                            fetchPriority={itemIndex === index ? "high" : "low"}
-                            className="h-auto max-h-full min-h-0 w-auto max-w-full min-w-0 rounded-[6px] object-contain outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
+                            fetchPriority={current ? "high" : "low"}
+                            className="rounded-[inherit]"
                           />
-                        </div>
+                        </OmbraMedia>
                       </div>
-                    );
-                  })}
-                  <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
-                </div>
-              </div>
+                    </OmbraSlide>
+                  );
+                })}
+              </OmbraSlides>
               <div
                 data-slot="ombra-nav"
                 className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2"
@@ -2021,9 +2072,7 @@ function GalleryViewer({
                   slot="ombra-prev"
                   className="pointer-events-auto bg-(--ombra-surface)/40"
                   disabled={index === 0}
-                  onClick={() =>
-                    goTo((navigationTarget.current ?? index) - 1, reduced ? "auto" : "smooth")
-                  }
+                  onClick={() => viewer.step(-1)}
                 >
                   <Chevron direction="left" />
                 </IconButton>
@@ -2037,9 +2086,7 @@ function GalleryViewer({
                   slot="ombra-next"
                   className="pointer-events-auto bg-(--ombra-surface)/40"
                   disabled={index === count - 1}
-                  onClick={() =>
-                    goTo((navigationTarget.current ?? index) + 1, reduced ? "auto" : "smooth")
-                  }
+                  onClick={() => viewer.step(1)}
                 >
                   <Chevron direction="right" />
                 </IconButton>
@@ -2080,7 +2127,7 @@ function GalleryViewer({
                         data-active={selected ? "true" : "false"}
                         aria-current={selected ? "true" : undefined}
                         aria-label={item.alt}
-                        onClick={() => goTo(itemIndex, reduced ? "auto" : "smooth")}
+                        onClick={() => viewer.goTo(itemIndex, reduced ? "auto" : "smooth")}
                         className={cn(
                           "size-11 shrink-0 snap-center overflow-hidden rounded-lg border-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current",
                           selected ? "border-current" : "border-transparent opacity-60",

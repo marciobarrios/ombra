@@ -24,6 +24,8 @@ type Harness = {
   };
   free: { items: readonly OmbraItem[]; openAsks: boolean[]; activeAsks: string[] };
   openOnly: { open: boolean; openAsks: boolean[] };
+  /** Controlled open with View Transition morphs, so a close can arrive mid-transition. */
+  vt: { open: boolean; openAsks: boolean[] };
   activeOnly: { activeId: string | null };
 };
 
@@ -40,6 +42,7 @@ const initialHarness: Harness = {
   },
   free: { items: initialItems, openAsks: [], activeAsks: [] },
   openOnly: { open: false, openAsks: [] },
+  vt: { open: false, openAsks: [] },
   activeOnly: { activeId: initialItems[0]?.id ?? null },
 };
 
@@ -61,6 +64,13 @@ function harnessReducer(state: Harness, action: HarnessAction): Harness {
         return {
           ...state,
           openOnly: { openAsks, open: allowed ? action.open : state.openOnly.open },
+        };
+      }
+
+      if (action.section === "vt") {
+        return {
+          ...state,
+          vt: { open: action.open, openAsks: [...state.vt.openAsks, action.open] },
         };
       }
 
@@ -103,6 +113,8 @@ function harnessReducer(state: Harness, action: HarnessAction): Harness {
       };
 
     case "parent-opened":
+      if (action.section === "vt") return { ...state, vt: { ...state.vt, open: true } };
+
       if (action.section === "openOnly") {
         return { ...state, openOnly: { ...state.openOnly, open: true } };
       }
@@ -113,6 +125,8 @@ function harnessReducer(state: Harness, action: HarnessAction): Harness {
       };
 
     case "parent-closed":
+      if (action.section === "vt") return { ...state, vt: { ...state.vt, open: false } };
+
       return { ...state, controlled: { ...controlled, open: false } };
 
     case "parent-selected":
@@ -139,7 +153,7 @@ function harnessReducer(state: Harness, action: HarnessAction): Harness {
 
 export function RootHarness() {
   const [state, dispatch] = useReducer(harnessReducer, initialHarness);
-  const { controlled, free, openOnly, activeOnly } = state;
+  const { controlled, free, openOnly, vt, activeOnly } = state;
 
   // The viewer is modal, so tests reach the parent through this rather than page buttons.
   useEffect(() => {
@@ -219,6 +233,26 @@ export function RootHarness() {
           open={openOnly.open}
           onOpenChange={(open) => {
             dispatch({ type: "open-change-asked", section: "openOnly", open });
+          }}
+        />
+      </section>
+
+      <section data-testid="vt" className="grid gap-4">
+        <h2 className="text-lg text-foreground">Controlled open, View Transition morphs</h2>
+        <output
+          data-testid="vt-readout"
+          data-open={String(vt.open)}
+          data-open-asks={JSON.stringify(vt.openAsks)}
+          className="font-mono text-xs text-foreground/70"
+        >
+          open {String(vt.open)}
+        </output>
+        <OmbraGallery
+          items={initialItems.slice(0, 3)}
+          engine="vt"
+          open={vt.open}
+          onOpenChange={(open) => {
+            dispatch({ type: "open-change-asked", section: "vt", open });
           }}
         />
       </section>
