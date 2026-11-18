@@ -2,7 +2,7 @@
 
 Ombra's public API should let the caller assemble a lightbox from React components. Layout, media, captions, and controls belong in JSX. Props configure the behavior of the part receiving them.
 
-This is the target contract, not an implemented API. The current `OmbraGallery` remains a morph and gesture spike. The names and examples below describe the next registry API. `OmbraRoot` and its state contract (controlled and uncontrolled open and active item, stable IDs, registration behaviour) are implemented, and `OmbraGallery` runs on it. So are the dialog shell parts and `OmbraTrigger`; the other parts are not yet.
+This is the target contract, not an implemented API. The current `OmbraGallery` remains a morph and gesture spike. The names and examples below describe the next registry API. `OmbraRoot` and its state contract (controlled and uncontrolled open and active item, stable IDs, registration behaviour) are implemented, and `OmbraGallery` runs on it. So are the dialog shell parts, `OmbraTrigger`, and the slide parts (`OmbraSlides`, `OmbraSlide`, `OmbraMedia`); the other parts are not yet.
 
 Implementation is tracked in [MAR-64](https://linear.app/marciobarrios/issue/MAR-64/migrate-the-lightbox-spike-to-composable-primitives-and-gallery), in Ombra's v0.1 MVP milestone. The [Linear architecture document](https://linear.app/marciobarrios/document/ombra-composition-architecture-primitives-styled-parts-and-recipes-e67e6acc5788) records the same recommendation for project planning.
 
@@ -58,7 +58,8 @@ shell part shares, so a composition needs no Base UI root of its own:
 
 ```tsx
 <OmbraRoot>
-  {/* Items must be registered to open: by the gallery today, by slides in MAR-140. */}
+  {/* Items must be registered to open. The slides mount only with the viewer, so the gallery
+      registers them today (see the slides section). */}
   {photos.map((photo) => (
     <OmbraTrigger key={photo.id} itemId={photo.id}>
       <img src={photo.thumbnail} alt={photo.alt} />
@@ -93,11 +94,59 @@ shell part shares, so a composition needs no Base UI root of its own:
   is not an image skips the decode wait.
 - **Registration.** A trigger registers its element as its item's morph source and
   focus target. It does not register the item: the gallery does that for now, and
-  slides will (MAR-140). The first connected trigger in document order wins when
+  the slides do not yet either (see below). The first connected trigger in document order wins when
   several share an item.
 
 The `/spike/trigger` bench composes `OmbraRoot`, triggers and the shell without the
 gallery's viewer.
+
+## Implemented slides and media (MAR-140)
+
+`registry/ombra/ombra-slides.tsx` exports `OmbraSlides`, `OmbraSlide`, and
+`OmbraMedia`. Each renders one element with a `data-slot` (`ombra-track`,
+`ombra-slide`, `ombra-media`), and accepts native props, a forwarded ref,
+`className` (merged through `cn()`), and Base UI's `render` prop.
+
+```tsx
+<OmbraSlides>
+  {photos.map((photo) => (
+    <OmbraSlide key={photo.id} itemId={photo.id} aria-label={photo.alt} className="flex-col">
+      <div className="flex min-h-0 w-full flex-1 [container-type:size]">
+        <OmbraMedia width={photo.width} height={photo.height}>
+          <Image src={photo.src} alt="" width={photo.width} height={photo.height} />
+        </OmbraMedia>
+      </div>
+      <p>{photo.caption}</p>
+    </OmbraSlide>
+  ))}
+</OmbraSlides>
+```
+
+- **Track.** `OmbraSlides` is the native scroll-snap track, with a spacer at each
+  end so the first and last slides can rest centred. The active item follows the
+  slide nearest the centre as the track scrolls, so a smooth navigation publishes
+  each slide it passes. When the track rests on a slide a controlled parent refused,
+  it glides back to the active one. A reorder or removal puts the active slide back
+  under the track at once. One track per root.
+- **Slide.** `OmbraSlide` takes an `itemId` and is the snap box: its size never
+  changes during a pull or a zoom. It is a size container, sets `role="group"`,
+  `aria-roledescription="slide"` and `data-active`; consumers supply `aria-label`.
+  Captions and other markup are ordinary children.
+- **Media.** `OmbraMedia` takes the media's intrinsic `width` and `height`, and
+  sizes itself to the largest box of that ratio that fits its parent's size
+  container, centred. That box is where the open morph lands and the close morph
+  leaves from, so the image renderer inside does not matter: a native `img`,
+  Next.js `Image` (the `/spike/media` bench), or a `picture`. The first `<img>`
+  inside receives the decoded thumbnail source when a swipe catches the photo still
+  loading. Directly in a slide, the media fits the whole slide; beside a caption,
+  give it a parent with `container-type: size`.
+- **Registration.** A slide registers its element and a media registers its box and
+  size with the root, by item ID. The viewer's morph driver (still in
+  `ombra-gallery.tsx` as `useOmbraViewer`) finds the FLIP clone's destination,
+  the View Transition's shared element, the fade fallback and the hand-off target
+  through them. Slides mount only while the viewer is open, so they cannot register
+  the collection a closed viewer opens from: the gallery and the benches still
+  register items themselves. Pull progress stays in `--ombra-pull-live`.
 
 ## Architecture decision — 6 November 2026
 

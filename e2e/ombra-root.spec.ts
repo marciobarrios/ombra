@@ -16,6 +16,12 @@ function photo(at: number) {
 
 const [first, second, third, fourth, fifth] = [0, 1, 2, 3, 4].map(photo);
 
+declare global {
+  interface Window {
+    vtProbe?: { transitions: number; running: boolean; phases: string[] };
+  }
+}
+
 const viewer = (page: Page) => page.locator("[data-slot=ombra-viewer]");
 
 async function harness(page: Page, action: HarnessAction) {
@@ -218,6 +224,112 @@ test.describe("OmbraRoot", () => {
     await page.keyboard.press("Escape");
     await expect(viewer(page)).toHaveCount(0);
     await expect(page.getByTestId("controlled-readout")).toHaveAttribute("data-open", "false");
+  });
+
+  test("controlled: a close that arrives during a View Transition opening closes once", async ({
+    page,
+  }) => {
+    test.skip(
+      !(await page.evaluate(() => "startViewTransition" in document)),
+      "this browser has no View Transition API, so the opening runs FLIP",
+    );
+
+    // Counts the transitions and records every phase the viewer passes through.
+    await page.evaluate(() => {
+      const start = document.startViewTransition;
+      const phases: string[] = [];
+      const probe = { transitions: 0, running: false, phases };
+
+      window.vtProbe = probe;
+      document.startViewTransition = function (this: Document, ...args) {
+        const transition = start.apply(this, args);
+
+        probe.transitions += 1;
+        probe.running = true;
+        void transition.finished.finally(() => {
+          probe.running = false;
+        });
+
+        return transition;
+      };
+
+      new MutationObserver(() => {
+        const phase =
+          document.querySelector("[data-slot=ombra-viewer]")?.getAttribute("data-phase") ??
+          "unmounted";
+
+        if (probe.phases.at(-1) !== phase) probe.phases.push(phase);
+      }).observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ["data-phase"],
+      });
+    });
+
+    await page.getByTestId("vt").scrollIntoViewIfNeeded();
+    await page.getByTestId("vt").getByRole("button", { name: first.alt, exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.vtProbe?.running)).toBe(true);
+
+    expect(await page.evaluate(() => window.vtProbe?.transitions)).toBe(1);
+    await harness(page, { type: "parent-closed", section: "vt" });
+    await expect(viewer(page)).toHaveCount(0, { timeout: 10_000 });
+    await page.waitForTimeout(600);
+
+    const probe = await page.evaluate(() => window.vtProbe);
+
+    // One close: a FLIP close from the opening's live frame ("closing"), or, when the close
+    // lands before the transition has a frame to hand over, a view transition close.
+    const flipCloses = probe?.phases.filter((phase) => phase === "closing").length ?? 0;
+    const transitionCloses = (probe?.transitions ?? 0) - 1;
+
+    expect(flipCloses + transitionCloses).toBe(1);
+    expect(probe?.phases.at(-1)).toBe("unmounted");
+    expect(probe?.phases).not.toContain("open");
+    await expect(viewer(page)).toHaveCount(0);
+    await expect(page.locator("[data-slot=ombra-flight]")).toHaveCount(0);
+    expect(await asks(page, "vt-readout", "open")).toEqual([true]);
+  });
+
+  test("controlled: a refused swipe-down close puts the sheet back at rest", async ({ page }) => {
+    await openFrom(page, "controlled", first.alt);
+    await harness(page, { type: "policy-changed", allowClose: false });
+
+    const box = await viewer(page).locator("[data-slot=ombra-track]").boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + Math.min(72, box.height / 3);
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + 220, { steps: 10 });
+
+    const sheetOffset = () =>
+      page.evaluate(() => {
+        const sheet = document.querySelector("[data-slot=ombra-sheet]");
+
+        return sheet instanceof HTMLElement
+          ? new DOMMatrix(getComputedStyle(sheet).transform).m42
+          : Number.NaN;
+      });
+
+    expect(await sheetOffset()).toBeGreaterThan(24);
+    await page.mouse.up();
+
+    await expect.poll(() => asks(page, "controlled-readout", "open")).toEqual([true, false]);
+    await expect(viewer(page)).toHaveAttribute("data-phase", "open");
+    await expect.poll(sheetOffset).toBe(0);
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          getComputedStyle(document.documentElement).getPropertyValue("--ombra-pull-live").trim(),
+        ),
+      )
+      .toBe("0");
+    await expect(viewer(page)).toHaveAttribute("data-pulling", "false");
+    await expectActive(page, first.alt, "1 / 5");
   });
 
   test("several roots on one page keep their own state", async ({ page }) => {

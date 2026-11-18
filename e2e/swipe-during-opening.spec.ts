@@ -89,7 +89,7 @@ async function swipeAndMeasure(page: Page): Promise<Measured> {
           "[data-slot=ombra-slide][data-active=true]",
         );
 
-        const hero = active?.querySelector<HTMLElement>("[data-slot=ombra-image]");
+        const hero = active?.querySelector<HTMLElement>("[data-slot=ombra-media]");
         const popup = document.querySelector<HTMLElement>("[data-slot=ombra-viewer]");
         const backdrop = document.querySelector<HTMLElement>("[data-slot=ombra-backdrop]");
         const neighbor = active?.nextElementSibling;
@@ -175,7 +175,7 @@ async function expectOneImageLeft(page: Page) {
   await expect(page.locator("[data-slot=ombra-flight]")).toHaveCount(0);
 
   const leftovers = await page.evaluate(() => ({
-    heroes: [...document.querySelectorAll<HTMLElement>("[data-slot=ombra-image]")].filter(
+    heroes: [...document.querySelectorAll<HTMLElement>("[data-slot=ombra-media]")].filter(
       (image) =>
         image.style.visibility !== "" ||
         image.style.viewTransitionName !== "" ||
@@ -260,7 +260,7 @@ test.describe("swiping while a photo opens", () => {
     );
 
     await expect(page.locator("[data-slot=ombra-flight]")).toHaveCount(1);
-    await expect(page.locator("[data-slot=ombra-image]").nth(3)).toHaveCSS("visibility", "hidden");
+    await expect(page.locator("[data-slot=ombra-media]").nth(3)).toHaveCSS("visibility", "hidden");
     await finishEverything(page);
     await expect(viewer(page)).toHaveAttribute("data-phase", "open");
     await expect(page.locator("[data-slot=ombra-counter]")).toContainText("4 /");
@@ -272,7 +272,7 @@ test.describe("swiping while a photo opens", () => {
     await swipeAndMeasure(page);
 
     const hero = await page
-      .locator("[data-slot=ombra-image]")
+      .locator("[data-slot=ombra-media]")
       .first()
       .evaluate((image) => image.getBoundingClientRect().width);
 
@@ -410,7 +410,7 @@ test.describe("swiping while a photo opens", () => {
       flights: 0,
       phase: "opening",
     });
-    await expect(page.locator("[data-slot=ombra-image]").first()).toHaveCSS(
+    await expect(page.locator("[data-slot=ombra-media]").first()).toHaveCSS(
       "visibility",
       "visible",
     );
@@ -465,7 +465,7 @@ test.describe("swiping while a photo opens", () => {
     await expect(page.locator("[data-slot=ombra-flight]")).toHaveCount(0);
     await expect(viewer(page)).toHaveAttribute("data-engine", "fade");
     await expect(viewer(page)).toHaveAttribute("data-phase", "open");
-    await expect(page.locator("[data-slot=ombra-image]").first()).toHaveCSS(
+    await expect(page.locator("[data-slot=ombra-media]").first()).toHaveCSS(
       "visibility",
       "visible",
     );
@@ -545,7 +545,7 @@ test.describe("swiping while a photo opens", () => {
       await expect(page.locator("[data-slot=ombra-flight]")).toHaveCount(0);
 
       const heroState = await page
-        .locator("[data-slot=ombra-image]")
+        .locator("[data-slot=ombra-media]")
         .first()
         .evaluate((image) => ({
           visibility: getComputedStyle(image).visibility,

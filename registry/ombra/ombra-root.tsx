@@ -62,6 +62,43 @@ export type OmbraTriggerRegistration = {
   media?: () => HTMLElement | null;
 };
 
+/** A slide's element, registered by `OmbraSlide`. */
+export type OmbraSlideRegistration = { itemId: string; element: HTMLElement };
+
+/** The full-size media a morph lands on, registered by `OmbraMedia`, and its intrinsic size. */
+export type OmbraMediaSource = {
+  itemId: string;
+  element: HTMLElement;
+  width: number;
+  height: number;
+};
+
+/** The slide track, registered by `OmbraSlides`. Its slides publish the active item as they scroll. */
+export type OmbraSlidesHandle = {
+  element: HTMLElement;
+  /** False while the track scrolls or snaps. */
+  settled: () => boolean;
+  /** The item a smooth navigation is heading for, until the track rests or a finger takes it. */
+  navigationTarget: () => string | null;
+  /** The item whose slide is nearest the track's centre. */
+  centred: () => string | null;
+  /** Scrolls the track so the item's slide is centred. */
+  scrollTo: (itemId: string, behavior: ScrollBehavior) => void;
+  /**
+   * Goes to an item. A smooth scroll publishes each slide it centres on the way, rather than
+   * selecting the destination first.
+   */
+  navigate: (itemId: string, behavior: ScrollBehavior) => void;
+  /** Snaps to the slide nearest the centre and selects it. */
+  settle: () => void;
+};
+
+/**
+ * What holds the track still. A zoom gesture owns its scroll position, so the track neither
+ * publishes nor snaps; a zoomed photo only stops the snap back to the active item.
+ */
+export type OmbraTrackHold = "free" | "gesture" | "zoomed";
+
 export type OmbraRootContextValue = {
   /** The phase and collection. `activeId` here is the resolved one, controlled or not. */
   state: GalleryState;
@@ -79,6 +116,24 @@ export type OmbraRootContextValue = {
   registerTrigger: (trigger: OmbraTriggerRegistration) => () => void;
   /** The first trigger still on the page for `itemId`, in document order. */
   triggerFor: (itemId: string) => OmbraTriggerSource | null;
+  /** Registers a slide's element for its item. */
+  registerSlide: (slide: OmbraSlideRegistration) => () => void;
+  /** The first slide still on the page for `itemId`, in document order. */
+  slideFor: (itemId: string) => HTMLElement | null;
+  /** The item a slide element belongs to. */
+  slideItem: (element: Element) => string | null;
+  /** Registers the media a morph lands on for its item. */
+  registerMedia: (media: OmbraMediaSource) => () => void;
+  /** The first media still on the page for `itemId`, in document order. */
+  mediaFor: (itemId: string) => OmbraMediaSource | null;
+  /** Registers the slide track. One track per root. */
+  registerSlides: (slides: OmbraSlidesHandle) => () => void;
+  /** The mounted slide track. */
+  slides: () => OmbraSlidesHandle | null;
+  /** Called when the slide track mounts or leaves. */
+  subscribeSlides: (listener: () => void) => () => void;
+  /** Set by the viewer, so a zoom gesture can hold the track. */
+  trackHoldRef: RefObject<(() => OmbraTrackHold) | null>;
   driverRef: RefObject<OmbraDriver | null>;
   /** The Base UI dialog's actions. The root unmounts the dialog once the phase is "closed". */
   dialogActionsRef: RefObject<Dialog.Root.Actions | null>;
@@ -130,6 +185,26 @@ function documentOrder(registrations: Iterable<Registration>): string[] {
 
 function resolveActive(itemId: string | null, ids: readonly string[]): string | null {
   return itemId !== null && ids.includes(itemId) ? itemId : (ids[0] ?? null);
+}
+
+/** The first registration still on the page for `itemId`, in document order. */
+function firstConnected<Part extends { itemId: string; element: HTMLElement }>(
+  parts: Iterable<Part>,
+  itemId: string,
+): Part | null {
+  let first: Part | null = null;
+
+  for (const part of parts) {
+    if (part.itemId !== itemId || !part.element.isConnected) continue;
+
+    const before =
+      first !== null &&
+      part.element.compareDocumentPosition(first.element) & Node.DOCUMENT_POSITION_FOLLOWING;
+
+    if (first === null || before) first = part;
+  }
+
+  return first;
 }
 
 function sourceOf(trigger: OmbraTriggerRegistration): OmbraTriggerSource {
@@ -275,19 +350,79 @@ export function OmbraRoot({
   );
 
   const triggerFor = useCallback((itemId: string): OmbraTriggerSource | null => {
-    let first: OmbraTriggerRegistration | null = null;
-
-    for (const trigger of triggers.current) {
-      if (trigger.itemId !== itemId || !trigger.element.isConnected) continue;
-
-      const before =
-        first !== null &&
-        trigger.element.compareDocumentPosition(first.element) & Node.DOCUMENT_POSITION_FOLLOWING;
-
-      if (first === null || before) first = trigger;
-    }
+    const first = firstConnected(triggers.current, itemId);
 
     return first && sourceOf(first);
+  }, []);
+
+  const slideParts = useRef(new Set<OmbraSlideRegistration>());
+  const mediaParts = useRef(new Set<OmbraMediaSource>());
+  const slidesHandle = useRef<OmbraSlidesHandle | null>(null);
+  const slidesListeners = useRef(new Set<() => void>());
+  const trackHoldRef = useRef<(() => OmbraTrackHold) | null>(null);
+
+  const registerSlide = useCallback((slide: OmbraSlideRegistration) => {
+    slideParts.current.add(slide);
+
+    return () => {
+      slideParts.current.delete(slide);
+    };
+  }, []);
+
+  const slideFor = useCallback(
+    (itemId: string) => firstConnected(slideParts.current, itemId)?.element ?? null,
+    [],
+  );
+
+  const slideItem = useCallback((element: Element) => {
+    for (const slide of slideParts.current) {
+      if (slide.element === element) return slide.itemId;
+    }
+
+    return null;
+  }, []);
+
+  const registerMedia = useCallback((media: OmbraMediaSource) => {
+    mediaParts.current.add(media);
+
+    return () => {
+      mediaParts.current.delete(media);
+    };
+  }, []);
+
+  const mediaFor = useCallback((itemId: string) => firstConnected(mediaParts.current, itemId), []);
+
+  const notifySlides = useCallback(() => {
+    for (const listener of slidesListeners.current) listener();
+  }, []);
+
+  const registerSlides = useCallback(
+    (handle: OmbraSlidesHandle) => {
+      if (slidesHandle.current && slidesHandle.current.element !== handle.element) {
+        warn("more than one <OmbraSlides> is mounted in one root; the latest one is used.");
+      }
+
+      slidesHandle.current = handle;
+      notifySlides();
+
+      return () => {
+        if (slidesHandle.current !== handle) return;
+
+        slidesHandle.current = null;
+        notifySlides();
+      };
+    },
+    [notifySlides],
+  );
+
+  const slides = useCallback(() => slidesHandle.current, []);
+
+  const subscribeSlides = useCallback((listener: () => void) => {
+    slidesListeners.current.add(listener);
+
+    return () => {
+      slidesListeners.current.delete(listener);
+    };
   }, []);
 
   const [ownerId, sendOwner] = useReducerWithBailout(ownerReducer, null);
@@ -546,6 +681,15 @@ export function OmbraRoot({
       registerItem,
       registerTrigger,
       triggerFor,
+      registerSlide,
+      slideFor,
+      slideItem,
+      registerMedia,
+      mediaFor,
+      registerSlides,
+      slides,
+      subscribeSlides,
+      trackHoldRef,
       driverRef,
       dialogActionsRef,
     }),
@@ -559,6 +703,14 @@ export function OmbraRoot({
       registerItem,
       registerTrigger,
       triggerFor,
+      registerSlide,
+      slideFor,
+      slideItem,
+      registerMedia,
+      mediaFor,
+      registerSlides,
+      slides,
+      subscribeSlides,
     ],
   );
 
