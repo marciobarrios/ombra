@@ -15,7 +15,7 @@ import { OmbraTrigger } from "../../../../../registry/ombra/ombra-trigger";
 
 import { photos } from "../photos";
 
-const items = photos.slice(0, 5);
+const items = photos.slice(0, 6);
 const ids = items.map((item) => item.id);
 
 type Harness = {
@@ -124,7 +124,7 @@ export function TriggerHarness() {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const renderRef = useRef<HTMLButtonElement>(null);
   const mediaRef = useRef<HTMLSpanElement>(null);
-  const [road, ridge, third, fourth, fifth] = [0, 1, 2, 3, 4].map(photo);
+  const [road, ridge, third, fourth, fifth, late] = [0, 1, 2, 3, 4, 5].map(photo);
 
   function inspect(triggerFor: ReturnType<typeof useOmbraRoot>["triggerFor"]) {
     const custom = triggerFor(ridge.id);
@@ -212,6 +212,12 @@ export function TriggerHarness() {
           >
             Cancelled
           </OmbraTrigger>
+          {/* Mounts in the same update that selects its item. */}
+          {state.activeAsks.at(-1) === late.id ? (
+            <OmbraTrigger itemId={late.id} aria-label={late.alt}>
+              Late
+            </OmbraTrigger>
+          ) : null}
         </div>
         <Viewer dispatch={dispatch} inspect={inspect} />
       </OmbraRoot>

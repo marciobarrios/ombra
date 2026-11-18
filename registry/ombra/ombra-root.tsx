@@ -138,6 +138,13 @@ function sourceOf(trigger: OmbraTriggerRegistration): OmbraTriggerSource {
   return { itemId: trigger.itemId, element: trigger.element, media };
 }
 
+/** The trigger that owns the open dialog, found after the triggers' refs attach. */
+type OwnerAction = { type: "owner-found"; triggerId: string | null };
+
+function ownerReducer(_: string | null, action: OwnerAction): string | null {
+  return action.triggerId;
+}
+
 function warn(message: string) {
   if (process.env.NODE_ENV !== "production") console.warn(`Ombra: ${message}`);
 }
@@ -267,14 +274,6 @@ export function OmbraRoot({
     [flush],
   );
 
-  const registerTrigger = useCallback((trigger: OmbraTriggerRegistration) => {
-    triggers.current.add(trigger);
-
-    return () => {
-      triggers.current.delete(trigger);
-    };
-  }, []);
-
   const triggerFor = useCallback((itemId: string): OmbraTriggerSource | null => {
     let first: OmbraTriggerRegistration | null = null;
 
@@ -290,6 +289,31 @@ export function OmbraRoot({
 
     return first && sourceOf(first);
   }, []);
+
+  const [ownerId, sendOwner] = useReducerWithBailout(ownerReducer, null);
+
+  // Base UI marks the current item's trigger as the one that owns the dialog, so its
+  // `aria-expanded` and default focus return follow navigation, not the opening press.
+  const syncOwner = useCallback(() => {
+    const itemId = phaseRef.current === "closed" ? null : activeRef.current;
+    const owner = itemId === null ? null : triggerFor(itemId);
+
+    sendOwner({ type: "owner-found", triggerId: owner?.element.id || null });
+  }, [triggerFor, sendOwner]);
+
+  const registerTrigger = useCallback(
+    (trigger: OmbraTriggerRegistration) => {
+      triggers.current.add(trigger);
+      // A trigger can mount or leave without the root rendering again.
+      queueMicrotask(syncOwner);
+
+      return () => {
+        triggers.current.delete(trigger);
+        queueMicrotask(syncOwner);
+      };
+    },
+    [syncOwner],
+  );
 
   const askParentForActive = useCallback((itemId: string) => {
     if (askedActive.current === itemId) return;
@@ -398,6 +422,7 @@ export function OmbraRoot({
 
   useLayoutEffect(() => {
     flush();
+    syncOwner();
   });
 
   // The dialog stays mounted until the driver reports its close landed. This runs after the
@@ -537,17 +562,11 @@ export function OmbraRoot({
     ],
   );
 
-  const dialogOpen = isOpen(state);
-
-  // Base UI marks the current item's trigger as the one that owns the dialog, so its
-  // `aria-expanded` and default focus return follow navigation, not the opening press.
-  const activeTrigger = dialogOpen && activeId !== null ? triggerFor(activeId) : null;
-
   return (
     <OmbraRootContext.Provider value={value}>
       <Dialog.Root
-        open={dialogOpen}
-        triggerId={activeTrigger?.element.id || null}
+        open={isOpen(state)}
+        triggerId={ownerId}
         // A close that releases the page lets it scroll while the photo fades out.
         modal={state.phase === "closing" && state.releaseScroll ? false : true}
         actionsRef={dialogActionsRef}
@@ -560,9 +579,7 @@ export function OmbraRoot({
               (trigger) => trigger.element === details.trigger,
             );
 
-            const itemId = pressed?.itemId ?? activeRef.current;
-
-            if (itemId !== null) requestOpen(itemId, { reason: "trigger" });
+            if (pressed) requestOpen(pressed.itemId, { reason: "trigger" });
 
             return;
           }

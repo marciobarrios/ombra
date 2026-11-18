@@ -3,9 +3,11 @@ import type { Locator, Page } from "@playwright/test";
 
 import { photos } from "../apps/docs/app/spike/photos";
 
-const [road, ridge, third, fourth, fifth] = photos;
+const [road, ridge, third, fourth, fifth, late] = photos;
 
-if (!road || !ridge || !third || !fourth || !fifth) throw new Error("The bench needs five photos.");
+if (!road || !ridge || !third || !fourth || !fifth || !late) {
+  throw new Error("The bench needs six photos.");
+}
 
 const dialog = (page: Page) => page.getByRole("dialog", { name: "Composed photos" });
 
@@ -125,6 +127,20 @@ test.describe("OmbraTrigger", () => {
     await close(page);
     await expect(trigger(page, ridge.alt)).toBeFocused();
     await expect(page.locator("[data-slot=ombra-trigger][aria-expanded=true]")).toHaveCount(0);
+  });
+
+  test("a trigger that mounts with its item's selection owns the dialog", async ({ page }) => {
+    await trigger(page, road.alt).click();
+
+    for (let step = 0; step < 5; step += 1) {
+      await dialog(page).getByRole("button", { name: "Next item" }).click();
+    }
+
+    await expect(dialog(page).getByTestId("active")).toHaveText(late.id);
+    await expectOwner(page, trigger(page, late.alt));
+
+    await close(page);
+    await expect(trigger(page, late.alt)).toBeFocused();
   });
 
   test("without the current item's trigger, no trigger owns the dialog", async ({ page }) => {

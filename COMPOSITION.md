@@ -58,6 +58,7 @@ shell part shares, so a composition needs no Base UI root of its own:
 
 ```tsx
 <OmbraRoot>
+  {/* Items must be registered to open: by the gallery today, by slides in MAR-140. */}
   {photos.map((photo) => (
     <OmbraTrigger key={photo.id} itemId={photo.id}>
       <img src={photo.thumbnail} alt={photo.alt} />
@@ -75,8 +76,7 @@ shell part shares, so a composition needs no Base UI root of its own:
   Ombra adds no ARIA of its own.
 - **One open path.** A press reaches the Base UI root's `onOpenChange(true)`. The
   root cancels Base UI's own open and calls `requestOpen` for the pressed trigger's
-  item, so a controlled parent can refuse it and a press starts one morph. A
-  `Dialog.Trigger` without an `itemId` opens the active item.
+  item, so a controlled parent can refuse it and a press starts one morph.
 - **Ownership.** While the viewer is open, the root passes the current item's
   trigger as Base UI's `triggerId`. `aria-expanded` and Base UI's default focus
   return follow navigation, not the press that opened the viewer. When the current
