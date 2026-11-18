@@ -53,6 +53,7 @@ import {
 import type { Flight } from "./morph";
 import { OmbraBackdrop, OmbraClose, OmbraContent, OmbraPortal } from "./ombra-dialog";
 import { OmbraRoot, useOmbraRoot } from "./ombra-root";
+import { OmbraTrigger } from "./ombra-trigger";
 import type { OmbraRootProps } from "./ombra-root";
 import { MORPH_SPRING, normalizeVelocity, springCurve } from "./spring";
 import type { Box, FlipPose, FrameSample, MorphEngine, MorphKind, OmbraItem } from "./types";
@@ -197,14 +198,6 @@ function opacityOf(element: HTMLElement | null): number {
   return element ? Number.parseFloat(getComputedStyle(element).opacity) : 0;
 }
 
-function imageChild(element: HTMLElement): HTMLImageElement | null {
-  const child = element.querySelector("img");
-
-  if (child instanceof HTMLImageElement) return child;
-
-  return null;
-}
-
 function IconButton({
   label,
   className,
@@ -275,7 +268,7 @@ function GalleryViewer({
   const reduced = useReducedMotion();
   const root = useOmbraRoot();
   const { state: gallery, send, registerItem } = root;
-  const { phase, activeId, epoch: animEpoch, releaseScroll } = gallery;
+  const { phase, activeId, epoch: animEpoch } = gallery;
 
   // Positions still address the DOM lists below; the active ID chooses which one.
   const index = Math.max(
@@ -287,7 +280,6 @@ function GalleryViewer({
   const [view, sendView] = useReducerWithBailout(viewReducer, initialViewState);
   const { sharpIds, stripOverflows, trackNode } = view;
 
-  const triggers = useRef<Array<HTMLButtonElement | null>>([]);
   const images = useRef<Array<HTMLImageElement | null>>([]);
   const slides = useRef<Array<HTMLDivElement | null>>([]);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -299,7 +291,6 @@ function GalleryViewer({
   const popupAnimationRef = useRef<Animation | null>(null);
   const sheetAnimationRef = useRef<Animation | null>(null);
   const stripRef = useRef<HTMLDivElement>(null);
-  const actionsRef = useRef<{ unmount: () => void; close: () => void } | null>(null);
   const flightRef = useRef<Flight | null>(null);
   const retiringFlightRef = useRef<Flight | null>(null);
   const closeInputRef = useRef<(() => void) | null>(null);
@@ -417,8 +408,8 @@ function GalleryViewer({
 
   // The trigger grid is always mounted, so it registers the collection in document order.
   useLayoutEffect(() => {
-    const stops = items.map((item, itemIndex) =>
-      registerItem(item.id, triggers.current[itemIndex] ?? null),
+    const stops = items.map((item) =>
+      registerItem(item.id, rootRef.current.triggerFor(item.id)?.element ?? null),
     );
 
     return () => {
@@ -827,8 +818,8 @@ function GalleryViewer({
 
       const itemIndex = indexRef.current;
       const item = items[itemIndex];
-      const trigger = triggers.current[itemIndex];
-      const thumb = trigger ? imageChild(trigger) : null;
+      const trigger = triggerAt(itemIndex);
+      const thumb = thumbAt(itemIndex);
       // A trigger that unmounted, or one a scroll container still clips after
       // revealing it, has no box to land on. Fade instead of flying somewhere wrong.
       const revealed = item && thumb && isRendered(trigger) ? revealElement(trigger) : "hidden";
@@ -877,7 +868,7 @@ function GalleryViewer({
       }
 
       // Revealing it may have brought a thumbnail the page had not decoded yet.
-      void thumb.decode().catch(() => undefined);
+      if (thumb instanceof HTMLImageElement) void thumb.decode().catch(() => undefined);
 
       const slide = slides.current[itemIndex];
 
@@ -1011,12 +1002,26 @@ function GalleryViewer({
     }
   }
 
-  function cachedSrc(itemIndex: number): string {
-    const trigger = triggers.current[itemIndex];
-    const thumb = trigger ? imageChild(trigger) : null;
-    const item = items[itemIndex];
+  /** The trigger on the page for a photo, which is also its focus target. */
+  function triggerAt(itemIndex: number): HTMLElement | null {
+    const item = itemsRef.current[itemIndex];
 
-    return thumb?.currentSrc || item?.thumbSrc || "";
+    return item ? (rootRef.current.triggerFor(item.id)?.element ?? null) : null;
+  }
+
+  /** The thumbnail a photo's morph flies from and lands on. */
+  function thumbAt(itemIndex: number): HTMLElement | null {
+    const item = itemsRef.current[itemIndex];
+
+    return item ? (rootRef.current.triggerFor(item.id)?.media ?? null) : null;
+  }
+
+  function cachedSrc(itemIndex: number): string {
+    const thumb = thumbAt(itemIndex);
+    const item = items[itemIndex];
+    const src = thumb instanceof HTMLImageElement ? thumb.currentSrc : "";
+
+    return src || item?.thumbSrc || "";
   }
 
   /** The source the viewer shows for a photo, which is decoded, or the thumbnail's. */
@@ -1029,8 +1034,8 @@ function GalleryViewer({
   }
 
   function thumbnailBox(itemIndex: number): Box | null {
-    const trigger = triggers.current[itemIndex];
-    const thumb = trigger ? imageChild(trigger) : null;
+    const trigger = triggerAt(itemIndex);
+    const thumb = thumbAt(itemIndex);
 
     if (!thumb || !isRendered(trigger)) return null;
 
@@ -1038,13 +1043,13 @@ function GalleryViewer({
   }
 
   /** The current slide's trigger, or the nearest one still on the page if it is gone. */
-  function focusTarget(): HTMLButtonElement | null {
-    const list = triggers.current;
+  function focusTarget(): HTMLElement | null {
+    const count = itemsRef.current.length;
     const current = indexRef.current;
 
-    for (let distance = 0; distance < list.length; distance += 1) {
+    for (let distance = 0; distance < count; distance += 1) {
       for (const candidate of [current - distance, current + distance]) {
-        const trigger = list[candidate];
+        const trigger = candidate >= 0 && candidate < count ? triggerAt(candidate) : null;
 
         if (isRendered(trigger)) return trigger;
       }
@@ -1064,22 +1069,20 @@ function GalleryViewer({
   }
 
   function hideThumb(itemIndex: number) {
-    const trigger = triggers.current[itemIndex];
-    const thumb = trigger ? imageChild(trigger) : null;
+    const thumb = thumbAt(itemIndex);
 
     if (thumb) thumb.style.visibility = "hidden";
   }
 
   function showThumb(itemIndex: number) {
-    const trigger = triggers.current[itemIndex];
-    const thumb = trigger ? imageChild(trigger) : null;
+    const thumb = thumbAt(itemIndex);
 
     if (thumb) thumb.style.visibility = "";
   }
 
   function restoreVisibility() {
-    for (const trigger of triggers.current) {
-      const thumb = trigger ? imageChild(trigger) : null;
+    for (const itemIndex of itemsRef.current.keys()) {
+      const thumb = thumbAt(itemIndex);
 
       if (thumb) thumb.style.visibility = "";
     }
@@ -1477,8 +1480,8 @@ function GalleryViewer({
     clearSheetHold();
     document.documentElement.style.setProperty("--ombra-pull-live", "0");
 
-    for (const trigger of triggers.current) {
-      const thumb = trigger ? imageChild(trigger) : null;
+    for (const itemIndex of itemsRef.current.keys()) {
+      const thumb = thumbAt(itemIndex);
 
       if (thumb) thumb.style.visibility = "";
     }
@@ -1493,8 +1496,6 @@ function GalleryViewer({
 
   useLayoutEffect(() => {
     if (phase !== "closed") return;
-
-    actionsRef.current?.unmount();
 
     if (!restoreFocusRef.current) return;
 
@@ -1552,9 +1553,11 @@ function GalleryViewer({
     // The flying photo covers whatever is under it, so it wins the hit test.
     if (live && boxContains(live, x, y)) return indexRef.current;
 
-    const itemIndex = triggers.current.findIndex(
-      (trigger) => trigger && boxContains(boxFromRect(trigger.getBoundingClientRect()), x, y),
-    );
+    const itemIndex = itemsRef.current.findIndex((_, candidate) => {
+      const trigger = triggerAt(candidate);
+
+      return trigger && boxContains(boxFromRect(trigger.getBoundingClientRect()), x, y);
+    });
 
     return itemIndex < 0 ? null : itemIndex;
   }
@@ -1629,8 +1632,8 @@ function GalleryViewer({
   }
 
   function openAt(nextIndex: number, handoff = false): boolean {
-    const trigger = triggers.current[nextIndex];
-    const thumb = trigger ? imageChild(trigger) : null;
+    const trigger = triggerAt(nextIndex);
+    const thumb = thumbAt(nextIndex);
     const item = items[nextIndex];
 
     if (!trigger || !thumb || !item) return false;
@@ -1661,7 +1664,7 @@ function GalleryViewer({
     return true;
   }
 
-  function openWithViewTransition(nextIndex: number, itemId: string, thumb: HTMLImageElement) {
+  function openWithViewTransition(nextIndex: number, itemId: string, thumb: HTMLElement) {
     const token = ++tokenRef.current;
     const timing = morphTiming(480, 0);
 
@@ -1735,8 +1738,8 @@ function GalleryViewer({
     driverRef.current = resolveMorphEngine(engineRef.current, reducedRef.current);
     vtRef.current?.skipTransition();
 
-    const trigger = triggers.current[indexRef.current];
-    const thumb = trigger ? imageChild(trigger) : null;
+    const trigger = triggerAt(indexRef.current);
+    const thumb = thumbAt(indexRef.current);
     const canMorph = trigger ? mostlyVisible(trigger) : false;
 
     if (driverRef.current === "vt" && canMorph && thumb && !flightRef.current) {
@@ -1755,7 +1758,7 @@ function GalleryViewer({
     send({ type: "close-requested", releaseScroll: !canMorph });
   }
 
-  function closeWithViewTransition(thumb: HTMLImageElement) {
+  function closeWithViewTransition(thumb: HTMLElement) {
     const token = ++tokenRef.current;
     const hero = images.current[indexRef.current];
     const flick = flickRef.current;
@@ -1781,10 +1784,10 @@ function GalleryViewer({
     const transition = runViewTransition(() => {
       unnameSharedElement(hero);
 
+      // The root unmounts the dialog in this same synchronous commit.
       flushSync(() => {
         send({ type: "closed" });
       });
-      actionsRef.current?.unmount();
       revealElement(thumb.parentElement instanceof HTMLElement ? thumb.parentElement : thumb);
       nameSharedElement(thumb);
     });
@@ -1880,16 +1883,10 @@ function GalleryViewer({
       {/* Outside the dialog, so a closing view transition still has it after the viewer unmounts. */}
       <style data-slot="ombra-morph-styles">{MORPH_STYLES}</style>
       <div className="columns-2 gap-3 md:columns-3">
-        {items.map((item, itemIndex) => (
-          <button
+        {items.map((item) => (
+          <OmbraTrigger
             key={item.id}
-            ref={(node) => {
-              triggers.current[itemIndex] = node;
-            }}
-            type="button"
-            data-slot="ombra-trigger"
-            aria-haspopup="dialog"
-            onClick={() => root.requestOpen(item.id)}
+            itemId={item.id}
             className="relative mb-3 block w-full break-inside-avoid overflow-hidden rounded-[6px] after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:inset-ring after:inset-ring-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
             style={{ aspectRatio: item.frame }}
           >
@@ -1902,7 +1899,7 @@ function GalleryViewer({
               height={item.height}
               className="h-full w-full rounded-[inherit] object-cover"
             />
-          </button>
+          </OmbraTrigger>
         ))}
       </div>
 
@@ -1911,215 +1908,204 @@ function GalleryViewer({
         viewer shows the full frame.
       </p>
 
-      <Dialog.Root
-        open={open}
-        modal={phase === "closing" && releaseScroll ? false : true}
-        actionsRef={actionsRef}
-        onOpenChange={(next, details) => {
-          if (next) return;
-
-          details.preventUnmountOnClose();
-          root.requestClose();
-        }}
-      >
-        <OmbraPortal>
-          <OmbraBackdrop
-            ref={bindBackdrop}
-            data-slot="ombra-backdrop"
-            className={cn(phase === "closing" && "pointer-events-none")}
-          />
-          <OmbraContent
-            ref={bindPopup}
-            data-slot="ombra-viewer"
-            data-engine={effective}
-            data-phase={phase}
-            data-zoomed={zoom.zoomed ? "true" : "false"}
-            data-pulling={pulling ? "true" : "false"}
-            finalFocus={() => focusTarget() ?? true}
-            onKeyDown={onKeyDown}
-            className={cn("p-0", phase === "closing" && "pointer-events-none")}
-          >
-            <Dialog.Title className="sr-only">{active?.alt ?? "Photo"}</Dialog.Title>
-            <Dialog.Description className="sr-only">{active?.caption ?? ""}</Dialog.Description>
-            <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
-              <header className="flex touch-none flex-col gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 flex-col items-start gap-2">
-                    <p
-                      data-slot="ombra-counter"
-                      className="font-mono text-xs tracking-wide text-(--ombra-ink)/80"
-                    >
-                      {index + 1} / {count}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <IconButton
-                      label="Zoom out"
-                      slot="ombra-zoom-out"
-                      onClick={() => zoom.zoomOut()}
-                      disabled={!zoom.zoomed}
-                    >
-                      <MinusIcon />
-                    </IconButton>
-                    <IconButton label="Zoom in" slot="ombra-zoom-in" onClick={() => zoom.zoomIn()}>
-                      <PlusIcon />
-                    </IconButton>
-                    <OmbraClose aria-label="Close">
-                      <CloseIcon />
-                    </OmbraClose>
-                  </div>
-                </div>
-              </header>
-
-              <div className="relative min-h-0 min-w-0 flex-1">
-                <div className="@container h-full min-w-0">
-                  <div
-                    ref={bindTrack}
-                    data-slot="ombra-track"
-                    className="flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      {/* OmbraRoot supplies the Base UI dialog root, shared with the triggers above. */}
+      <OmbraPortal>
+        <OmbraBackdrop
+          ref={bindBackdrop}
+          data-slot="ombra-backdrop"
+          className={cn(phase === "closing" && "pointer-events-none")}
+        />
+        <OmbraContent
+          ref={bindPopup}
+          data-slot="ombra-viewer"
+          data-engine={effective}
+          data-phase={phase}
+          data-zoomed={zoom.zoomed ? "true" : "false"}
+          data-pulling={pulling ? "true" : "false"}
+          finalFocus={() => focusTarget() ?? true}
+          onKeyDown={onKeyDown}
+          className={cn("p-0", phase === "closing" && "pointer-events-none")}
+        >
+          <Dialog.Title className="sr-only">{active?.alt ?? "Photo"}</Dialog.Title>
+          <Dialog.Description className="sr-only">{active?.caption ?? ""}</Dialog.Description>
+          <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <header className="flex touch-none flex-col gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 flex-col items-start gap-2">
+                  <p
+                    data-slot="ombra-counter"
+                    className="font-mono text-xs tracking-wide text-(--ombra-ink)/80"
                   >
-                    <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
-                    {items.map((item, itemIndex) => {
-                      const sharp = sharpIds.has(item.id);
-
-                      return (
-                        <div
-                          key={item.id}
-                          ref={(node) => {
-                            slides.current[itemIndex] = node;
-                          }}
-                          data-slot="ombra-slide"
-                          data-active={itemIndex === index ? "true" : "false"}
-                          role="group"
-                          aria-roledescription="slide"
-                          aria-label={`${itemIndex + 1} of ${count}`}
-                          className="flex h-full min-h-0 w-[86cqi] shrink-0 snap-center snap-always items-center justify-center"
-                        >
-                          {/* Keep Safari's native double-tap zoom off this surface.
-                              The ancestor track still owns horizontal scrolling. */}
-                          <div
-                            ref={itemIndex === index ? layerRef : undefined}
-                            data-slot="ombra-zoom"
-                            className="flex h-full min-h-0 w-full min-w-0 touch-manipulation items-center justify-center"
-                          >
-                            <img
-                              ref={(node) => {
-                                images.current[itemIndex] = node;
-                              }}
-                              data-slot="ombra-image"
-                              data-active={itemIndex === index ? "true" : "false"}
-                              src={sharp ? item.src : item.thumbSrc}
-                              srcSet={sharp ? item.srcSet : undefined}
-                              sizes="100vw"
-                              alt=""
-                              width={item.width}
-                              height={item.height}
-                              draggable={false}
-                              fetchPriority={itemIndex === index ? "high" : "low"}
-                              className="h-auto max-h-full min-h-0 w-auto max-w-full min-w-0 rounded-[6px] object-contain outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
-                  </div>
+                    {index + 1} / {count}
+                  </p>
                 </div>
-                <div
-                  data-slot="ombra-nav"
-                  className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2"
-                >
+                <div className="flex items-center gap-1">
                   <IconButton
-                    label="Previous photo"
-                    slot="ombra-prev"
-                    className="pointer-events-auto bg-(--ombra-surface)/40"
-                    disabled={index === 0}
-                    onClick={() =>
-                      goTo((navigationTarget.current ?? index) - 1, reduced ? "auto" : "smooth")
-                    }
+                    label="Zoom out"
+                    slot="ombra-zoom-out"
+                    onClick={() => zoom.zoomOut()}
+                    disabled={!zoom.zoomed}
                   >
-                    <Chevron direction="left" />
+                    <MinusIcon />
                   </IconButton>
-                </div>
-                <div
-                  data-slot="ombra-nav"
-                  className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2"
-                >
-                  <IconButton
-                    label="Next photo"
-                    slot="ombra-next"
-                    className="pointer-events-auto bg-(--ombra-surface)/40"
-                    disabled={index === count - 1}
-                    onClick={() =>
-                      goTo((navigationTarget.current ?? index) + 1, reduced ? "auto" : "smooth")
-                    }
-                  >
-                    <Chevron direction="right" />
+                  <IconButton label="Zoom in" slot="ombra-zoom-in" onClick={() => zoom.zoomIn()}>
+                    <PlusIcon />
                   </IconButton>
+                  <OmbraClose aria-label="Close">
+                    <CloseIcon />
+                  </OmbraClose>
                 </div>
               </div>
+            </header>
 
-              <footer className="px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-                <p
-                  data-slot="ombra-caption"
-                  className="mb-3 touch-none text-center text-sm text-(--ombra-ink)/80"
-                >
-                  {active?.caption}
-                </p>
+            <div className="relative min-h-0 min-w-0 flex-1">
+              <div className="@container h-full min-w-0">
                 <div
-                  ref={stripRef}
-                  data-slot="ombra-thumbnails"
-                  data-overflowing={stripOverflows ? "true" : "false"}
-                  className={cn(
-                    "touch-pan-x overflow-x-auto overflow-y-hidden py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-                    stripOverflows && "snap-x snap-mandatory",
-                  )}
+                  ref={bindTrack}
+                  data-slot="ombra-track"
+                  className="flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
-                  <div
-                    data-slot="ombra-thumbnails-row"
-                    className={cn(
-                      "mx-auto flex w-max gap-2",
-                      stripOverflows ? "px-[max(0.25rem,calc(50%-1.375rem))]" : "px-1",
-                    )}
-                  >
-                    {items.map((item, itemIndex) => {
-                      const selected = itemIndex === index;
+                  <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
+                  {items.map((item, itemIndex) => {
+                    const sharp = sharpIds.has(item.id);
 
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          data-slot="ombra-thumbnail"
-                          data-active={selected ? "true" : "false"}
-                          aria-current={selected ? "true" : undefined}
-                          aria-label={item.alt}
-                          onClick={() => goTo(itemIndex, reduced ? "auto" : "smooth")}
-                          className={cn(
-                            "size-11 shrink-0 snap-center overflow-hidden rounded-lg border-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current",
-                            selected ? "border-current" : "border-transparent opacity-60",
-                          )}
+                    return (
+                      <div
+                        key={item.id}
+                        ref={(node) => {
+                          slides.current[itemIndex] = node;
+                        }}
+                        data-slot="ombra-slide"
+                        data-active={itemIndex === index ? "true" : "false"}
+                        role="group"
+                        aria-roledescription="slide"
+                        aria-label={`${itemIndex + 1} of ${count}`}
+                        className="flex h-full min-h-0 w-[86cqi] shrink-0 snap-center snap-always items-center justify-center"
+                      >
+                        {/* Keep Safari's native double-tap zoom off this surface.
+                              The ancestor track still owns horizontal scrolling. */}
+                        <div
+                          ref={itemIndex === index ? layerRef : undefined}
+                          data-slot="ombra-zoom"
+                          className="flex h-full min-h-0 w-full min-w-0 touch-manipulation items-center justify-center"
                         >
                           <img
-                            src={item.thumbSrc}
+                            ref={(node) => {
+                              images.current[itemIndex] = node;
+                            }}
+                            data-slot="ombra-image"
+                            data-active={itemIndex === index ? "true" : "false"}
+                            src={sharp ? item.src : item.thumbSrc}
+                            srcSet={sharp ? item.srcSet : undefined}
+                            sizes="100vw"
                             alt=""
-                            className="h-full w-full rounded-[6px] object-cover outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
+                            width={item.width}
+                            height={item.height}
+                            draggable={false}
+                            fetchPriority={itemIndex === index ? "high" : "low"}
+                            className="h-auto max-h-full min-h-0 w-auto max-w-full min-w-0 rounded-[6px] object-contain outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
                           />
-                        </button>
-                      );
-                    })}
-                  </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div aria-hidden="true" className="shrink-0 basis-[max(0px,calc(7cqi-1rem))]" />
                 </div>
-                <span data-slot="ombra-strip-edge-start" aria-hidden="true" className="hidden" />
-                <span data-slot="ombra-strip-edge-end" aria-hidden="true" className="hidden" />
-                <style data-slot="ombra-strip-edge-styles">{stripEdgeStyles}</style>
-              </footer>
+              </div>
+              <div
+                data-slot="ombra-nav"
+                className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2"
+              >
+                <IconButton
+                  label="Previous photo"
+                  slot="ombra-prev"
+                  className="pointer-events-auto bg-(--ombra-surface)/40"
+                  disabled={index === 0}
+                  onClick={() =>
+                    goTo((navigationTarget.current ?? index) - 1, reduced ? "auto" : "smooth")
+                  }
+                >
+                  <Chevron direction="left" />
+                </IconButton>
+              </div>
+              <div
+                data-slot="ombra-nav"
+                className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2"
+              >
+                <IconButton
+                  label="Next photo"
+                  slot="ombra-next"
+                  className="pointer-events-auto bg-(--ombra-surface)/40"
+                  disabled={index === count - 1}
+                  onClick={() =>
+                    goTo((navigationTarget.current ?? index) + 1, reduced ? "auto" : "smooth")
+                  }
+                >
+                  <Chevron direction="right" />
+                </IconButton>
+              </div>
             </div>
-            <p role="status" data-slot="ombra-live" className="sr-only">
-              {open ? `${index + 1} of ${count}. ${active?.caption ?? ""}` : ""}
-            </p>
-          </OmbraContent>
-        </OmbraPortal>
-      </Dialog.Root>
+
+            <footer className="px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <p
+                data-slot="ombra-caption"
+                className="mb-3 touch-none text-center text-sm text-(--ombra-ink)/80"
+              >
+                {active?.caption}
+              </p>
+              <div
+                ref={stripRef}
+                data-slot="ombra-thumbnails"
+                data-overflowing={stripOverflows ? "true" : "false"}
+                className={cn(
+                  "touch-pan-x overflow-x-auto overflow-y-hidden py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                  stripOverflows && "snap-x snap-mandatory",
+                )}
+              >
+                <div
+                  data-slot="ombra-thumbnails-row"
+                  className={cn(
+                    "mx-auto flex w-max gap-2",
+                    stripOverflows ? "px-[max(0.25rem,calc(50%-1.375rem))]" : "px-1",
+                  )}
+                >
+                  {items.map((item, itemIndex) => {
+                    const selected = itemIndex === index;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        data-slot="ombra-thumbnail"
+                        data-active={selected ? "true" : "false"}
+                        aria-current={selected ? "true" : undefined}
+                        aria-label={item.alt}
+                        onClick={() => goTo(itemIndex, reduced ? "auto" : "smooth")}
+                        className={cn(
+                          "size-11 shrink-0 snap-center overflow-hidden rounded-lg border-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current",
+                          selected ? "border-current" : "border-transparent opacity-60",
+                        )}
+                      >
+                        <img
+                          src={item.thumbSrc}
+                          alt=""
+                          className="h-full w-full rounded-[6px] object-cover outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <span data-slot="ombra-strip-edge-start" aria-hidden="true" className="hidden" />
+              <span data-slot="ombra-strip-edge-end" aria-hidden="true" className="hidden" />
+              <style data-slot="ombra-strip-edge-styles">{stripEdgeStyles}</style>
+            </footer>
+          </div>
+          <p role="status" data-slot="ombra-live" className="sr-only">
+            {open ? `${index + 1} of ${count}. ${active?.caption ?? ""}` : ""}
+          </p>
+        </OmbraContent>
+      </OmbraPortal>
     </div>
   );
 }

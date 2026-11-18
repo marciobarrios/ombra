@@ -406,7 +406,10 @@ export function watchLayoutShift(ignore: Element | null, changed: () => void): (
  * Resolves once `image` can paint without a blank frame, or after `limit` ms so a
  * slow network never holds the morph. A decode error resolves too.
  */
-export function whenDecoded(image: HTMLImageElement, limit: number): Promise<void> {
+export function whenDecoded(image: HTMLElement, limit: number): Promise<void> {
+  // Custom thumbnail media, such as a background image, has nothing to decode.
+  if (!(image instanceof HTMLImageElement)) return Promise.resolve();
+
   const decoded = image.decode().then(
     () => undefined,
     () => undefined,
