@@ -199,6 +199,65 @@ function opacityOf(element: HTMLElement | null): number {
   return element ? Number.parseFloat(getComputedStyle(element).opacity) : 0;
 }
 
+/**
+ * Where a photo rests: its media's own box, so a media the caller sized or placed itself is
+ * still where the morph lands. While a zoom or a hand-off moves the media, its box is not the
+ * resting one, so this falls back to the largest box of its ratio centred in its frame.
+ */
+function restingBox(media: OmbraMediaSource, frame: HTMLElement): Box {
+  for (
+    let node: HTMLElement | null = media.element;
+    node && node !== frame;
+    node = node.parentElement
+  ) {
+    if (getComputedStyle(node).transform !== "none" || node.getAnimations().length > 0) {
+      return containBox(boxFromRect(frame.getBoundingClientRect()), media.width / media.height);
+    }
+  }
+
+  return boxFromRect(media.element.getBoundingClientRect());
+}
+
+/**
+ * Paints `src`, a decoded thumbnail, on an image still loading its own source. An image with
+ * a `srcset` (Next.js Image always has one) would keep choosing from it, so the set comes
+ * off until the browser's own choice has decoded, then goes back.
+ */
+function showDecoded(image: HTMLImageElement, src: string) {
+  const srcset = image.getAttribute("srcset");
+
+  if (srcset === null) {
+    image.src = src;
+
+    return;
+  }
+
+  const sizes = image.getAttribute("sizes");
+  const own = image.getAttribute("src");
+  const loader = new Image();
+
+  if (sizes !== null) loader.sizes = sizes;
+
+  loader.srcset = srcset;
+
+  if (own !== null) loader.src = own;
+
+  image.removeAttribute("srcset");
+  image.src = src;
+
+  void loader
+    .decode()
+    .catch(() => undefined)
+    .then(() => {
+      // Something else, such as a render, has set a source since.
+      if (image.getAttribute("src") !== src || image.hasAttribute("srcset")) return;
+
+      image.setAttribute("srcset", srcset);
+
+      if (own !== null) image.setAttribute("src", own);
+    });
+}
+
 /** The image inside a slide's media, which can take a decoded source while it still loads. */
 function imageIn(media: HTMLElement | null): HTMLImageElement | null {
   if (!media) return null;
@@ -571,7 +630,7 @@ export function useOmbraViewer({
       // Measure the slide at rest, not at the pose a reversed pull close still holds:
       // the photo would land offset by the drag and jump when the hero replaces it.
       const animateSheetBack = releaseSheetHold();
-      const home = containBox(boxFromRect(slide.getBoundingClientRect()), item.width / item.height);
+      const home = restingBox(item, slide);
       const fadeDuration = motionDuration(480, slowRef.current, reducedRef.current);
       const existing = flightRef.current;
       const flick = flickRef.current;
@@ -628,7 +687,7 @@ export function useOmbraViewer({
       // The slide may still be loading its own source. The clone's is decoded, so
       // the photo under it is ready to paint when the clone goes.
       if (heroImage && (!heroImage.complete || heroImage.naturalWidth === 0)) {
-        heroImage.src = flight.image.src;
+        showDecoded(heroImage, flight.image.src);
       }
 
       const settle = () => {
@@ -660,10 +719,7 @@ export function useOmbraViewer({
       followLayout(() => {
         if (flightRef.current !== flight) return;
 
-        const next = containBox(
-          boxFromRect(slide.getBoundingClientRect()),
-          item.width / item.height,
-        );
+        const next = restingBox(item, slide);
 
         const remaining = flightRemaining(flight);
 
@@ -738,15 +794,11 @@ export function useOmbraViewer({
 
       const slide = frameAt(itemIndex);
 
-      const pulledBox = slide
-        ? containBox(boxFromRect(slide.getBoundingClientRect()), item.width / item.height)
-        : null;
+      const pulledBox = slide ? restingBox(item, slide) : null;
 
       document.documentElement.style.setProperty("--ombra-pull-live", "0");
 
-      const home = slide
-        ? containBox(boxFromRect(slide.getBoundingClientRect()), item.width / item.height)
-        : flightRef.current?.home;
+      const home = slide ? restingBox(item, slide) : flightRef.current?.home;
 
       if (!home) {
         finishClose();
@@ -1138,7 +1190,7 @@ export function useOmbraViewer({
 
     // A swipe can arrive before the slide's own source has loaded. The thumbnail
     // the morph started from is already decoded, and the sharp source replaces it.
-    if (image && (!image.complete || image.naturalWidth === 0)) image.src = src;
+    if (image && (!image.complete || image.naturalWidth === 0)) showDecoded(image, src);
 
     hero.style.visibility = "";
   }
@@ -1263,7 +1315,7 @@ export function useOmbraViewer({
     );
 
     // The clone's home is the photo at rest, where the FLIP close expects it.
-    const home = containBox(boxFromRect(slide.getBoundingClientRect()), item.width / item.height);
+    const home = restingBox(item, slide);
     const crop = coverCrop(item.width, item.height, box.width, box.height);
     const pose = poseBetween(box, home, crop);
 

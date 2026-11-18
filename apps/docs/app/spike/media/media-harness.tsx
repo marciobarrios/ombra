@@ -64,7 +64,8 @@ function Viewer() {
                   >
                     {/* The media fits this box, which leaves room for the caption below. */}
                     <div className="flex min-h-0 w-full flex-1 [container-type:size]">
-                      <OmbraMedia width={item.width} height={item.height}>
+                      {/* Narrower than the fit, so the morph must land on the media's own box. */}
+                      <OmbraMedia width={item.width} height={item.height} className="max-w-[70%]">
                         <Image
                           src={item.src}
                           alt=""

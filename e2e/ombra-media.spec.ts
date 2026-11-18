@@ -119,11 +119,14 @@ test.describe("OmbraMedia around a Next.js Image", () => {
     await expect(image).toHaveAttribute("srcset", /\/_next\/image/);
     await expect(media).toHaveCSS("visibility", "visible");
 
-    // The media is the image's own box: the full frame at its intrinsic ratio.
+    // The media is the image's own box, at its intrinsic ratio. The bench caps it at 70% of
+    // its frame, so it is not the box a plain fit would give.
     const mediaBox = await media.boundingBox();
     const imageBox = await image.boundingBox();
+    const frameBox = await media.locator("..").boundingBox();
 
     expectSameBox(imageBox, mediaBox);
+    expect(mediaBox?.width ?? 0).toBeLessThan((frameBox?.width ?? 0) * 0.71);
     expect((mediaBox?.width ?? 0) / (mediaBox?.height ?? 1)).toBeCloseTo(
       second.width / second.height,
       2,
@@ -168,5 +171,57 @@ test.describe("OmbraMedia around a Next.js Image", () => {
     expect((mediaBox?.y ?? 0) + (mediaBox?.height ?? 0)).toBeLessThanOrEqual(
       (captionBox?.y ?? 0) + 0.5,
     );
+  });
+
+  test("a swipe during the opening shows the decoded thumbnail until the Image loads", async ({
+    page,
+  }) => {
+    // Hold every optimised image back, so the hand-off finds the Image still loading.
+    let release: () => void = () => undefined;
+
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    await page.route(/\/_next\/image/, async (route) => {
+      await held;
+      await route.continue();
+    });
+
+    await page.getByRole("button", { name: second.alt, exact: true }).click();
+    await expect(page.locator("[data-slot=ombra-flight]")).toHaveCount(1);
+
+    // A small programmatic scroll stands in for a finger: the track moving ends the clone.
+    await page.evaluate(() => {
+      const track = document.querySelector<HTMLElement>("[data-slot=ombra-track]");
+
+      if (!track) throw new Error("viewer is not mounted");
+
+      track.style.scrollSnapType = "none";
+      track.scrollLeft += 12;
+    });
+    await expect(page.locator("[data-slot=ombra-flight]")).toHaveCount(0);
+
+    const image = page.locator(
+      "[data-slot=ombra-slide][data-active=true] [data-slot=ombra-media] img",
+    );
+
+    // The thumbnail the morph flew with paints in its place, not a blank box.
+    await expect
+      .poll(() =>
+        image.evaluate((node) => {
+          // SAFETY: the locator matches an <img> inside the media.
+          const img = node as HTMLImageElement;
+
+          return img.complete && img.naturalWidth > 0 && !img.hasAttribute("srcset");
+        }),
+      )
+      .toBe(true);
+
+    release();
+
+    // Once the browser's own choice has decoded, the Image gets its sources back.
+    await expect(image).toHaveAttribute("srcset", /\/_next\/image/, { timeout: 10_000 });
+    await expect(image).toHaveAttribute("src", /\/_next\/image/);
   });
 });
