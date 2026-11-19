@@ -1,4 +1,4 @@
-import type { OmbraItem } from "../../../../registry/ombra/types";
+import type { OmbraGalleryItem } from "../../../../registry/ombra/types";
 
 type PhotoSource = {
   id: string;
@@ -302,7 +302,7 @@ const sources: readonly PhotoSource[] = [
   },
 ];
 
-export const photos: readonly OmbraItem[] = sources.map((source) => {
+export const photos: readonly OmbraGalleryItem[] = sources.map((source) => {
   const format = source.format ?? "jpg";
   const thumbSrc = `/photos/${source.file}-960.${format}`;
   const src = `/photos/${source.file}-1600.${format}`;

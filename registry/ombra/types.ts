@@ -2,7 +2,8 @@ export const MORPH_ENGINES = ["vt", "flip", "fade"] as const;
 
 export type MorphEngine = (typeof MORPH_ENGINES)[number];
 
-export type OmbraItem = {
+/** The gallery recipe's photo shape. The root needs only the IDs. */
+export type OmbraGalleryItem = {
   id: string;
   alt: string;
   caption: string;

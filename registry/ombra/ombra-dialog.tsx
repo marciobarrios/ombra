@@ -3,8 +3,12 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { useRender } from "@base-ui/react/use-render";
 import { cn } from "cn";
-import { useRef } from "react";
+import { createContext, useContext, useRef } from "react";
 import type { ComponentPropsWithRef } from "react";
+
+import { ACTION_CLASSES } from "./ombra-controls";
+import { useOptionalOmbraRoot } from "./ombra-root";
+import { useOmbraViewer } from "./ombra-viewer";
 
 /** Keep the viewer and Safari's bars on the page's own surface (MAR-105). */
 const VIEWER_THEME =
@@ -40,28 +44,61 @@ function classesFor<State>(
   };
 }
 
-/** The Base UI portal, including its container and keepMounted options. */
-export function OmbraPortal({ className, ...props }: OmbraPortalProps) {
+type Viewer = ReturnType<typeof useOmbraViewer>;
+
+/** The morph driver's props for the backdrop and content, from the portal that runs it. */
+const ViewerContext = createContext<Viewer | null>(null);
+
+function ShellPortal({ className, ...props }: OmbraPortalProps) {
   return (
     <Dialog.Portal data-slot="ombra-portal" {...props} className={classesFor("", className)} />
   );
 }
 
-export function OmbraBackdrop({ className, ...props }: OmbraBackdropProps) {
+/** Runs the morphs, the pull to dismiss and zoom for the parts inside the portal. */
+function ViewerPortal(props: OmbraPortalProps) {
+  const viewer = useOmbraViewer();
+
   return (
-    <Dialog.Backdrop
-      data-slot="ombra-backdrop"
-      {...props}
-      className={classesFor(
-        cn(
-          VIEWER_THEME,
-          PULL_VAR,
-          "fixed inset-0 z-50 touch-pan-x touch-pan-y bg-(--ombra-surface)",
-        ),
-        className,
-      )}
-    />
+    <ViewerContext.Provider value={viewer}>
+      {/* Outside the dialog, so a closing view transition still has it. */}
+      {viewer.morphStyles}
+      <ShellPortal {...props} />
+    </ViewerContext.Provider>
   );
+}
+
+/**
+ * The Base UI portal, including its container and keepMounted options. Inside an
+ * `OmbraRoot` it also runs the viewer: one portal per root.
+ */
+export function OmbraPortal(props: OmbraPortalProps) {
+  const root = useOptionalOmbraRoot();
+
+  return root ? <ViewerPortal {...props} /> : <ShellPortal {...props} />;
+}
+
+export function OmbraBackdrop({ ref, className, ...props }: OmbraBackdropProps) {
+  const viewer = useContext(ViewerContext);
+
+  return useRender({
+    ref: [viewer?.backdropProps.ref ?? null, ref ?? null],
+    render: (
+      <Dialog.Backdrop
+        data-slot="ombra-backdrop"
+        {...props}
+        className={classesFor(
+          cn(
+            VIEWER_THEME,
+            PULL_VAR,
+            "fixed inset-0 z-50 touch-pan-x touch-pan-y bg-(--ombra-surface)",
+            viewer?.backdropProps.className,
+          ),
+          className,
+        )}
+      />
+    ),
+  });
 }
 
 /**
@@ -69,8 +106,31 @@ export function OmbraBackdrop({ className, ...props }: OmbraBackdropProps) {
  * `--ombra-pull` and `--ombra-zoom` for its descendants' styles; the backdrop has
  * `--ombra-pull` too.
  */
-export function OmbraContent({ ref, className, initialFocus, ...props }: OmbraContentProps) {
+export function OmbraContent({
+  ref,
+  className,
+  initialFocus,
+  finalFocus,
+  onKeyDown,
+  ...props
+}: OmbraContentProps) {
   const contentRef = useRef<HTMLDivElement>(null);
+  const viewer = useContext(ViewerContext);
+  const driven: Partial<Viewer["contentProps"]> = viewer?.contentProps ?? {};
+
+  const {
+    ref: viewerRef = null,
+    className: viewerClassName,
+    finalFocus: viewerFocus,
+    onKeyDown: viewerKeyDown,
+    ...viewerProps
+  } = driven;
+
+  // The caller's handler runs first: preventing a key replaces the viewer's shortcut.
+  function keyDown(event: Parameters<NonNullable<OmbraContentProps["onKeyDown"]>>[0]) {
+    onKeyDown?.(event);
+    viewerKeyDown?.(event);
+  }
 
   function focusClose() {
     const content = contentRef.current;
@@ -85,12 +145,15 @@ export function OmbraContent({ ref, className, initialFocus, ...props }: OmbraCo
   // useRender merges the local and caller refs, including React 19 ref cleanups.
   // Dialog.Popup still owns render composition, its state, and native handlers.
   return useRender({
-    ref: [contentRef, ref ?? null],
+    ref: [contentRef, viewerRef, ref ?? null],
     render: (
       <Dialog.Popup
         data-slot="ombra-content"
+        {...viewerProps}
         {...props}
+        onKeyDown={keyDown}
         initialFocus={initialFocus === undefined ? focusClose : initialFocus}
+        finalFocus={finalFocus === undefined ? viewerFocus : finalFocus}
         className={classesFor(
           cn(
             VIEWER_THEME,
@@ -98,6 +161,7 @@ export function OmbraContent({ ref, className, initialFocus, ...props }: OmbraCo
             ZOOM_VAR,
             // Descendants may narrow pan-x pan-y for their own gesture handling.
             "fixed inset-0 z-50 flex h-dvh w-full touch-pan-x touch-pan-y flex-col overflow-hidden bg-transparent pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-(--ombra-ink) outline-none",
+            viewerClassName,
           ),
           className,
         )}
@@ -105,13 +169,6 @@ export function OmbraContent({ ref, className, initialFocus, ...props }: OmbraCo
     ),
   });
 }
-
-/**
- * The viewer's round action buttons. Repeated taps must not invoke Safari's native
- * double-tap zoom, so they set `touch-action: manipulation`.
- */
-export const ACTION_CLASSES =
-  "inline-flex size-11 touch-manipulation items-center justify-center rounded-full text-current focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-30";
 
 /** Supply visible text or aria-label in the consumer's language. */
 export function OmbraClose({ className, ...props }: OmbraCloseProps) {

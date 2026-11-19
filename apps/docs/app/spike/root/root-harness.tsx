@@ -3,7 +3,7 @@
 import { useEffect, useReducer } from "react";
 
 import { OmbraGallery } from "../../../../../registry/ombra/ombra-gallery";
-import type { OmbraItem } from "../../../../../registry/ombra/types";
+import type { OmbraGalleryItem } from "../../../../../registry/ombra/ombra-gallery";
 
 import { photos } from "../photos";
 
@@ -13,7 +13,7 @@ const initialItems = photos.slice(0, 5);
 
 type Harness = {
   controlled: {
-    items: readonly OmbraItem[];
+    items: readonly OmbraGalleryItem[];
     open: boolean;
     activeId: string | null;
     allowOpen: boolean;
@@ -22,7 +22,7 @@ type Harness = {
     openAsks: boolean[];
     activeAsks: string[];
   };
-  free: { items: readonly OmbraItem[]; openAsks: boolean[]; activeAsks: string[] };
+  free: { items: readonly OmbraGalleryItem[]; openAsks: boolean[]; activeAsks: string[] };
   openOnly: { open: boolean; openAsks: boolean[] };
   /** Controlled open with View Transition morphs, so a close can arrive mid-transition. */
   vt: { open: boolean; openAsks: boolean[] };
@@ -46,7 +46,7 @@ const initialHarness: Harness = {
   activeOnly: { activeId: initialItems[0]?.id ?? null },
 };
 
-function withItems(state: Harness, section: Section, items: readonly OmbraItem[]): Harness {
+function withItems(state: Harness, section: Section, items: readonly OmbraGalleryItem[]): Harness {
   return section === "free"
     ? { ...state, free: { ...state.free, items } }
     : { ...state, controlled: { ...state.controlled, items } };
@@ -182,7 +182,7 @@ export function RootHarness() {
         </output>
         <OmbraGallery
           items={controlled.items}
-          engine="fade"
+          morph="fade"
           open={controlled.open}
           onOpenChange={(open) => {
             dispatch({ type: "open-change-asked", section: "controlled", open });
@@ -206,7 +206,7 @@ export function RootHarness() {
         </output>
         <OmbraGallery
           items={free.items}
-          engine="fade"
+          morph="fade"
           defaultActiveId={initialItems[2]?.id}
           onOpenChange={(open) => {
             dispatch({ type: "open-change-asked", section: "free", open });
@@ -229,7 +229,7 @@ export function RootHarness() {
         </output>
         <OmbraGallery
           items={initialItems}
-          engine="fade"
+          morph="fade"
           open={openOnly.open}
           onOpenChange={(open) => {
             dispatch({ type: "open-change-asked", section: "openOnly", open });
@@ -249,7 +249,7 @@ export function RootHarness() {
         </output>
         <OmbraGallery
           items={initialItems.slice(0, 3)}
-          engine="vt"
+          morph="vt"
           open={vt.open}
           onOpenChange={(open) => {
             dispatch({ type: "open-change-asked", section: "vt", open });
@@ -269,7 +269,7 @@ export function RootHarness() {
         {/* Like a parent that keeps the item in the URL: the answer lands a little later. */}
         <OmbraGallery
           items={initialItems}
-          engine="fade"
+          morph="fade"
           activeId={activeOnly.activeId}
           onActiveIdChange={(itemId) => {
             window.setTimeout(() => {
@@ -284,7 +284,7 @@ export function RootHarness() {
         {/* Logs a development warning, then starts on the first photo. */}
         <OmbraGallery
           items={initialItems.slice(0, 2)}
-          engine="fade"
+          morph="fade"
           defaultActiveId="no-such-photo"
         />
       </section>

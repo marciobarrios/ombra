@@ -12,7 +12,8 @@ import {
   isOpening,
   neighbourAfterRemoval,
 } from "./gallery-state";
-import type { GalleryAction, GalleryState } from "./gallery-state";
+import type { GalleryAction, GalleryState, Phase } from "./gallery-state";
+import type { MorphEngine } from "./types";
 import { useReducerWithBailout } from "./use-reducer-with-bailout";
 
 /** Why an opening starts. A reversal carries the finger's upward speed into the morph. */
@@ -33,6 +34,16 @@ export type OmbraDriver = {
 
 export type OmbraRootProps = {
   children?: ReactNode;
+  /**
+   * The collection, in navigation order. The slides mount only with the viewer, so the root
+   * learns which items a closed viewer can open on from here.
+   */
+  itemIds?: readonly string[];
+  /**
+   * The morph between a trigger and the viewer: `flip` (the default), `vt` or `fade`. A
+   * browser without View Transitions runs FLIP for `vt`, and reduced motion always fades.
+   */
+  morph?: MorphEngine;
   /** Controlled open state. A closing viewer already counts as closed. */
   open?: boolean;
   defaultOpen?: boolean;
@@ -115,6 +126,8 @@ export type OmbraTrackHold = "free" | "gesture" | "zoomed";
 export type OmbraRootContextValue = {
   /** The phase and collection. `activeId` here is the resolved one, controlled or not. */
   state: GalleryState;
+  /** The morph the viewer runs, before reduced motion has its say. */
+  morph: MorphEngine;
   send: (action: GalleryAction) => void;
   /** Asks to open on `itemId`. False when it is not registered, or the driver could not start. */
   requestOpen: (itemId: string, intent?: OmbraOpenIntent) => boolean;
@@ -170,6 +183,35 @@ export function useOmbraRoot(): OmbraRootContextValue {
   if (!context) throw new Error("Ombra parts must be rendered inside <OmbraRoot>.");
 
   return context;
+}
+
+/** The root around a part, or null for a shell part composed under a plain Base UI dialog. */
+export function useOptionalOmbraRoot(): OmbraRootContextValue | null {
+  return useContext(OmbraRootContext);
+}
+
+export type OmbraState = {
+  /** True while the viewer is mounted: opening, open or closing. */
+  open: boolean;
+  phase: Phase;
+  /** The resolved active item, controlled or not. */
+  activeId: string | null;
+  /** The active item's position in `itemIds`, or -1. */
+  index: number;
+  itemIds: readonly string[];
+};
+
+/** The viewer's state, for captions, titles and announcements a composition renders. */
+export function useOmbraState(): OmbraState {
+  const { state } = useOmbraRoot();
+
+  return {
+    open: isOpen(state),
+    phase: state.phase,
+    activeId: state.activeId,
+    index: state.activeId === null ? -1 : state.itemIds.indexOf(state.activeId),
+    itemIds: state.itemIds,
+  };
 }
 
 type Registration = { itemId: string; node: Element | null };
@@ -250,6 +292,8 @@ function warn(message: string) {
 /** Coordinates open state, the active item, item registration and the morph lifecycle. Renders no element. */
 export function OmbraRoot({
   children,
+  itemIds,
+  morph = "flip",
   open: openProp,
   defaultOpen = false,
   onOpenChange,
@@ -371,6 +415,21 @@ export function OmbraRoot({
     },
     [flush],
   );
+
+  // Registered without nodes, the order of `itemIds` holds even when a trigger leaves the
+  // page. Keyed by content, so a list rebuilt on every render registers once.
+  const itemKey = itemIds === undefined ? null : JSON.stringify(itemIds);
+
+  useLayoutEffect(() => {
+    if (itemKey === null) return;
+
+    const ids: string[] = JSON.parse(itemKey);
+    const stops = ids.map((itemId) => registerItem(itemId));
+
+    return () => {
+      for (const stop of stops) stop();
+    };
+  }, [itemKey, registerItem]);
 
   const triggerFor = useCallback((itemId: string): OmbraTriggerSource | null => {
     const first = firstConnected(triggers.current, itemId);
@@ -742,6 +801,7 @@ export function OmbraRoot({
   const value = useMemo<OmbraRootContextValue>(
     () => ({
       state: activeId === state.activeId ? state : { ...state, activeId },
+      morph,
       send,
       requestOpen,
       requestClose,
@@ -770,6 +830,7 @@ export function OmbraRoot({
     [
       state,
       activeId,
+      morph,
       send,
       requestOpen,
       requestClose,

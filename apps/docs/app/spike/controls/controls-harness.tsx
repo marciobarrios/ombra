@@ -1,7 +1,6 @@
 "use client";
 
 import { Dialog } from "@base-ui/react/dialog";
-import { useLayoutEffect } from "react";
 import type { KeyboardEvent } from "react";
 
 import {
@@ -17,52 +16,28 @@ import {
   OmbraContent,
   OmbraPortal,
 } from "../../../../../registry/ombra/ombra-dialog";
-import { useOmbraViewer } from "../../../../../registry/ombra/ombra-gallery";
-import { OmbraRoot, useOmbraRoot } from "../../../../../registry/ombra/ombra-root";
+import { OmbraRoot, useOmbraState } from "../../../../../registry/ombra/ombra-root";
 import { OmbraMedia, OmbraSlide, OmbraSlides } from "../../../../../registry/ombra/ombra-slides";
 import { OmbraTrigger } from "../../../../../registry/ombra/ombra-trigger";
 
 import { photos } from "../photos";
 
 const items = photos.slice(0, 5);
-
-/** The slides only mount with the viewer, so the bench registers the collection itself. */
-function RegisteredItems() {
-  const { registerItem, triggerFor } = useOmbraRoot();
-
-  useLayoutEffect(() => {
-    const stops = items.map((item) => registerItem(item.id, triggerFor(item.id)?.element ?? null));
-
-    return () => {
-      for (const stop of stops) stop();
-    };
-  }, [registerItem, triggerFor]);
-
-  return null;
-}
+const itemIds = items.map((item) => item.id);
 
 function Viewer({ controls }: { controls: boolean }) {
-  const viewer = useOmbraViewer();
-  const active = items[viewer.index];
+  const active = items[Math.max(0, useOmbraState().index)];
 
   // The consumer's handler runs first. Preventing End replaces the built-in shortcut.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "End") event.preventDefault();
-
-    viewer.contentProps.onKeyDown(event);
   };
 
   return (
     <>
-      {viewer.morphStyles}
       <OmbraPortal>
-        <OmbraBackdrop {...viewer.backdropProps} />
-        <OmbraContent
-          {...viewer.contentProps}
-          onKeyDown={onKeyDown}
-          data-slot="ombra-viewer"
-          className={viewer.contentProps.className}
-        >
+        <OmbraBackdrop />
+        <OmbraContent onKeyDown={onKeyDown} data-slot="ombra-viewer">
           <Dialog.Title className="sr-only">{active?.alt ?? "Foto"}</Dialog.Title>
           <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
             <header className="flex flex-wrap items-center gap-2 p-3">
@@ -129,8 +104,7 @@ export function ControlsHarness({ controls }: { controls: boolean }) {
   return (
     <main className="mx-auto grid w-full max-w-3xl gap-6 px-4 py-12">
       <h1 className="text-2xl text-foreground">Viewer controls test bench</h1>
-      <OmbraRoot>
-        <RegisteredItems />
+      <OmbraRoot itemIds={itemIds}>
         <div className="grid grid-cols-5 gap-3">
           {items.map((item) => (
             <OmbraTrigger

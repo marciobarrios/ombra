@@ -1,7 +1,7 @@
 "use client";
 
 import { Dialog } from "@base-ui/react/dialog";
-import { useLayoutEffect, useReducer, useRef } from "react";
+import { useReducer, useRef } from "react";
 import type { ComponentPropsWithRef, Dispatch } from "react";
 
 import {
@@ -47,21 +47,6 @@ function reducer(state: Harness, action: Action): Harness {
     case "refs-inspected":
       return { ...state, refs: action.refs, sources: action.sources };
   }
-}
-
-/** Stands in for the slides, which will register the items themselves (MAR-140). */
-function RegisteredItems() {
-  const { registerItem } = useOmbraRoot();
-
-  useLayoutEffect(() => {
-    const stops = ids.map((itemId) => registerItem(itemId));
-
-    return () => {
-      for (const stop of stops) stop();
-    };
-  }, [registerItem]);
-
-  return null;
 }
 
 /** A consumer component must pass the received props and ref to its DOM node. */
@@ -168,10 +153,10 @@ export function TriggerHarness() {
       </output>
 
       <OmbraRoot
+        itemIds={ids}
         onOpenChange={(open) => dispatch({ type: "open-change-asked", open })}
         onActiveIdChange={(itemId) => dispatch({ type: "active-change-asked", itemId })}
       >
-        <RegisteredItems />
         <div className="grid max-w-xl grid-cols-3 gap-3">
           {removed(road.id) ? null : (
             <OmbraTrigger itemId={road.id} onClick={clicked("plain")} className="block">
