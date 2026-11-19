@@ -84,7 +84,9 @@ function Viewer({ controls }: { controls: boolean }) {
               <button type="button" className="underline">
                 Detalles
               </button>
-              <span className="inline-block w-[200vw]"> Un panel de detalles que se desplaza.</span>
+              <span className="ml-2 inline-block w-[200vw]">
+                Un panel de detalles que se desplaza.
+              </span>
             </div>
             <div className="relative min-h-0 flex-1">
               <OmbraSlides>
