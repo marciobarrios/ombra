@@ -161,8 +161,23 @@ function capturePointer(track: HTMLElement, pointerId: number) {
   }
 }
 
+/**
+ * Publishes the photo's scale as `--ombra-zoom` on the dialog popup, so its chrome can style
+ * against it. Without a scale the popup's default of 1 applies again.
+ */
+function publishZoom(node: HTMLElement | null, scale?: number) {
+  const popup = node?.closest<HTMLElement>("[role=dialog]");
+
+  if (!popup) return;
+
+  if (scale === undefined) popup.style.removeProperty("--ombra-zoom");
+  else popup.style.setProperty("--ombra-zoom", String(Math.round(scale * 1000) / 1000));
+}
+
 function clearLayers(track: HTMLElement | null) {
   if (!track) return;
+
+  publishZoom(track);
 
   const layers = track.querySelectorAll<HTMLElement>("[data-slot=ombra-zoom]");
 
@@ -240,6 +255,7 @@ export function useZoom(
 
       pose.current = { scale, x, y };
       layer.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+      publishZoom(layer, scale);
 
       const nowZoomed = scale > 1.02;
 
@@ -377,6 +393,7 @@ export function useZoom(
 
     pose.current = live;
     layer.style.transform = `translate3d(${live.x}px, ${live.y}px, 0) scale(${live.scale})`;
+    publishZoom(layer, live.scale);
   }, [layerRef]);
 
   const animatePose = useCallback(
@@ -405,6 +422,8 @@ export function useZoom(
 
       zoomAnim.current = animation;
       pose.current = target;
+      // A custom property does not interpolate unregistered, so the settle publishes its end.
+      publishZoom(layer, target.scale);
 
       const nowZoomed = from.scale > 1.02 || target.scale > 1.02;
 

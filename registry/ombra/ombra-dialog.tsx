@@ -10,6 +10,16 @@ import type { ComponentPropsWithRef } from "react";
 const VIEWER_THEME =
   "[--ombra-surface:var(--color-background,white)] [--ombra-ink:var(--color-foreground,black)]";
 
+/**
+ * Runtime values for consumer styles. `--ombra-pull` is the signed pull progress, -1 to 1
+ * (negative while the photo is pushed up). It reads the pull's live value on the root, so a
+ * drag re-renders nothing.
+ */
+const PULL_VAR = "[--ombra-pull:var(--ombra-pull-live,0)]";
+
+/** `--ombra-zoom` is the active photo's scale, 1 at its fitted size. The zoom gesture writes it. */
+const ZOOM_VAR = "[--ombra-zoom:1]";
+
 export type OmbraPortalProps = ComponentPropsWithRef<typeof Dialog.Portal>;
 
 export type OmbraBackdropProps = ComponentPropsWithRef<typeof Dialog.Backdrop>;
@@ -43,14 +53,22 @@ export function OmbraBackdrop({ className, ...props }: OmbraBackdropProps) {
       data-slot="ombra-backdrop"
       {...props}
       className={classesFor(
-        cn(VIEWER_THEME, "fixed inset-0 z-50 touch-pan-x touch-pan-y bg-(--ombra-surface)"),
+        cn(
+          VIEWER_THEME,
+          PULL_VAR,
+          "fixed inset-0 z-50 touch-pan-x touch-pan-y bg-(--ombra-surface)",
+        ),
         className,
       )}
     />
   );
 }
 
-/** A full-viewport shell. Consumers own its header, media, controls and labels. */
+/**
+ * A full-viewport shell. Consumers own its header, media, controls and labels. It publishes
+ * `--ombra-pull` and `--ombra-zoom` for its descendants' styles; the backdrop has
+ * `--ombra-pull` too.
+ */
 export function OmbraContent({ ref, className, initialFocus, ...props }: OmbraContentProps) {
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -76,6 +94,8 @@ export function OmbraContent({ ref, className, initialFocus, ...props }: OmbraCo
         className={classesFor(
           cn(
             VIEWER_THEME,
+            PULL_VAR,
+            ZOOM_VAR,
             // Descendants may narrow pan-x pan-y for their own gesture handling.
             "fixed inset-0 z-50 flex h-dvh w-full touch-pan-x touch-pan-y flex-col overflow-hidden bg-transparent pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-(--ombra-ink) outline-none",
           ),
