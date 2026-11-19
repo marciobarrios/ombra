@@ -73,6 +73,17 @@ export type OmbraMediaSource = {
   height: number;
 };
 
+/** A zoom surface, registered by `OmbraZoom`. Only an item with one can zoom. */
+export type OmbraZoomRegistration = { itemId: string; element: HTMLElement };
+
+/** The viewer's zoom, which `OmbraZoomIn` and `OmbraZoomOut` drive. */
+export type OmbraZoomControls = {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  /** Whether the active item rests above its fitted size. */
+  zoomed: () => boolean;
+};
+
 /** The slide track, registered by `OmbraSlides`. Its slides publish the active item as they scroll. */
 export type OmbraSlidesHandle = {
   element: HTMLElement;
@@ -126,6 +137,16 @@ export type OmbraRootContextValue = {
   registerMedia: (media: OmbraMediaSource) => () => void;
   /** The first media still on the page for `itemId`, in document order. */
   mediaFor: (itemId: string) => OmbraMediaSource | null;
+  /** Registers a zoom surface for its item. */
+  registerZoom: (zoom: OmbraZoomRegistration) => () => void;
+  /** The first zoom surface still on the page for `itemId`, in document order. */
+  zoomFor: (itemId: string) => HTMLElement | null;
+  /** Called when a zoom surface mounts or leaves, or the viewer's zoom changes. */
+  subscribeZoom: (listener: () => void) => () => void;
+  /** Tells the zoom subscribers that the viewer's zoom changed. */
+  notifyZoom: () => void;
+  /** Set by the viewer, so the zoom actions can drive it. */
+  zoomControlsRef: RefObject<OmbraZoomControls | null>;
   /** Registers the slide track. One track per root. */
   registerSlides: (slides: OmbraSlidesHandle) => () => void;
   /** The mounted slide track. */
@@ -360,6 +381,9 @@ export function OmbraRoot({
   const slidesHandle = useRef<OmbraSlidesHandle | null>(null);
   const slidesListeners = useRef(new Set<() => void>());
   const trackHoldRef = useRef<(() => OmbraTrackHold) | null>(null);
+  const zoomParts = useRef(new Set<OmbraZoomRegistration>());
+  const zoomListeners = useRef(new Set<() => void>());
+  const zoomControlsRef = useRef<OmbraZoomControls | null>(null);
 
   const registerSlide = useCallback((slide: OmbraSlideRegistration) => {
     slideParts.current.add(slide);
@@ -391,6 +415,49 @@ export function OmbraRoot({
   }, []);
 
   const mediaFor = useCallback((itemId: string) => firstConnected(mediaParts.current, itemId), []);
+
+  const notifyZoom = useCallback(() => {
+    for (const listener of zoomListeners.current) listener();
+  }, []);
+
+  // Every slide of an opening viewer registers its surface at once: tell the listeners once.
+  const zoomNotifyQueued = useRef(false);
+
+  const queueZoomNotify = useCallback(() => {
+    if (zoomNotifyQueued.current) return;
+
+    zoomNotifyQueued.current = true;
+    queueMicrotask(() => {
+      zoomNotifyQueued.current = false;
+      notifyZoom();
+    });
+  }, [notifyZoom]);
+
+  const registerZoom = useCallback(
+    (zoom: OmbraZoomRegistration) => {
+      zoomParts.current.add(zoom);
+      queueZoomNotify();
+
+      return () => {
+        zoomParts.current.delete(zoom);
+        queueZoomNotify();
+      };
+    },
+    [queueZoomNotify],
+  );
+
+  const zoomFor = useCallback(
+    (itemId: string) => firstConnected(zoomParts.current, itemId)?.element ?? null,
+    [],
+  );
+
+  const subscribeZoom = useCallback((listener: () => void) => {
+    zoomListeners.current.add(listener);
+
+    return () => {
+      zoomListeners.current.delete(listener);
+    };
+  }, []);
 
   const notifySlides = useCallback(() => {
     for (const listener of slidesListeners.current) listener();
@@ -686,6 +753,11 @@ export function OmbraRoot({
       slideItem,
       registerMedia,
       mediaFor,
+      registerZoom,
+      zoomFor,
+      subscribeZoom,
+      notifyZoom,
+      zoomControlsRef,
       registerSlides,
       slides,
       subscribeSlides,
@@ -708,6 +780,10 @@ export function OmbraRoot({
       slideItem,
       registerMedia,
       mediaFor,
+      registerZoom,
+      zoomFor,
+      subscribeZoom,
+      notifyZoom,
       registerSlides,
       slides,
       subscribeSlides,

@@ -2,7 +2,7 @@
 
 Ombra's public API should let the caller assemble a lightbox from React components. Layout, media, captions, and controls belong in JSX. Props configure the behavior of the part receiving them.
 
-This is the target contract, not an implemented API. The current `OmbraGallery` remains a morph and gesture spike. The names and examples below describe the next registry API. `OmbraRoot` and its state contract (controlled and uncontrolled open and active item, stable IDs, registration behaviour) are implemented, and `OmbraGallery` runs on it. So are the dialog shell parts, `OmbraTrigger`, and the slide parts (`OmbraSlides`, `OmbraSlide`, `OmbraMedia`); the other parts are not yet.
+This is the target contract, not an implemented API. The current `OmbraGallery` remains a morph and gesture spike. The names and examples below describe the next registry API. `OmbraRoot` and its state contract (controlled and uncontrolled open and active item, stable IDs, registration behaviour) are implemented, and `OmbraGallery` runs on it. So are the dialog shell parts, `OmbraTrigger`, the slide parts (`OmbraSlides`, `OmbraSlide`, `OmbraMedia`), and the zoom parts (`OmbraZoom`, `OmbraZoomIn`, `OmbraZoomOut`); the other parts are not yet.
 
 Implementation is tracked in [MAR-64](https://linear.app/marciobarrios/issue/MAR-64/migrate-the-lightbox-spike-to-composable-primitives-and-gallery), in Ombra's v0.1 MVP milestone. The [Linear architecture document](https://linear.app/marciobarrios/document/ombra-composition-architecture-primitives-styled-parts-and-recipes-e67e6acc5788) records the same recommendation for project planning.
 
@@ -147,6 +147,47 @@ gallery's viewer.
   through them. Slides mount only while the viewer is open, so they cannot register
   the collection a closed viewer opens from: the gallery and the benches still
   register items themselves. Pull progress stays in `--ombra-pull-live`.
+
+## Implemented zoom (MAR-141)
+
+`registry/ombra/ombra-zoom.tsx` exports `OmbraZoom`, `OmbraZoomIn`, and
+`OmbraZoomOut`. Each renders one element with a `data-slot` (`ombra-zoom`,
+`ombra-zoom-in`, `ombra-zoom-out`), and accepts native props, a forwarded ref,
+`className` (merged through `cn()`), and Base UI's `render` prop.
+
+```tsx
+<OmbraSlide itemId={photo.id} aria-label={photo.alt}>
+  <OmbraZoom>
+    <OmbraMedia width={photo.width} height={photo.height}>
+      <img src={photo.src} alt="" width={photo.width} height={photo.height} />
+    </OmbraMedia>
+  </OmbraZoom>
+</OmbraSlide>
+
+<OmbraZoomOut aria-label="Zoom out">−</OmbraZoomOut>
+<OmbraZoomIn aria-label="Zoom in">+</OmbraZoomIn>
+```
+
+- **Surface.** `OmbraZoom` goes inside an `OmbraSlide`, around its `OmbraMedia`, and
+  registers itself with the root by the slide's item ID. Pinch, double-tap,
+  ctrl+wheel, trackpad pinch and the `+`, `-` and `0` keys zoom the active slide's
+  surface. A slide without one does not zoom: its pinch and double-tap go nowhere,
+  and its swipes and pulls behave as before. Zooming scales the surface, never the
+  media's resting box, so the morph still lands where the media rests. The surface
+  sets `touch-action: manipulation` to keep Safari's native double-tap zoom off, and
+  carries `data-zoomed` while zoomed.
+- **Arbitration.** Unchanged: while zoomed, the track has `overflow: hidden` and
+  `touch-action: none`, the pull is off, and a pan past the photo's edge hands off
+  to the next slide (MAR-104). Navigating to another slide resets the zoom.
+- **Actions.** `OmbraZoomIn` and `OmbraZoomOut` are buttons that zoom the active
+  slide one step. Both are disabled while the active slide has no `OmbraZoom`, and
+  `OmbraZoomOut` while the photo rests at its fitted size; both then carry
+  `data-disabled`. They supply no text or accessible label: consumers own both.
+  A handler that calls `event.preventBaseUIHandler()` cancels the step.
+- **Driver.** The gestures still run in `use-zoom.ts`, inside the viewer's morph
+  driver (`useOmbraViewer`), which publishes its zoom to the actions through the
+  root. The `/spike/zoom` bench renders every slide with `OmbraZoom`, none
+  (`?zoom=off`), or only the first (`?zoom=first`).
 
 ## Architecture decision — 6 November 2026
 

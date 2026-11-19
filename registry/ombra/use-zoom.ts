@@ -622,7 +622,10 @@ export function useZoom(
     };
 
     const onPointerDown = (event: PointerEvent) => {
-      if (!enabledRef.current) return;
+      const layer = layerRef.current;
+
+      // A slide without a zoom surface leaves its gestures to the track and the pull.
+      if (!enabledRef.current || !layer) return;
 
       if (event.pointerType === "mouse" && event.button !== 0) return;
 
@@ -644,10 +647,7 @@ export function useZoom(
 
       pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       moved.current = 0;
-
-      const layer = layerRef.current;
-
-      if (layer) rectRef.current = layoutRect(layer, pose.current);
+      rectRef.current = layoutRect(layer, pose.current);
 
       if (pose.current.scale > 1.02 || pointers.current.size >= 2) gestureRef.current = true;
 
@@ -785,7 +785,7 @@ export function useZoom(
     };
 
     const onDoubleClick = (event: MouseEvent) => {
-      if (!enabledRef.current) return;
+      if (!enabledRef.current || !layerRef.current) return;
 
       event.preventDefault();
 
@@ -814,13 +814,12 @@ export function useZoom(
     };
 
     const onWheel = (event: WheelEvent) => {
-      if (!enabledRef.current) return;
+      // Checked before the layer lookup: most wheel events are swipes and pulls.
+      if (!enabledRef.current || (!event.ctrlKey && pose.current.scale <= 1.02)) return;
 
       const layer = layerRef.current;
 
       if (!layer) return;
-
-      if (!event.ctrlKey && pose.current.scale <= 1.02) return;
 
       event.preventDefault();
       stopRef.current();

@@ -57,11 +57,18 @@ import {
   whenDecoded,
 } from "./morph";
 import type { Flight } from "./morph";
-import { OmbraBackdrop, OmbraClose, OmbraContent, OmbraPortal } from "./ombra-dialog";
+import {
+  ACTION_CLASSES,
+  OmbraBackdrop,
+  OmbraClose,
+  OmbraContent,
+  OmbraPortal,
+} from "./ombra-dialog";
 import { OmbraRoot, useOmbraRoot } from "./ombra-root";
 import { OmbraTrigger } from "./ombra-trigger";
 import type { OmbraMediaSource, OmbraRootProps } from "./ombra-root";
 import { OmbraMedia, OmbraSlide, OmbraSlides } from "./ombra-slides";
+import { OmbraZoom, OmbraZoomIn, OmbraZoomOut } from "./ombra-zoom";
 import { MORPH_SPRING, normalizeVelocity, springCurve } from "./spring";
 import type { Box, FlipPose, FrameSample, MorphEngine, MorphKind, OmbraItem } from "./types";
 import { motionDuration } from "./types";
@@ -279,12 +286,8 @@ function IconButton({
   slot: string;
   children: ReactNode;
 }) {
-  const classes = cn(
-    // Repeated toolbar taps must not invoke Safari's native double-tap zoom.
-    // The viewer's pan-x pan-y ancestor also removes native pinch here (MAR-80).
-    "inline-flex size-11 touch-manipulation items-center justify-center rounded-full text-current focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-30",
-    className,
-  );
+  // The viewer's pan-x pan-y ancestor also removes native pinch here (MAR-80).
+  const classes = cn(ACTION_CLASSES, className);
 
   return (
     <button
@@ -356,7 +359,6 @@ export function useOmbraViewer({
 
   trackRef.current = trackNode;
 
-  const layerRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const backdropAnimationRef = useRef<Animation | null>(null);
@@ -416,6 +418,19 @@ export function useOmbraViewer({
     [],
   );
 
+  // The active slide's `OmbraZoom`. A slide without one does not zoom.
+  const layerRef = useMemo<RefObject<HTMLElement | null>>(
+    () => ({
+      get current() {
+        const itemId = idsRef.current[indexRef.current];
+
+        return itemId === undefined ? null : rootRef.current.zoomFor(itemId);
+      },
+      set current(_: HTMLElement | null) {},
+    }),
+    [],
+  );
+
   const settleTrack = () => {
     rootRef.current.slides()?.settle();
   };
@@ -470,6 +485,26 @@ export function useOmbraViewer({
 
   zoomRef.current = zoom;
 
+  // The zoom actions drive the viewer's zoom through the root, and hear when it crosses
+  // its fitted size.
+  const { zoomed } = zoom;
+
+  useLayoutEffect(() => {
+    const controls = root.zoomControlsRef;
+
+    controls.current = {
+      zoomIn: () => zoomRef.current.zoomIn(),
+      zoomOut: () => zoomRef.current.zoomOut(),
+      zoomed: () => zoomed,
+    };
+    root.notifyZoom();
+
+    return () => {
+      controls.current = null;
+      root.notifyZoom();
+    };
+  }, [zoomed, root.zoomControlsRef, root.notifyZoom]);
+
   // A zoom gesture owns the track's scroll position, and a zoomed photo stays where it is.
   useLayoutEffect(() => {
     const hold = root.trackHoldRef;
@@ -491,6 +526,24 @@ export function useOmbraViewer({
     seenId.current = activeId;
     zoomRef.current.reset();
   }, [activeId]);
+
+  // The active slide's zoom surface. When it leaves or is replaced, a zoom on it would hold
+  // the track and the pull with nothing left to zoom out.
+  const zoomSurface = useSyncExternalStore(
+    root.subscribeZoom,
+    () => (activeId === null ? null : root.zoomFor(activeId)),
+    () => null,
+  );
+
+  const seenSurface = useRef(zoomSurface);
+
+  useLayoutEffect(() => {
+    const previous = seenSurface.current;
+
+    seenSurface.current = zoomSurface;
+
+    if (previous !== null && previous !== zoomSurface) zoomRef.current.reset();
+  }, [zoomSurface]);
 
   useLayoutEffect(() => {
     root.driverRef.current = {
@@ -941,11 +994,10 @@ export function useOmbraViewer({
 
     if (itemId === undefined || !rootRef.current.slideFor(itemId)) return null;
 
-    let frame = rootRef.current.mediaFor(itemId)?.element.parentElement ?? null;
+    const media = rootRef.current.mediaFor(itemId)?.element ?? null;
+    const zoom = rootRef.current.zoomFor(itemId);
 
-    while (frame?.dataset.slot === "ombra-zoom") frame = frame.parentElement;
-
-    return frame;
+    return (zoom && media && zoom.contains(media) ? zoom : media)?.parentElement ?? null;
   }
 
   /** The media a photo's morph lands on, with its intrinsic size. Only while the viewer is mounted. */
@@ -1822,13 +1874,10 @@ export function useOmbraViewer({
     /** The active photo's position in the collection. */
     index,
     count,
-    zoom,
     pulling,
     /** Goes to a position, smoothly unless `behavior` says otherwise. */
     goTo,
     step,
-    /** Attach to the active slide's zoom surface. */
-    layerRef,
     /** Render once, outside the dialog, so a closing view transition still has it. */
     morphStyles: <style data-slot="ombra-morph-styles">{MORPH_STYLES}</style>,
     backdropProps: {
@@ -1854,7 +1903,7 @@ function GalleryViewer({
   ...options
 }: Omit<OmbraGalleryProps, keyof OmbraRootProps>) {
   const viewer = useOmbraViewer(options);
-  const { phase, open, index, count, zoom } = viewer;
+  const { phase, open, index, count } = viewer;
   const { registerItem } = useOmbraRoot();
   const reduced = useReducedMotion();
   const [view, sendView] = useReducerWithBailout(viewReducer, initialViewState);
@@ -2002,17 +2051,12 @@ function GalleryViewer({
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
-                  <IconButton
-                    label="Zoom out"
-                    slot="ombra-zoom-out"
-                    onClick={() => zoom.zoomOut()}
-                    disabled={!zoom.zoomed}
-                  >
+                  <OmbraZoomOut aria-label="Zoom out">
                     <MinusIcon />
-                  </IconButton>
-                  <IconButton label="Zoom in" slot="ombra-zoom-in" onClick={() => zoom.zoomIn()}>
+                  </OmbraZoomOut>
+                  <OmbraZoomIn aria-label="Zoom in">
                     <PlusIcon />
-                  </IconButton>
+                  </OmbraZoomIn>
                   <OmbraClose aria-label="Close">
                     <CloseIcon />
                   </OmbraClose>
@@ -2032,13 +2076,7 @@ function GalleryViewer({
                       itemId={item.id}
                       aria-label={`${itemIndex + 1} of ${count}`}
                     >
-                      {/* Keep Safari's native double-tap zoom off this surface.
-                            The ancestor track still owns horizontal scrolling. */}
-                      <div
-                        ref={current ? viewer.layerRef : undefined}
-                        data-slot="ombra-zoom"
-                        className="flex h-full min-h-0 w-full min-w-0 touch-manipulation items-center justify-center"
-                      >
+                      <OmbraZoom>
                         <OmbraMedia
                           width={item.width}
                           height={item.height}
@@ -2058,7 +2096,7 @@ function GalleryViewer({
                             className="rounded-[inherit]"
                           />
                         </OmbraMedia>
-                      </div>
+                      </OmbraZoom>
                     </OmbraSlide>
                   );
                 })}

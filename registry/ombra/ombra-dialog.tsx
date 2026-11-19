@@ -86,16 +86,20 @@ export function OmbraContent({ ref, className, initialFocus, ...props }: OmbraCo
   });
 }
 
+/**
+ * The viewer's round action buttons. Repeated taps must not invoke Safari's native
+ * double-tap zoom, so they set `touch-action: manipulation`.
+ */
+export const ACTION_CLASSES =
+  "inline-flex size-11 touch-manipulation items-center justify-center rounded-full text-current focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-30";
+
 /** Supply visible text or aria-label in the consumer's language. */
 export function OmbraClose({ className, ...props }: OmbraCloseProps) {
   return (
     <Dialog.Close
       data-slot="ombra-close"
       {...props}
-      className={classesFor(
-        "inline-flex size-11 touch-manipulation items-center justify-center rounded-full text-current focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-30",
-        className,
-      )}
+      className={classesFor(ACTION_CLASSES, className)}
     />
   );
 }
