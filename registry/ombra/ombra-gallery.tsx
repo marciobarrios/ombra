@@ -57,7 +57,13 @@ import {
   whenDecoded,
 } from "./morph";
 import type { Flight } from "./morph";
-import { OmbraBackdrop, OmbraClose, OmbraContent, OmbraPortal } from "./ombra-dialog";
+import {
+  ACTION_CLASSES,
+  OmbraBackdrop,
+  OmbraClose,
+  OmbraContent,
+  OmbraPortal,
+} from "./ombra-dialog";
 import { OmbraRoot, useOmbraRoot } from "./ombra-root";
 import { OmbraTrigger } from "./ombra-trigger";
 import type { OmbraMediaSource, OmbraRootProps } from "./ombra-root";
@@ -280,12 +286,8 @@ function IconButton({
   slot: string;
   children: ReactNode;
 }) {
-  const classes = cn(
-    // Repeated toolbar taps must not invoke Safari's native double-tap zoom.
-    // The viewer's pan-x pan-y ancestor also removes native pinch here (MAR-80).
-    "inline-flex size-11 touch-manipulation items-center justify-center rounded-full text-current focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-30",
-    className,
-  );
+  // The viewer's pan-x pan-y ancestor also removes native pinch here (MAR-80).
+  const classes = cn(ACTION_CLASSES, className);
 
   return (
     <button
@@ -483,14 +485,17 @@ export function useOmbraViewer({
 
   zoomRef.current = zoom;
 
-  // The zoom actions drive the viewer's zoom through the root.
+  // The zoom actions drive the viewer's zoom through the root, and hear when it crosses
+  // its fitted size.
+  const { zoomed } = zoom;
+
   useLayoutEffect(() => {
     const controls = root.zoomControlsRef;
 
     controls.current = {
       zoomIn: () => zoomRef.current.zoomIn(),
       zoomOut: () => zoomRef.current.zoomOut(),
-      zoomed: () => zoomRef.current.zoomed,
+      zoomed: () => zoomed,
     };
     root.notifyZoom();
 
@@ -498,11 +503,7 @@ export function useOmbraViewer({
       controls.current = null;
       root.notifyZoom();
     };
-  }, [root.zoomControlsRef, root.notifyZoom]);
-
-  useLayoutEffect(() => {
-    root.notifyZoom();
-  }, [zoom.zoomed, root.notifyZoom]);
+  }, [zoomed, root.zoomControlsRef, root.notifyZoom]);
 
   // A zoom gesture owns the track's scroll position, and a zoomed photo stays where it is.
   useLayoutEffect(() => {
@@ -975,11 +976,10 @@ export function useOmbraViewer({
 
     if (itemId === undefined || !rootRef.current.slideFor(itemId)) return null;
 
-    let frame = rootRef.current.mediaFor(itemId)?.element.parentElement ?? null;
+    const media = rootRef.current.mediaFor(itemId)?.element ?? null;
+    const zoom = rootRef.current.zoomFor(itemId);
 
-    while (frame?.dataset.slot === "ombra-zoom") frame = frame.parentElement;
-
-    return frame;
+    return (zoom && media && zoom.contains(media) ? zoom : media)?.parentElement ?? null;
   }
 
   /** The media a photo's morph lands on, with its intrinsic size. Only while the viewer is mounted. */
@@ -1856,7 +1856,6 @@ export function useOmbraViewer({
     /** The active photo's position in the collection. */
     index,
     count,
-    zoom,
     pulling,
     /** Goes to a position, smoothly unless `behavior` says otherwise. */
     goTo,

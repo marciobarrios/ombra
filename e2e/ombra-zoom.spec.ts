@@ -39,7 +39,9 @@ function mediaScale(page: Page) {
   return activeMedia(page).evaluate((node) => {
     const rect = node.getBoundingClientRect();
 
-    return rect.width / (node as HTMLElement).offsetWidth;
+    if (!(node instanceof HTMLElement)) throw new Error("The media is not an HTML element");
+
+    return rect.width / node.offsetWidth;
   });
 }
 
@@ -180,7 +182,8 @@ test.describe("OmbraZoom", () => {
 
       await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
 
-      for (let step = 1; step <= 8; step += 1) {
+      // Most of a slide's width, so the snap pages whatever the release speed.
+      for (let step = 1; step <= 12; step += 1) {
         await cdp.send("Input.dispatchTouchEvent", {
           type: "touchMove",
           touchPoints: [{ x: x - step * 25, y }],

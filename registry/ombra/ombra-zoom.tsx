@@ -5,6 +5,7 @@ import { useRender } from "@base-ui/react/use-render";
 import { cn } from "cn";
 import { useCallback, useSyncExternalStore } from "react";
 
+import { ACTION_CLASSES } from "./ombra-dialog";
 import { useOmbraRoot } from "./ombra-root";
 import { useSlideItem } from "./ombra-slides";
 
@@ -48,29 +49,20 @@ export function OmbraZoom({ ref, className, render, ...props }: OmbraZoomProps) 
   });
 }
 
-/** Whether the active item has a zoom surface, and whether it is zoomed. */
-function useZoomState() {
+/** Whether the active item has a zoom surface and, with `zoomedOnly`, is zoomed too. */
+function useCanZoom(zoomedOnly: boolean): boolean {
   const { state, subscribeZoom, zoomFor, zoomControlsRef } = useOmbraRoot();
   const { activeId } = state;
 
-  const zoomable = useSyncExternalStore(
+  return useSyncExternalStore(
     subscribeZoom,
-    () => activeId !== null && zoomFor(activeId) !== null,
+    () =>
+      activeId !== null &&
+      zoomFor(activeId) !== null &&
+      (!zoomedOnly || (zoomControlsRef.current?.zoomed() ?? false)),
     () => false,
   );
-
-  const zoomed = useSyncExternalStore(
-    subscribeZoom,
-    () => zoomControlsRef.current?.zoomed() ?? false,
-    () => false,
-  );
-
-  return { zoomable, zoomed, controls: zoomControlsRef };
 }
-
-const ACTION =
-  // Repeated taps must not invoke Safari's native double-tap zoom.
-  "inline-flex size-11 touch-manipulation items-center justify-center rounded-full text-current focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-30";
 
 function useZoomAction(
   slot: "ombra-zoom-in" | "ombra-zoom-out",
@@ -90,7 +82,7 @@ function useZoomAction(
       // The caller's handler runs first, and may call `event.preventBaseUIHandler()`.
       ...mergeProps<"button">({ type: "button", onClick: onPress }, props, {
         disabled: off,
-        className: cn(ACTION, className),
+        className: cn(ACTION_CLASSES, className),
       }),
     },
   });
@@ -101,9 +93,14 @@ function useZoomAction(
  * Supply visible text or `aria-label` in the consumer's language.
  */
 export function OmbraZoomIn(props: OmbraZoomActionProps) {
-  const { zoomable, controls } = useZoomState();
+  const { zoomControlsRef } = useOmbraRoot();
 
-  return useZoomAction("ombra-zoom-in", !zoomable, () => controls.current?.zoomIn(), props);
+  return useZoomAction(
+    "ombra-zoom-in",
+    !useCanZoom(false),
+    () => zoomControlsRef.current?.zoomIn(),
+    props,
+  );
 }
 
 /**
@@ -111,12 +108,12 @@ export function OmbraZoomIn(props: OmbraZoomActionProps) {
  * Supply visible text or `aria-label` in the consumer's language.
  */
 export function OmbraZoomOut(props: OmbraZoomActionProps) {
-  const { zoomable, zoomed, controls } = useZoomState();
+  const { zoomControlsRef } = useOmbraRoot();
 
   return useZoomAction(
     "ombra-zoom-out",
-    !zoomable || !zoomed,
-    () => controls.current?.zoomOut(),
+    !useCanZoom(true),
+    () => zoomControlsRef.current?.zoomOut(),
     props,
   );
 }

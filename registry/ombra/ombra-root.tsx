@@ -420,17 +420,30 @@ export function OmbraRoot({
     for (const listener of zoomListeners.current) listener();
   }, []);
 
+  // Every slide of an opening viewer registers its surface at once: tell the listeners once.
+  const zoomNotifyQueued = useRef(false);
+
+  const queueZoomNotify = useCallback(() => {
+    if (zoomNotifyQueued.current) return;
+
+    zoomNotifyQueued.current = true;
+    queueMicrotask(() => {
+      zoomNotifyQueued.current = false;
+      notifyZoom();
+    });
+  }, [notifyZoom]);
+
   const registerZoom = useCallback(
     (zoom: OmbraZoomRegistration) => {
       zoomParts.current.add(zoom);
-      notifyZoom();
+      queueZoomNotify();
 
       return () => {
         zoomParts.current.delete(zoom);
-        notifyZoom();
+        queueZoomNotify();
       };
     },
-    [notifyZoom],
+    [queueZoomNotify],
   );
 
   const zoomFor = useCallback(

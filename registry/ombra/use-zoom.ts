@@ -815,13 +815,12 @@ export function useZoom(
     };
 
     const onWheel = (event: WheelEvent) => {
-      if (!enabledRef.current) return;
+      // Checked before the layer lookup: most wheel events are swipes and pulls.
+      if (!enabledRef.current || (!event.ctrlKey && pose.current.scale <= 1.02)) return;
 
       const layer = layerRef.current;
 
       if (!layer) return;
-
-      if (!event.ctrlKey && pose.current.scale <= 1.02) return;
 
       event.preventDefault();
       stopRef.current();
