@@ -2,7 +2,7 @@
 
 Ombra's public API should let the caller assemble a lightbox from React components. Layout, media, captions, and controls belong in JSX. Props configure the behavior of the part receiving them.
 
-This is the target contract, not an implemented API. The current `OmbraGallery` remains a morph and gesture spike. The names and examples below describe the next registry API. `OmbraRoot` and its state contract (controlled and uncontrolled open and active item, stable IDs, registration behaviour) are implemented, and `OmbraGallery` runs on it. So are the dialog shell parts, `OmbraTrigger`, the slide parts (`OmbraSlides`, `OmbraSlide`, `OmbraMedia`), and the zoom parts (`OmbraZoom`, `OmbraZoomIn`, `OmbraZoomOut`); the other parts are not yet.
+This is the target contract, not an implemented API. The current `OmbraGallery` remains a morph and gesture spike. The names and examples below describe the next registry API. `OmbraRoot` and its state contract (controlled and uncontrolled open and active item, stable IDs, registration behaviour) are implemented, and `OmbraGallery` runs on it. So are the dialog shell parts, `OmbraTrigger`, the slide parts (`OmbraSlides`, `OmbraSlide`, `OmbraMedia`), the zoom parts (`OmbraZoom`, `OmbraZoomIn`, `OmbraZoomOut`), and the controls (`OmbraPrevious`, `OmbraNext`, `OmbraCounter`, `OmbraThumbnails`, `OmbraThumbnail`); the recipes are not yet.
 
 Implementation is tracked in [MAR-64](https://linear.app/marciobarrios/issue/MAR-64/migrate-the-lightbox-spike-to-composable-primitives-and-gallery), in Ombra's v0.1 MVP milestone. The [Linear architecture document](https://linear.app/marciobarrios/document/ombra-composition-architecture-primitives-styled-parts-and-recipes-e67e6acc5788) records the same recommendation for project planning.
 
@@ -188,6 +188,56 @@ gallery's viewer.
   driver (`useOmbraViewer`), which publishes its zoom to the actions through the
   root. The `/spike/zoom` bench renders every slide with `OmbraZoom`, none
   (`?zoom=off`), or only the first (`?zoom=first`).
+
+## Implemented controls (MAR-142)
+
+`registry/ombra/ombra-controls.tsx` exports `OmbraPrevious`, `OmbraNext`,
+`OmbraCounter`, `OmbraThumbnails`, and `OmbraThumbnail`. Each renders one element
+with a `data-slot` (`ombra-previous`, `ombra-next`, `ombra-counter`,
+`ombra-thumbnails`, `ombra-thumbnail`), and accepts native props, a forwarded ref,
+`className` (merged through `cn()`), and Base UI's `render` prop, whose callback
+receives the part's state.
+
+```tsx
+<OmbraCounter>{({ position, count }) => `Foto ${position} de ${count}`}</OmbraCounter>
+<OmbraPrevious aria-label="Foto anterior">‹</OmbraPrevious>
+<OmbraNext aria-label="Foto siguiente">›</OmbraNext>
+
+<OmbraThumbnails>
+  {photos.map((photo) => (
+    <OmbraThumbnail key={photo.id} itemId={photo.id} aria-label={photo.alt}>
+      <img src={photo.thumbnail} alt="" />
+    </OmbraThumbnail>
+  ))}
+</OmbraThumbnails>
+```
+
+- **Copy.** No part supplies text or an accessible label: consumers own both.
+  `OmbraCounter` formats with its children function, which receives `position`
+  (one-based), `count`, `index` and `activeId`; without one it shows
+  `position / count` in digits. It carries `data-position` and `data-count`.
+- **Previous and next.** Buttons that go one item back or forward from where a
+  smooth navigation is heading, so rapid presses retarget. `OmbraPrevious` is
+  disabled on the first item and `OmbraNext` on the last; both then carry
+  `data-disabled`. A handler that calls `event.preventBaseUIHandler()` cancels the step.
+- **Thumbnails.** `OmbraThumbnails` is the strip's scroller. It keeps the active
+  thumbnail in view and, once its thumbnails overflow it, snaps and fades an edge
+  cue in at each end with more beyond (scroll-driven, so only where the browser
+  supports scroll timelines, and never under reduced motion). It carries
+  `data-overflowing` and renders inside a positioned `ombra-thumbnails-frame` that
+  holds the cues. `OmbraThumbnail` is a button linked to its slide by `itemId`; it
+  carries `data-active` and `aria-current` while its item is active.
+- **Keyboard.** The viewer's arrows, Home and End move between items; `+`, `-` and
+  `0` zoom. A key is left alone when a handler already called `preventDefault()`
+  on it, when it carries Ctrl, Alt or Meta (or Shift, for navigation), and when
+  focus is in an input, a textarea, a select, editable content, media controls or
+  an ARIA widget that uses the arrows. Navigation keys also stay with a scrolling
+  panel of the consumer's that holds focus. The handler is the viewer's
+  `contentProps.onKeyDown`: to replace a shortcut, prevent it in a handler on an
+  element inside the content, or in one that calls the viewer's after its own.
+- **Omission.** Every control is optional; leaving one out is a JSX change. The
+  `/spike/controls` bench labels them in Spanish, puts a text field and a scrolling
+  panel in the viewer, and leaves them all out with `?controls=none`.
 
 ## Architecture decision — 6 November 2026
 

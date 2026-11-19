@@ -10,7 +10,7 @@ import {
   useRef,
   useSyncExternalStore,
 } from "react";
-import type { KeyboardEvent, ReactNode, RefObject } from "react";
+import type { KeyboardEvent, RefObject } from "react";
 import { flushSync } from "react-dom";
 
 import { listenForCloseInput } from "./close-input";
@@ -57,13 +57,17 @@ import {
   whenDecoded,
 } from "./morph";
 import type { Flight } from "./morph";
+import { OmbraBackdrop, OmbraClose, OmbraContent, OmbraPortal } from "./ombra-dialog";
 import {
-  ACTION_CLASSES,
-  OmbraBackdrop,
-  OmbraClose,
-  OmbraContent,
-  OmbraPortal,
-} from "./ombra-dialog";
+  navigateTo,
+  OmbraCounter,
+  OmbraNext,
+  OmbraPrevious,
+  OmbraThumbnail,
+  OmbraThumbnails,
+  stepFrom,
+  viewerShortcut,
+} from "./ombra-controls";
 import { OmbraRoot, useOmbraRoot } from "./ombra-root";
 import { OmbraTrigger } from "./ombra-trigger";
 import type { OmbraMediaSource, OmbraRootProps } from "./ombra-root";
@@ -78,69 +82,15 @@ import { useReducedMotion } from "./use-reduced-motion";
 import { useReducerWithBailout } from "./use-reducer-with-bailout";
 import { useZoom } from "./use-zoom";
 
-// Keyframes need real CSS, so this ships as a stylesheet rather than Tailwind classes.
-const stripEdgeStyles = `@media (prefers-reduced-motion: no-preference) {
-  @supports (animation-timeline: --ombra-strip) and
-    (scroll-timeline: --ombra-strip inline) and
-    (timeline-scope: --ombra-strip) and
-    (animation-range: calc(100% - 20px) 100%) {
-    [data-slot="ombra-viewer"] footer {
-      position: relative;
-      timeline-scope: --ombra-strip;
-    }
-
-    [data-slot="ombra-thumbnails"] {
-      scroll-timeline: --ombra-strip inline;
-    }
-
-    [data-slot="ombra-viewer"] footer:has([data-overflowing="true"]) [data-slot="ombra-strip-edge-start"],
-    [data-slot="ombra-viewer"] footer:has([data-overflowing="true"]) [data-slot="ombra-strip-edge-end"] {
-      display: block;
-      position: absolute;
-      z-index: 1;
-      bottom: calc(max(0.75rem, env(safe-area-inset-bottom)) + 0.25rem);
-      width: 1.25rem;
-      height: 2.75rem;
-      pointer-events: none;
-      animation: ombra-strip-edge-in linear both;
-      animation-timeline: --ombra-strip;
-      animation-range: 0px 20px;
-    }
-
-    [data-slot="ombra-viewer"] footer [data-slot="ombra-strip-edge-start"] {
-      left: 1rem;
-      background: linear-gradient(to right, var(--ombra-surface), transparent);
-    }
-
-    [data-slot="ombra-viewer"] footer:has([data-overflowing="true"]) [data-slot="ombra-strip-edge-end"] {
-      right: 1rem;
-      background: linear-gradient(to left, var(--ombra-surface), transparent);
-      animation-name: ombra-strip-edge-out;
-      animation-range: calc(100% - 20px) 100%;
-    }
-
-    @keyframes ombra-strip-edge-in {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-
-    @keyframes ombra-strip-edge-out {
-      from { opacity: 1; }
-      to { opacity: 0; }
-    }
-  }
-}`;
-
 /** State that comes from the DOM, so it stays React-side instead of in `gallery-state.ts`. */
 type ViewState = {
   /** Photos whose full-size source has decoded, so the slide can drop its thumbnail. */
   sharpIds: ReadonlySet<string>;
-  stripOverflows: boolean;
 };
 
-type ViewAction = { type: "decoded"; id: string } | { type: "strip-measured"; overflows: boolean };
+type ViewAction = { type: "decoded"; id: string };
 
-const initialViewState: ViewState = { sharpIds: new Set(), stripOverflows: false };
+const initialViewState: ViewState = { sharpIds: new Set() };
 
 function viewReducer(state: ViewState, action: ViewAction): ViewState {
   switch (action.type) {
@@ -148,11 +98,6 @@ function viewReducer(state: ViewState, action: ViewAction): ViewState {
       if (state.sharpIds.has(action.id)) return state;
 
       return { ...state, sharpIds: new Set([...state.sharpIds, action.id]) };
-
-    case "strip-measured":
-      if (state.stripOverflows === action.overflows) return state;
-
-      return { ...state, stripOverflows: action.overflows };
   }
 }
 
@@ -170,6 +115,20 @@ const SWIPE_START_PX = 2;
 // How long a landed morph may wait for the photo under it to decode before the
 // swap. A cached bitmap is ready within a frame; this only caps a slow network.
 const DECODE_WAIT_MS = 120;
+
+/** The axis a navigation key would scroll a panel of the consumer's on, when focus is in one. */
+function navigationAxis(key: string): "x" | "xy" | null {
+  switch (key) {
+    case "ArrowLeft":
+    case "ArrowRight":
+      return "x";
+    case "Home":
+    case "End":
+      return "xy";
+    default:
+      return null;
+  }
+}
 
 export type OmbraViewerOptions = {
   /**
@@ -269,38 +228,6 @@ function imageIn(media: HTMLElement | null): HTMLImageElement | null {
   if (media instanceof HTMLImageElement) return media;
 
   return media.querySelector("img");
-}
-
-function IconButton({
-  label,
-  className,
-  onClick,
-  disabled,
-  slot,
-  children,
-}: {
-  label: string;
-  className?: string;
-  onClick?: () => void;
-  disabled?: boolean;
-  slot: string;
-  children: ReactNode;
-}) {
-  // The viewer's pan-x pan-y ancestor also removes native pinch here (MAR-80).
-  const classes = cn(ACTION_CLASSES, className);
-
-  return (
-    <button
-      type="button"
-      data-slot={slot}
-      aria-label={label}
-      disabled={disabled}
-      onClick={onClick}
-      className={classes}
-    >
-      {children}
-    </button>
-  );
 }
 
 export function OmbraGallery({
@@ -495,6 +422,7 @@ export function useOmbraViewer({
     controls.current = {
       zoomIn: () => zoomRef.current.zoomIn(),
       zoomOut: () => zoomRef.current.zoomOut(),
+      reset: () => zoomRef.current.reset(),
       zoomed: () => zoomed,
     };
     root.notifyZoom();
@@ -1816,33 +1744,19 @@ export function useOmbraViewer({
     );
   }
 
-  /** Where navigation starts from: a smooth scroll's destination, or the active photo. */
-  function navigationFrom(): number {
-    const target = rootRef.current.slides()?.navigationTarget() ?? null;
-    const at = target === null ? -1 : idsRef.current.indexOf(target);
-
-    return at < 0 ? indexRef.current : at;
-  }
-
   function goTo(nextIndex: number, behavior: ScrollBehavior) {
-    const slides = rootRef.current.slides();
     const itemId = idsRef.current[nextIndex];
 
-    if (!slides || itemId === undefined) return;
-
-    if (nextIndex === indexRef.current && slides.navigationTarget() === null) return;
-
-    zoomRef.current.reset();
-    slides.navigate(itemId, behavior);
+    if (itemId !== undefined) navigateTo(rootRef.current, itemId, behavior);
   }
 
   /** Goes one photo back or forward from where navigation is heading. */
   function step(by: -1 | 1) {
-    goTo(navigationFrom() + by, reducedRef.current ? "auto" : "smooth");
+    stepFrom(rootRef.current, by, reducedRef.current ? "auto" : "smooth");
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (!viewerShortcut(event, navigationAxis(event.key))) return;
 
     if (event.key === "ArrowRight") {
       event.preventDefault();
@@ -1875,9 +1789,6 @@ export function useOmbraViewer({
     index,
     count,
     pulling,
-    /** Goes to a position, smoothly unless `behavior` says otherwise. */
-    goTo,
-    step,
     /** Render once, outside the dialog, so a closing view transition still has it. */
     morphStyles: <style data-slot="ombra-morph-styles">{MORPH_STYLES}</style>,
     backdropProps: {
@@ -1903,12 +1814,10 @@ function GalleryViewer({
   ...options
 }: Omit<OmbraGalleryProps, keyof OmbraRootProps>) {
   const viewer = useOmbraViewer(options);
-  const { phase, open, index, count } = viewer;
+  const { open, index, count } = viewer;
   const { registerItem } = useOmbraRoot();
-  const reduced = useReducedMotion();
   const [view, sendView] = useReducerWithBailout(viewReducer, initialViewState);
-  const { sharpIds, stripOverflows } = view;
-  const stripRef = useRef<HTMLDivElement>(null);
+  const { sharpIds } = view;
   const active = items[index];
 
   // The slides only mount with the viewer, so the gallery registers its collection in the
@@ -1950,51 +1859,6 @@ function GalleryViewer({
       cancelled = true;
     };
   }, [open, index, items]);
-
-  useLayoutEffect(() => {
-    const strip = stripRef.current;
-
-    if (!open || !strip) return;
-
-    const row = strip.querySelector<HTMLElement>("[data-slot=ombra-thumbnails-row]");
-
-    if (!row) return;
-
-    const measure = () => {
-      const style = getComputedStyle(row);
-
-      const pad = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.paddingRight);
-
-      const content = row.scrollWidth - pad;
-
-      sendView({ type: "strip-measured", overflows: content > strip.clientWidth + 1 });
-    };
-
-    measure();
-
-    const observer = new ResizeObserver(measure);
-
-    observer.observe(strip);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [open, phase, items.length, stripOverflows]);
-
-  useLayoutEffect(() => {
-    const strip = stripRef.current;
-
-    if (!open || !strip) return;
-
-    const current = strip.querySelector<HTMLElement>("[data-active=true]");
-
-    if (!current) return;
-
-    const delta = current.getBoundingClientRect().left - strip.getBoundingClientRect().left;
-    const left = strip.scrollLeft + delta - (strip.clientWidth - current.clientWidth) / 2;
-
-    strip.scrollTo({ left: Math.max(0, left), behavior: reduced ? "auto" : "smooth" });
-  }, [index, open, phase, reduced, stripOverflows]);
 
   return (
     <div
@@ -2043,12 +1907,7 @@ function GalleryViewer({
             <header className="flex touch-none flex-col gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 flex-col items-start gap-2">
-                  <p
-                    data-slot="ombra-counter"
-                    className="font-mono text-xs tracking-wide text-(--ombra-ink)/80"
-                  >
-                    {index + 1} / {count}
-                  </p>
+                  <OmbraCounter className="font-mono text-xs tracking-wide text-(--ombra-ink)/80" />
                 </div>
                 <div className="flex items-center gap-1">
                   <OmbraZoomOut aria-label="Zoom out">
@@ -2105,29 +1964,23 @@ function GalleryViewer({
                 data-slot="ombra-nav"
                 className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2"
               >
-                <IconButton
-                  label="Previous photo"
-                  slot="ombra-prev"
+                <OmbraPrevious
+                  aria-label="Previous photo"
                   className="pointer-events-auto bg-(--ombra-surface)/40"
-                  disabled={index === 0}
-                  onClick={() => viewer.step(-1)}
                 >
                   <Chevron direction="left" />
-                </IconButton>
+                </OmbraPrevious>
               </div>
               <div
                 data-slot="ombra-nav"
                 className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2"
               >
-                <IconButton
-                  label="Next photo"
-                  slot="ombra-next"
+                <OmbraNext
+                  aria-label="Next photo"
                   className="pointer-events-auto bg-(--ombra-surface)/40"
-                  disabled={index === count - 1}
-                  onClick={() => viewer.step(1)}
                 >
                   <Chevron direction="right" />
-                </IconButton>
+                </OmbraNext>
               </div>
             </div>
 
@@ -2138,52 +1991,17 @@ function GalleryViewer({
               >
                 {active?.caption}
               </p>
-              <div
-                ref={stripRef}
-                data-slot="ombra-thumbnails"
-                data-overflowing={stripOverflows ? "true" : "false"}
-                className={cn(
-                  "touch-pan-x overflow-x-auto overflow-y-hidden py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-                  stripOverflows && "snap-x snap-mandatory",
-                )}
-              >
-                <div
-                  data-slot="ombra-thumbnails-row"
-                  className={cn(
-                    "mx-auto flex w-max gap-2",
-                    stripOverflows ? "px-[max(0.25rem,calc(50%-1.375rem))]" : "px-1",
-                  )}
-                >
-                  {items.map((item, itemIndex) => {
-                    const selected = itemIndex === index;
-
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        data-slot="ombra-thumbnail"
-                        data-active={selected ? "true" : "false"}
-                        aria-current={selected ? "true" : undefined}
-                        aria-label={item.alt}
-                        onClick={() => viewer.goTo(itemIndex, reduced ? "auto" : "smooth")}
-                        className={cn(
-                          "size-11 shrink-0 snap-center overflow-hidden rounded-lg border-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current",
-                          selected ? "border-current" : "border-transparent opacity-60",
-                        )}
-                      >
-                        <img
-                          src={item.thumbSrc}
-                          alt=""
-                          className="h-full w-full rounded-[6px] object-cover outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
-                        />
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <span data-slot="ombra-strip-edge-start" aria-hidden="true" className="hidden" />
-              <span data-slot="ombra-strip-edge-end" aria-hidden="true" className="hidden" />
-              <style data-slot="ombra-strip-edge-styles">{stripEdgeStyles}</style>
+              <OmbraThumbnails>
+                {items.map((item) => (
+                  <OmbraThumbnail key={item.id} itemId={item.id} aria-label={item.alt}>
+                    <img
+                      src={item.thumbSrc}
+                      alt=""
+                      className="h-full w-full rounded-[6px] object-cover outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
+                    />
+                  </OmbraThumbnail>
+                ))}
+              </OmbraThumbnails>
             </footer>
           </div>
           <p role="status" data-slot="ombra-live" className="sr-only">

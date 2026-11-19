@@ -80,6 +80,8 @@ export type OmbraZoomRegistration = { itemId: string; element: HTMLElement };
 export type OmbraZoomControls = {
   zoomIn: () => void;
   zoomOut: () => void;
+  /** Returns the active item to its fitted size at once. */
+  reset: () => void;
   /** Whether the active item rests above its fitted size. */
   zoomed: () => boolean;
 };
