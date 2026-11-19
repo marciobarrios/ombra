@@ -29,6 +29,15 @@ export type OmbraMediaProps = useRender.ComponentProps<"div"> & {
 
 const SlideContext = createContext<string | null>(null);
 
+/** The item of the `OmbraSlide` a part is rendered in. Throws outside a slide. */
+export function useSlideItem(part: string): string {
+  const itemId = useContext(SlideContext);
+
+  if (itemId === null) throw new Error(`<${part}> must be rendered inside <OmbraSlide>.`);
+
+  return itemId;
+}
+
 /** The spacers let the first and last slides rest in the centre. */
 const SPACER = "shrink-0 basis-[max(0px,calc(7cqi-1rem))]";
 
@@ -271,10 +280,8 @@ export function OmbraMedia({
   render,
   ...props
 }: OmbraMediaProps) {
-  const itemId = useContext(SlideContext);
+  const itemId = useSlideItem("OmbraMedia");
   const { registerMedia } = useOmbraRoot();
-
-  if (itemId === null) throw new Error("<OmbraMedia> must be rendered inside <OmbraSlide>.");
 
   const register = useCallback(
     (element: HTMLElement | null) => {

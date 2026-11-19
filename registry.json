@@ -16,6 +16,7 @@
         { "path": "registry/ombra/ombra-dialog.tsx", "type": "registry:component" },
         { "path": "registry/ombra/ombra-trigger.tsx", "type": "registry:component" },
         { "path": "registry/ombra/ombra-slides.tsx", "type": "registry:component" },
+        { "path": "registry/ombra/ombra-zoom.tsx", "type": "registry:component" },
         { "path": "registry/ombra/close-input.ts", "type": "registry:lib" },
         { "path": "registry/ombra/types.ts", "type": "registry:lib" },
         { "path": "registry/ombra/geometry.ts", "type": "registry:lib" },

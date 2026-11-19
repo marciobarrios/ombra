@@ -622,7 +622,8 @@ export function useZoom(
     };
 
     const onPointerDown = (event: PointerEvent) => {
-      if (!enabledRef.current) return;
+      // A slide without a zoom surface leaves its gestures to the track and the pull.
+      if (!enabledRef.current || !layerRef.current) return;
 
       if (event.pointerType === "mouse" && event.button !== 0) return;
 
@@ -785,7 +786,7 @@ export function useZoom(
     };
 
     const onDoubleClick = (event: MouseEvent) => {
-      if (!enabledRef.current) return;
+      if (!enabledRef.current || !layerRef.current) return;
 
       event.preventDefault();
 
