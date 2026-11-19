@@ -1,11 +1,10 @@
 "use client";
 
-import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cn } from "cn";
 import { useCallback, useSyncExternalStore } from "react";
 
-import { ACTION_CLASSES } from "./ombra-dialog";
+import { useOmbraAction } from "./ombra-controls";
 import { useOmbraRoot } from "./ombra-root";
 import { useSlideItem } from "./ombra-slides";
 
@@ -64,40 +63,6 @@ function useCanZoom(zoomedOnly: boolean): boolean {
   );
 }
 
-function useZoomAction(
-  slot: "ombra-zoom-in" | "ombra-zoom-out",
-  disabled: boolean,
-  onPress: () => void,
-  { ref, className, render, disabled: disabledProp, ...props }: OmbraZoomActionProps,
-) {
-  const off = disabled || disabledProp === true;
-
-  return useRender({
-    defaultTagName: "button",
-    render,
-    ref,
-    props: {
-      "data-slot": slot,
-      "data-disabled": off ? "" : undefined,
-      // The caller's handler runs first, and may call `event.preventBaseUIHandler()`.
-      ...mergeProps<"button">(
-        {
-          type: "button",
-          // A `render` element that is not a button ignores `disabled`.
-          onClick: () => {
-            if (!off) onPress();
-          },
-        },
-        props,
-        {
-          disabled: off,
-          className: cn(ACTION_CLASSES, className),
-        },
-      ),
-    },
-  });
-}
-
 /**
  * Zooms the active photo in one step. Disabled while the active slide has no `OmbraZoom`.
  * Supply visible text or `aria-label` in the consumer's language.
@@ -105,10 +70,12 @@ function useZoomAction(
 export function OmbraZoomIn(props: OmbraZoomActionProps) {
   const { zoomControlsRef } = useOmbraRoot();
 
-  return useZoomAction(
-    "ombra-zoom-in",
-    !useCanZoom(false),
-    () => zoomControlsRef.current?.zoomIn(),
+  return useOmbraAction(
+    {
+      slot: "ombra-zoom-in",
+      disabled: !useCanZoom(false),
+      onPress: () => zoomControlsRef.current?.zoomIn(),
+    },
     props,
   );
 }
@@ -120,10 +87,12 @@ export function OmbraZoomIn(props: OmbraZoomActionProps) {
 export function OmbraZoomOut(props: OmbraZoomActionProps) {
   const { zoomControlsRef } = useOmbraRoot();
 
-  return useZoomAction(
-    "ombra-zoom-out",
-    !useCanZoom(true),
-    () => zoomControlsRef.current?.zoomOut(),
+  return useOmbraAction(
+    {
+      slot: "ombra-zoom-out",
+      disabled: !useCanZoom(true),
+      onPress: () => zoomControlsRef.current?.zoomOut(),
+    },
     props,
   );
 }
