@@ -45,6 +45,13 @@ function mediaScale(page: Page) {
   });
 }
 
+/** The scale the viewer publishes for consumer styles. */
+function publishedZoom(page: Page) {
+  return viewer(page).evaluate((node) =>
+    Number(getComputedStyle(node).getPropertyValue("--ombra-zoom")),
+  );
+}
+
 /** Safari's double-tap: two touch pointer pairs, then a compatibility dblclick. */
 function doubleTap(target: Locator) {
   return target.evaluate((node) => {
@@ -113,6 +120,7 @@ test.describe("OmbraZoom", () => {
     await expect(activeSlide(page).locator("[data-slot=ombra-zoom]")).toHaveCount(1);
     await expect(zoomIn).toBeEnabled();
     await expect(zoomOut).toBeDisabled();
+    expect(await publishedZoom(page)).toBe(1);
 
     await pinch(activeMedia(page));
     await expect(viewer(page)).toHaveAttribute("data-zoomed", "true");
@@ -123,8 +131,10 @@ test.describe("OmbraZoom", () => {
     await doubleTap(activeMedia(page));
     await expect(viewer(page)).toHaveAttribute("data-zoomed", "true");
     await expect.poll(() => mediaScale(page)).toBeCloseTo(2.5, 1);
+    await expect.poll(() => publishedZoom(page)).toBeCloseTo(2.5, 1);
     await page.keyboard.press("0");
     await expect(viewer(page)).toHaveAttribute("data-zoomed", "false");
+    await expect.poll(() => publishedZoom(page)).toBe(1);
 
     await zoomIn.click();
     await expect(viewer(page)).toHaveAttribute("data-zoomed", "true");

@@ -316,6 +316,16 @@ test.describe("OmbraRoot", () => {
       });
 
     expect(await sheetOffset()).toBeGreaterThan(24);
+
+    // The viewer and backdrop publish the live pull for consumer styles.
+    for (const slot of ["ombra-viewer", "ombra-backdrop"]) {
+      const pull = await page
+        .locator(`[data-slot=${slot}]`)
+        .evaluate((node) => Number(getComputedStyle(node).getPropertyValue("--ombra-pull")));
+
+      expect(pull).toBeGreaterThan(0);
+    }
+
     await page.mouse.up();
 
     await expect.poll(() => asks(page, "controlled-readout", "open")).toEqual([true, false]);
