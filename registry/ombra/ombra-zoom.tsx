@@ -80,10 +80,20 @@ function useZoomAction(
       "data-slot": slot,
       "data-disabled": off ? "" : undefined,
       // The caller's handler runs first, and may call `event.preventBaseUIHandler()`.
-      ...mergeProps<"button">({ type: "button", onClick: onPress }, props, {
-        disabled: off,
-        className: cn(ACTION_CLASSES, className),
-      }),
+      ...mergeProps<"button">(
+        {
+          type: "button",
+          // A `render` element that is not a button ignores `disabled`.
+          onClick: () => {
+            if (!off) onPress();
+          },
+        },
+        props,
+        {
+          disabled: off,
+          className: cn(ACTION_CLASSES, className),
+        },
+      ),
     },
   });
 }

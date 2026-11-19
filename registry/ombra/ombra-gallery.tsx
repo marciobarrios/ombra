@@ -527,6 +527,24 @@ export function useOmbraViewer({
     zoomRef.current.reset();
   }, [activeId]);
 
+  // The active slide's zoom surface. When it leaves or is replaced, a zoom on it would hold
+  // the track and the pull with nothing left to zoom out.
+  const zoomSurface = useSyncExternalStore(
+    root.subscribeZoom,
+    () => (activeId === null ? null : root.zoomFor(activeId)),
+    () => null,
+  );
+
+  const seenSurface = useRef(zoomSurface);
+
+  useLayoutEffect(() => {
+    const previous = seenSurface.current;
+
+    seenSurface.current = zoomSurface;
+
+    if (previous !== null && previous !== zoomSurface) zoomRef.current.reset();
+  }, [zoomSurface]);
+
   useLayoutEffect(() => {
     root.driverRef.current = {
       open: (itemId, intent) => {

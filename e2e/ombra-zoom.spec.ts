@@ -218,6 +218,22 @@ test.describe("OmbraZoom", () => {
     await expect(page.getByRole("dialog")).toBeHidden();
   });
 
+  test("removing OmbraZoom while zoomed releases the track and the pull", async ({ page }) => {
+    await openBench(page, "all");
+    await page.getByRole("button", { name: "Acercar" }).click();
+    await expect(viewer(page)).toHaveAttribute("data-zoomed", "true");
+    await expect(page.locator("[data-slot=ombra-track]")).toHaveCSS("touch-action", "none");
+
+    await page.getByRole("button", { name: "Quitar zoom" }).click();
+    await expect(page.locator("[data-slot=ombra-zoom]")).toHaveCount(0);
+    await expect(viewer(page)).toHaveAttribute("data-zoomed", "false");
+    await expect(page.locator("[data-slot=ombra-track]")).not.toHaveCSS("touch-action", "none");
+    await expect(page.getByRole("button", { name: "Acercar" })).toBeDisabled();
+
+    await page.keyboard.press("ArrowRight");
+    await expect(activeSlide(page)).toHaveAttribute("aria-label", second.alt);
+  });
+
   test("zoom follows the active slide: on where it is rendered, off where it is not", async ({
     page,
   }) => {

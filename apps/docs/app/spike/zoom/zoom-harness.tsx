@@ -1,7 +1,7 @@
 "use client";
 
 import { Dialog } from "@base-ui/react/dialog";
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useReducer } from "react";
 
 import {
   OmbraBackdrop,
@@ -36,9 +36,17 @@ function RegisteredItems() {
   return null;
 }
 
+type SurfaceAction = { type: "surfaces-toggled" };
+
+/** Whether the slides render their `OmbraZoom`, so a spec can remove it while zoomed. */
+function surfacesReducer(shown: boolean, _action: SurfaceAction): boolean {
+  return !shown;
+}
+
 function Viewer({ mode }: { mode: ZoomMode }) {
   const viewer = useOmbraViewer();
   const active = items[viewer.index];
+  const [surfaces, sendSurfaces] = useReducer(surfacesReducer, true);
 
   return (
     <>
@@ -56,6 +64,13 @@ function Viewer({ mode }: { mode: ZoomMode }) {
             <header className="flex items-center justify-between gap-2 p-3">
               <OmbraClose aria-label="Cerrar fotos">×</OmbraClose>
               <div className="flex gap-1">
+                <button
+                  type="button"
+                  className="px-2 text-sm"
+                  onClick={() => sendSurfaces({ type: "surfaces-toggled" })}
+                >
+                  {surfaces ? "Quitar zoom" : "Poner zoom"}
+                </button>
                 <OmbraZoomOut aria-label="Alejar">−</OmbraZoomOut>
                 <OmbraZoomIn aria-label="Acercar">+</OmbraZoomIn>
               </div>
@@ -75,7 +90,8 @@ function Viewer({ mode }: { mode: ZoomMode }) {
                     </OmbraMedia>
                   );
 
-                  const zoomable = mode === "all" || (mode === "first" && itemIndex === 0);
+                  const zoomable =
+                    surfaces && (mode === "all" || (mode === "first" && itemIndex === 0));
 
                   return (
                     <OmbraSlide key={item.id} itemId={item.id} aria-label={item.alt}>
