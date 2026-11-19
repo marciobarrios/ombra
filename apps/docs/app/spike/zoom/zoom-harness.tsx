@@ -79,13 +79,18 @@ function Viewer({ mode }: { mode: ZoomMode }) {
               <OmbraSlides>
                 {items.map((item, itemIndex) => {
                   const media = (
-                    <OmbraMedia width={item.width} height={item.height}>
+                    <OmbraMedia
+                      width={item.width}
+                      height={item.height}
+                      className="rounded-[6px] outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
+                    >
                       <img
                         src={item.src}
                         alt=""
                         width={item.width}
                         height={item.height}
                         draggable={false}
+                        className="rounded-[inherit]"
                       />
                     </OmbraMedia>
                   );
