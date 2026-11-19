@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRe
 import type { ReactNode, RefObject } from "react";
 
 import {
+  activeIndex,
   createGalleryState,
   duplicateIds,
   galleryReducer,
@@ -209,7 +210,7 @@ export function useOmbraState(): OmbraState {
     open: isOpen(state),
     phase: state.phase,
     activeId: state.activeId,
-    index: state.activeId === null ? -1 : state.itemIds.indexOf(state.activeId),
+    index: activeIndex(state),
     itemIds: state.itemIds,
   };
 }
@@ -419,12 +420,14 @@ export function OmbraRoot({
   // Registered without nodes, the order of `itemIds` holds even when a trigger leaves the
   // page. Keyed by content, so a list rebuilt on every render registers once.
   const itemKey = itemIds === undefined ? null : JSON.stringify(itemIds);
+  const itemIdsRef = useRef(itemIds);
+
+  itemIdsRef.current = itemIds;
 
   useLayoutEffect(() => {
     if (itemKey === null) return;
 
-    const ids: string[] = JSON.parse(itemKey);
-    const stops = ids.map((itemId) => registerItem(itemId));
+    const stops = (itemIdsRef.current ?? []).map((itemId) => registerItem(itemId));
 
     return () => {
       for (const stop of stops) stop();

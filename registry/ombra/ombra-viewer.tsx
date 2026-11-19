@@ -1597,7 +1597,8 @@ export function useOmbraViewer() {
 
     const trigger = triggerAt(indexRef.current);
     const thumb = thumbAt(indexRef.current);
-    const canMorph = trigger ? mostlyVisible(trigger) : false;
+    // Like the open, a trigger with no media to land on is no morph target.
+    const canMorph = trigger && thumb ? mostlyVisible(trigger) : false;
 
     if (driverRef.current === "vt" && canMorph && thumb && !flightRef.current) {
       closeWithViewTransition(thumb);

@@ -5,7 +5,7 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "cn";
-import { useLayoutEffect, useMemo } from "react";
+import { useLayoutEffect } from "react";
 
 import {
   OmbraCounter,
@@ -43,27 +43,23 @@ function viewReducer(state: ViewState, action: ViewAction): ViewState {
     case "decoded":
       if (state.sharpIds.has(action.id)) return state;
 
-      return { ...state, sharpIds: new Set([...state.sharpIds, action.id]) };
+      return { sharpIds: new Set([...state.sharpIds, action.id]) };
   }
 }
 
 export function OmbraGallery({ items, className, ...root }: OmbraGalleryProps) {
-  const itemIds = useMemo(() => items.map((item) => item.id), [items]);
-
   return (
-    <OmbraRoot {...root} itemIds={itemIds}>
+    <OmbraRoot {...root} itemIds={items.map((item) => item.id)}>
       <GalleryParts items={items} className={className} />
     </OmbraRoot>
   );
 }
 
 function GalleryParts({ items, className }: Pick<OmbraGalleryProps, "items" | "className">) {
-  const state = useOmbraState();
-  const { open } = state;
-  const index = Math.max(0, state.index);
+  const { open, index: activeAt } = useOmbraState();
+  const index = Math.max(0, activeAt);
   const count = items.length;
-  const [view, sendView] = useReducerWithBailout(viewReducer, initialViewState);
-  const { sharpIds } = view;
+  const [{ sharpIds }, sendView] = useReducerWithBailout(viewReducer, initialViewState);
   const active = items[index];
 
   useLayoutEffect(() => {

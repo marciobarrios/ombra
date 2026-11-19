@@ -6,6 +6,7 @@ import { cn } from "cn";
 import { useCallback, useLayoutEffect, useRef } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
+import { activeIndex } from "./gallery-state";
 import { useOmbraRoot } from "./ombra-root";
 import type { OmbraRootContextValue } from "./ombra-root";
 import { useReducedMotion } from "./use-reduced-motion";
@@ -117,10 +118,7 @@ export function useOmbraAction<State extends Record<string, unknown>>(
 }
 
 function navigationState({ state }: OmbraRootContextValue): OmbraNavigationState {
-  const { activeId, itemIds } = state;
-  const index = activeId === null ? -1 : itemIds.indexOf(activeId);
-
-  return { activeId, index, count: itemIds.length };
+  return { activeId: state.activeId, index: activeIndex(state), count: state.itemIds.length };
 }
 
 /**

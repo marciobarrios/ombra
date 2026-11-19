@@ -6,7 +6,6 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "cn";
-import { useMemo } from "react";
 
 import { OmbraCounter, OmbraNext, OmbraPrevious } from "./ombra-controls";
 import { OmbraBackdrop, OmbraClose, OmbraContent, OmbraPortal } from "./ombra-dialog";
@@ -63,13 +62,12 @@ function Picture({
 }
 
 export function OmbraAlbum({ title, photos, className, ...root }: OmbraAlbumProps) {
-  const itemIds = useMemo(() => photos.map((photo) => photo.id), [photos]);
   const cover = photos[0];
 
   if (!cover) return null;
 
   return (
-    <OmbraRoot {...root} itemIds={itemIds}>
+    <OmbraRoot {...root} itemIds={photos.map((photo) => photo.id)}>
       <OmbraTrigger
         itemId={cover.id}
         aria-label={`${title}, ${photos.length} photos`}
