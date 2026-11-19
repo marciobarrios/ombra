@@ -232,6 +232,19 @@ test.describe("OmbraZoom", () => {
 
     await page.keyboard.press("ArrowRight");
     await expect(activeSlide(page)).toHaveAttribute("aria-label", second.alt);
+
+    const box = await page.locator("[data-slot=ombra-track]").boundingBox();
+
+    if (!box) throw new Error("track had no box");
+
+    const x = box.x + box.width / 2;
+    const y = box.y + Math.min(72, box.height / 3);
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + 200, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByRole("dialog")).toBeHidden();
   });
 
   test("zoom follows the active slide: on where it is rendered, off where it is not", async ({
