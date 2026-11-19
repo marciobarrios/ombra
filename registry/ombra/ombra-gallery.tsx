@@ -1756,12 +1756,7 @@ export function useOmbraViewer({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const axis = navigationAxis(event.key);
-
-    // Shift with an arrow, Home or End extends a selection.
-    if (axis && event.shiftKey) return;
-
-    if (!viewerShortcut(event, axis)) return;
+    if (!viewerShortcut(event, navigationAxis(event.key))) return;
 
     if (event.key === "ArrowRight") {
       event.preventDefault();
@@ -1794,9 +1789,6 @@ export function useOmbraViewer({
     index,
     count,
     pulling,
-    /** Goes to a position, smoothly unless `behavior` says otherwise. */
-    goTo,
-    step,
     /** Render once, outside the dialog, so a closing view transition still has it. */
     morphStyles: <style data-slot="ombra-morph-styles">{MORPH_STYLES}</style>,
     backdropProps: {

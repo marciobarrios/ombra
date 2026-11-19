@@ -5,12 +5,13 @@ import { cn } from "cn";
 import { useCallback, useSyncExternalStore } from "react";
 
 import { useOmbraAction } from "./ombra-controls";
+import type { OmbraActionProps } from "./ombra-controls";
 import { useOmbraRoot } from "./ombra-root";
 import { useSlideItem } from "./ombra-slides";
 
 export type OmbraZoomProps = useRender.ComponentProps<"div">;
 
-export type OmbraZoomActionProps = useRender.ComponentProps<"button">;
+export type OmbraZoomActionProps = OmbraActionProps;
 
 /**
  * Makes its slide's media zoomable: pinch, double-tap, ctrl+wheel, trackpad pinch and the

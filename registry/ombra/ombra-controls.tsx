@@ -4,7 +4,7 @@ import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cn } from "cn";
 import { useCallback, useLayoutEffect, useRef } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 
 import { ACTION_CLASSES } from "./ombra-dialog";
 import { useOmbraRoot } from "./ombra-root";
@@ -146,10 +146,6 @@ export function stepFrom(root: OmbraRootContextValue, by: -1 | 1, behavior: Scro
   if (itemId !== undefined) navigateTo(root, itemId, behavior);
 }
 
-/** Whether a key belongs to the page rather than the viewer's shortcuts. */
-const BROWSER_MODIFIERS = (event: ReactKeyboardEvent | KeyboardEvent) =>
-  event.metaKey || event.ctrlKey || event.altKey;
-
 // Widgets that use the arrow keys, Home and End themselves.
 const KEY_OWNERS = [
   "input",
@@ -192,15 +188,20 @@ function scrolls(element: Element, axis: "x" | "y"): boolean {
 /**
  * Whether the viewer may act on a key that reached `event.currentTarget`. It leaves alone a
  * key a handler already prevented, browser shortcuts, text entry and other widgets that use
- * the key, and, with `scroller`, a panel of the consumer's that the key would scroll.
+ * the key. A navigation key, given the `scroller` axis it would scroll a panel on, also leaves
+ * a panel of the consumer's alone, and Shift with it extends a selection.
  */
 export function viewerShortcut(
-  event: ReactKeyboardEvent<HTMLElement>,
+  event: KeyboardEvent<HTMLElement>,
   scroller: "x" | "y" | "xy" | null,
 ): boolean {
-  if (event.defaultPrevented || event.nativeEvent.isComposing || BROWSER_MODIFIERS(event)) {
+  const { defaultPrevented, metaKey, ctrlKey, altKey, shiftKey } = event;
+
+  if (defaultPrevented || event.nativeEvent.isComposing || metaKey || ctrlKey || altKey) {
     return false;
   }
+
+  if (scroller !== null && shiftKey) return false;
 
   const target = event.target;
 
@@ -228,20 +229,25 @@ export function viewerShortcut(
   return true;
 }
 
+/** Smooth scrolling, unless the person prefers reduced motion. */
+function useScrollBehavior(): ScrollBehavior {
+  return useReducedMotion() ? "auto" : "smooth";
+}
+
 /**
  * Goes to the previous item. Disabled on the first. Supply visible text or `aria-label` in the
  * consumer's language.
  */
 export function OmbraPrevious(props: OmbraActionProps) {
   const root = useOmbraRoot();
-  const reduced = useReducedMotion();
+  const behavior = useScrollBehavior();
   const { index } = navigationState(root);
 
   return useOmbraAction(
     {
       slot: "ombra-previous",
       disabled: index <= 0,
-      onPress: () => stepFrom(root, -1, reduced ? "auto" : "smooth"),
+      onPress: () => stepFrom(root, -1, behavior),
     },
     props,
   );
@@ -253,14 +259,14 @@ export function OmbraPrevious(props: OmbraActionProps) {
  */
 export function OmbraNext(props: OmbraActionProps) {
   const root = useOmbraRoot();
-  const reduced = useReducedMotion();
+  const behavior = useScrollBehavior();
   const { index, count } = navigationState(root);
 
   return useOmbraAction(
     {
       slot: "ombra-next",
       disabled: index < 0 || index >= count - 1,
-      onPress: () => stepFrom(root, 1, reduced ? "auto" : "smooth"),
+      onPress: () => stepFrom(root, 1, behavior),
     },
     props,
   );
@@ -374,7 +380,7 @@ export function OmbraThumbnails({
   ...props
 }: OmbraThumbnailsProps) {
   const { state: root } = useOmbraRoot();
-  const reduced = useReducedMotion();
+  const behavior = useScrollBehavior();
   const [state, send] = useReducerWithBailout(stripReducer, { overflowing: false });
   const stripRef = useRef<HTMLDivElement | null>(null);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -410,7 +416,7 @@ export function OmbraThumbnails({
     return () => {
       observer.disconnect();
     };
-  }, [send, root.phase, root.itemIds.length, overflowing]);
+  }, [send]);
 
   useLayoutEffect(() => {
     const strip = stripRef.current;
@@ -424,8 +430,8 @@ export function OmbraThumbnails({
     const delta = current.getBoundingClientRect().left - strip.getBoundingClientRect().left;
     const left = strip.scrollLeft + delta - (strip.clientWidth - current.clientWidth) / 2;
 
-    strip.scrollTo({ left: Math.max(0, left), behavior: reduced ? "auto" : "smooth" });
-  }, [root.activeId, root.phase, reduced, overflowing]);
+    strip.scrollTo({ left: Math.max(0, left), behavior });
+  }, [root.activeId, root.phase, behavior, overflowing]);
 
   const strip = useRender({
     render,
@@ -472,14 +478,14 @@ export function OmbraThumbnails({
  */
 export function OmbraThumbnail({ itemId, ...props }: OmbraThumbnailProps) {
   const root = useOmbraRoot();
-  const reduced = useReducedMotion();
+  const behavior = useScrollBehavior();
   const active = root.state.activeId === itemId;
 
   return useOmbraAction(
     {
       slot: "ombra-thumbnail",
       disabled: false,
-      onPress: () => navigateTo(root, itemId, reduced ? "auto" : "smooth"),
+      onPress: () => navigateTo(root, itemId, behavior),
       classes: cn(
         "size-11 shrink-0 snap-center overflow-hidden rounded-lg border-2 p-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current",
         active ? "border-current" : "border-transparent opacity-60",
