@@ -26,16 +26,35 @@ The docs app serves the home page and the spike at <http://127.0.0.1:3000/spike>
 | `pnpm typecheck`                    | `next typegen` and `tsc`                                  |
 | `pnpm test:e2e`                     | Playwright (Chromium, WebKit, and mobile device profiles) |
 | `pnpm registry:build`               | `shadcn build` into `apps/docs/public/r`                  |
+| `pnpm registry:validate`            | `shadcn registry validate` on `registry.json`             |
 
 `pnpm test:e2e` expects a production build already, because Playwright starts `next start`.
 
+## Install
+
+Ombra needs a project set up for shadcn with Tailwind CSS 4 (`npx shadcn@latest init`). Then add the core item from the docs site:
+
+```bash
+npx shadcn@latest add https://www.useombra.dev/r/ombra.json
+```
+
+That copies every part and both recipes into `components/ombra/` (`src/components/ombra/` in a `src/` project), adds `@base-ui/react` and `cn` to your dependencies, and appends the pull-to-dismiss styles to your global CSS. No animation library is installed. Import from the copied files:
+
+```tsx
+import { OmbraGallery } from "@/components/ombra/ombra-gallery";
+```
+
+The repository is public, so the docs site's URL is the only install path; it needs no token. To install from a branch or a fork instead, build the registry (`pnpm registry:build`) and pass the built file's path or URL to `shadcn add`.
+
 ## Registry
 
-`registry.json` at the repo root is the install entry. `pnpm registry:build` writes `apps/docs/public/r` (gitignored) so the docs site can serve the built items. Items in this spike:
+`registry.json` at the repo root is the install entry. `pnpm registry:build` writes `apps/docs/public/r` (gitignored) so the docs site can serve the built items, and `pnpm registry:validate` checks it (CI runs both). Every file has a `target` in `components/ombra/`, because the files import each other relatively; without it shadcn would split them across `components/`, `lib/` and `hooks/`. Items:
 
-- `ombra` — gallery, morph, pull, and zoom used by the spike. The compound API is not final.
+- `ombra` — the parts, the gallery and album recipes, and the morph, pull and zoom internals. Its `css` carries the pull styles, which the docs app keeps in `globals.css`.
 - `ombra-morph` — geometry, FLIP / View Transition helpers, and the frame sampler.
 - `ombra-zoom` — pinch, double-tap, ctrl+wheel, and Safari trackpad-pinch zoom.
+
+One installable item per part and recipe comes in [MAR-87](https://linear.app/marciobarrios/issue/MAR-87).
 
 ## Deploying the docs app
 

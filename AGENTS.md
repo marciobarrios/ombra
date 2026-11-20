@@ -40,6 +40,9 @@ Ombra is a shadcn registry, not an npm component library. Users copy files. Do n
 - Item names are `ombra-*`.
 - Source lives in `registry/ombra`. `registry/package.json` exists only so the workspace can resolve `react` and `@base-ui/react` for files outside `apps/docs`. `shadcn build` does not publish that package file. Run the build from the repo root: `shadcn build registry.json -o apps/docs/public/r`. Paths in `registry.json` are relative to that file, and the CLI resolves them from the process cwd.
 - Built JSON under `apps/docs/public/r` is generated. Do not commit it.
+- Every registry file has `target: "components/ombra/<file>"`, because the files import each other relatively. A new file needs one too, and a relative import must point at a file in the same item (`e2e/registry-items.spec.ts` checks both).
+- Global CSS the viewer needs ships through the item's `css` in `registry.json`, never only through the docs app's `globals.css`. The pull styles live in both; keep them the same.
+- Registry code must typecheck in a consumer's project: TypeScript 5 or 6, no `@types/node` (Vite).
 - The spike UI may live in `apps/docs/app/spike`. Promote something into `registry/ombra` only when the behaviour is worth keeping.
 
 ## State

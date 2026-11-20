@@ -142,6 +142,8 @@
   font-family: var(--font-display), "Iowan Old Style", Palatino, serif;
 }
 
+/* The pull styles below ship to users through the `css` field of the `ombra` item in
+   registry.json. Keep the two copies the same. */
 @property --ombra-pull-live {
   syntax: "<number>";
   inherits: true;
