@@ -12,7 +12,8 @@
     "format:check": "oxfmt --check",
     "typecheck": "pnpm --filter docs typecheck && tsc -p tsconfig.json --noEmit",
     "test:e2e": "playwright test",
-    "registry:build": "shadcn build registry.json -o apps/docs/public/r"
+    "registry:build": "shadcn build registry.json -o apps/docs/public/r",
+    "registry:validate": "shadcn registry validate registry.json"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.91.0",
