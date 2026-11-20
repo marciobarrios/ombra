@@ -286,6 +286,10 @@ function ownerReducer(_: string | null, action: OwnerAction): string | null {
   return action.triggerId;
 }
 
+// Next.js and Vite replace `process.env.NODE_ENV` at build time. Declared here so a
+// project without `@types/node` (a Vite app) still typechecks.
+declare const process: { env: { NODE_ENV?: string } };
+
 function warn(message: string) {
   if (process.env.NODE_ENV !== "production") console.warn(`Ombra: ${message}`);
 }
@@ -312,15 +316,15 @@ export function OmbraRoot({
   const lastSeen = useRef<{ itemId: string; ids: readonly string[] } | null>(null);
 
   let activeId: string | null;
+  // A local, so TypeScript 5 (in a consumer's project) narrows it as well as 7 does.
+  const seen = lastSeen.current;
 
   if (requested !== null && state.itemIds.includes(requested)) {
     activeId = requested;
     lastSeen.current = { itemId: requested, ids: state.itemIds };
-  } else if (requested !== null && lastSeen.current?.itemId === requested) {
+  } else if (requested !== null && seen !== null && seen.itemId === requested) {
     activeId =
-      neighbourAfterRemoval(lastSeen.current.ids, state.itemIds, requested) ??
-      state.itemIds[0] ??
-      null;
+      neighbourAfterRemoval(seen.ids, state.itemIds, requested) ?? state.itemIds[0] ?? null;
   } else {
     activeId = state.itemIds[0] ?? null;
   }

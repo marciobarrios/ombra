@@ -10,28 +10,136 @@
       "description": "Composable lightbox parts (root, trigger, dialog shell, slides, media, zoom, controls) with two editable recipes: a grid gallery and a single-cover album.",
       "dependencies": ["@base-ui/react", "cn"],
       "registryDependencies": ["utils"],
+      "css": {
+        "@property --ombra-pull-live": {
+          "syntax": "\"<number>\"",
+          "inherits": "true",
+          "initial-value": "0"
+        },
+        ":root": {
+          "--ombra-pull-amount": "max(var(--ombra-pull-live), -1 * var(--ombra-pull-live))"
+        },
+        "[data-slot=\"ombra-sheet\"]": {
+          "transform": "translate3d(0, calc(var(--ombra-pull-live) * 22dvh), 0) scale(calc(1 - var(--ombra-pull-amount) * 0.07))",
+          "transform-origin": "center center",
+          "border-radius": "calc(var(--ombra-pull-amount) * 24px)"
+        },
+        "[data-slot=\"ombra-backdrop\"]": {
+          "opacity": "calc(1 - var(--ombra-pull-amount) * 0.7)"
+        },
+        "@media (prefers-reduced-motion: reduce)": {
+          "[data-slot=\"ombra-sheet\"]": {
+            "transform": "none",
+            "border-radius": "0"
+          }
+        }
+      },
       "files": [
-        { "path": "registry/ombra/ombra-gallery.tsx", "type": "registry:component" },
-        { "path": "registry/ombra/ombra-album.tsx", "type": "registry:component" },
-        { "path": "registry/ombra/ombra-root.tsx", "type": "registry:component" },
-        { "path": "registry/ombra/ombra-dialog.tsx", "type": "registry:component" },
-        { "path": "registry/ombra/ombra-trigger.tsx", "type": "registry:component" },
-        { "path": "registry/ombra/ombra-slides.tsx", "type": "registry:component" },
-        { "path": "registry/ombra/ombra-zoom.tsx", "type": "registry:component" },
-        { "path": "registry/ombra/ombra-controls.tsx", "type": "registry:component" },
-        { "path": "registry/ombra/ombra-viewer.tsx", "type": "registry:component" },
-        { "path": "registry/ombra/close-input.ts", "type": "registry:lib" },
-        { "path": "registry/ombra/types.ts", "type": "registry:lib" },
-        { "path": "registry/ombra/geometry.ts", "type": "registry:lib" },
-        { "path": "registry/ombra/morph.ts", "type": "registry:lib" },
-        { "path": "registry/ombra/spring.ts", "type": "registry:lib" },
-        { "path": "registry/ombra/frame-sampler.ts", "type": "registry:lib" },
-        { "path": "registry/ombra/gallery-state.ts", "type": "registry:lib" },
-        { "path": "registry/ombra/use-reducer-with-bailout.ts", "type": "registry:hook" },
-        { "path": "registry/ombra/use-reduced-motion.ts", "type": "registry:hook" },
-        { "path": "registry/ombra/use-page-zoom-guard.ts", "type": "registry:hook" },
-        { "path": "registry/ombra/use-pull.ts", "type": "registry:hook" },
-        { "path": "registry/ombra/use-zoom.ts", "type": "registry:hook" }
+        {
+          "path": "registry/ombra/ombra-gallery.tsx",
+          "type": "registry:component",
+          "target": "components/ombra/ombra-gallery.tsx"
+        },
+        {
+          "path": "registry/ombra/ombra-album.tsx",
+          "type": "registry:component",
+          "target": "components/ombra/ombra-album.tsx"
+        },
+        {
+          "path": "registry/ombra/ombra-root.tsx",
+          "type": "registry:component",
+          "target": "components/ombra/ombra-root.tsx"
+        },
+        {
+          "path": "registry/ombra/ombra-dialog.tsx",
+          "type": "registry:component",
+          "target": "components/ombra/ombra-dialog.tsx"
+        },
+        {
+          "path": "registry/ombra/ombra-trigger.tsx",
+          "type": "registry:component",
+          "target": "components/ombra/ombra-trigger.tsx"
+        },
+        {
+          "path": "registry/ombra/ombra-slides.tsx",
+          "type": "registry:component",
+          "target": "components/ombra/ombra-slides.tsx"
+        },
+        {
+          "path": "registry/ombra/ombra-zoom.tsx",
+          "type": "registry:component",
+          "target": "components/ombra/ombra-zoom.tsx"
+        },
+        {
+          "path": "registry/ombra/ombra-controls.tsx",
+          "type": "registry:component",
+          "target": "components/ombra/ombra-controls.tsx"
+        },
+        {
+          "path": "registry/ombra/ombra-viewer.tsx",
+          "type": "registry:component",
+          "target": "components/ombra/ombra-viewer.tsx"
+        },
+        {
+          "path": "registry/ombra/close-input.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/close-input.ts"
+        },
+        {
+          "path": "registry/ombra/types.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/types.ts"
+        },
+        {
+          "path": "registry/ombra/geometry.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/geometry.ts"
+        },
+        {
+          "path": "registry/ombra/morph.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/morph.ts"
+        },
+        {
+          "path": "registry/ombra/spring.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/spring.ts"
+        },
+        {
+          "path": "registry/ombra/frame-sampler.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/frame-sampler.ts"
+        },
+        {
+          "path": "registry/ombra/gallery-state.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/gallery-state.ts"
+        },
+        {
+          "path": "registry/ombra/use-reducer-with-bailout.ts",
+          "type": "registry:hook",
+          "target": "components/ombra/use-reducer-with-bailout.ts"
+        },
+        {
+          "path": "registry/ombra/use-reduced-motion.ts",
+          "type": "registry:hook",
+          "target": "components/ombra/use-reduced-motion.ts"
+        },
+        {
+          "path": "registry/ombra/use-page-zoom-guard.ts",
+          "type": "registry:hook",
+          "target": "components/ombra/use-page-zoom-guard.ts"
+        },
+        {
+          "path": "registry/ombra/use-pull.ts",
+          "type": "registry:hook",
+          "target": "components/ombra/use-pull.ts"
+        },
+        {
+          "path": "registry/ombra/use-zoom.ts",
+          "type": "registry:hook",
+          "target": "components/ombra/use-zoom.ts"
+        }
       ]
     },
     {
@@ -40,11 +148,31 @@
       "title": "Ombra morph",
       "description": "View Transition, WAAPI FLIP, and fade helpers for the open and close morph.",
       "files": [
-        { "path": "registry/ombra/types.ts", "type": "registry:lib" },
-        { "path": "registry/ombra/geometry.ts", "type": "registry:lib" },
-        { "path": "registry/ombra/morph.ts", "type": "registry:lib" },
-        { "path": "registry/ombra/spring.ts", "type": "registry:lib" },
-        { "path": "registry/ombra/frame-sampler.ts", "type": "registry:lib" }
+        {
+          "path": "registry/ombra/types.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/types.ts"
+        },
+        {
+          "path": "registry/ombra/geometry.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/geometry.ts"
+        },
+        {
+          "path": "registry/ombra/morph.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/morph.ts"
+        },
+        {
+          "path": "registry/ombra/spring.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/spring.ts"
+        },
+        {
+          "path": "registry/ombra/frame-sampler.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/frame-sampler.ts"
+        }
       ]
     },
     {
@@ -53,9 +181,21 @@
       "title": "Ombra zoom",
       "description": "Pinch, double-tap, and ctrl+wheel zoom with scroll-snap hand-off.",
       "files": [
-        { "path": "registry/ombra/use-zoom.ts", "type": "registry:hook" },
-        { "path": "registry/ombra/use-reducer-with-bailout.ts", "type": "registry:hook" },
-        { "path": "registry/ombra/spring.ts", "type": "registry:lib" }
+        {
+          "path": "registry/ombra/use-zoom.ts",
+          "type": "registry:hook",
+          "target": "components/ombra/use-zoom.ts"
+        },
+        {
+          "path": "registry/ombra/use-reducer-with-bailout.ts",
+          "type": "registry:hook",
+          "target": "components/ombra/use-reducer-with-bailout.ts"
+        },
+        {
+          "path": "registry/ombra/spring.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/spring.ts"
+        }
       ]
     }
   ]
