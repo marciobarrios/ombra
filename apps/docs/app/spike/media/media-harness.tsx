@@ -2,7 +2,6 @@
 
 import { Dialog } from "@base-ui/react/dialog";
 import Image from "next/image";
-import { useLayoutEffect } from "react";
 
 import {
   OmbraBackdrop,
@@ -10,44 +9,23 @@ import {
   OmbraContent,
   OmbraPortal,
 } from "../../../../../registry/ombra/ombra-dialog";
-import { useOmbraViewer } from "../../../../../registry/ombra/ombra-gallery";
-import { OmbraRoot, useOmbraRoot } from "../../../../../registry/ombra/ombra-root";
+import { OmbraRoot, useOmbraState } from "../../../../../registry/ombra/ombra-root";
 import { OmbraMedia, OmbraSlide, OmbraSlides } from "../../../../../registry/ombra/ombra-slides";
 import { OmbraTrigger } from "../../../../../registry/ombra/ombra-trigger";
 
 import { photos } from "../photos";
 
 const items = photos.slice(0, 4);
-
-/** The slides only mount with the viewer, so the bench registers the collection itself. */
-function RegisteredItems() {
-  const { registerItem, triggerFor } = useOmbraRoot();
-
-  useLayoutEffect(() => {
-    const stops = items.map((item) => registerItem(item.id, triggerFor(item.id)?.element ?? null));
-
-    return () => {
-      for (const stop of stops) stop();
-    };
-  }, [registerItem, triggerFor]);
-
-  return null;
-}
+const itemIds = items.map((item) => item.id);
 
 function Viewer() {
-  const viewer = useOmbraViewer();
-  const active = items[viewer.index];
+  const active = items[Math.max(0, useOmbraState().index)];
 
   return (
     <>
-      {viewer.morphStyles}
       <OmbraPortal>
-        <OmbraBackdrop {...viewer.backdropProps} />
-        <OmbraContent
-          {...viewer.contentProps}
-          data-slot="ombra-viewer"
-          className={viewer.contentProps.className}
-        >
+        <OmbraBackdrop />
+        <OmbraContent data-slot="ombra-viewer">
           <Dialog.Title className="sr-only">{active?.alt ?? "Photo"}</Dialog.Title>
           <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
             <header className="flex justify-end p-3">
@@ -94,8 +72,7 @@ export function MediaHarness() {
   return (
     <main className="mx-auto grid w-full max-w-3xl gap-6 px-4 py-12">
       <h1 className="text-2xl text-foreground">OmbraMedia test bench</h1>
-      <OmbraRoot>
-        <RegisteredItems />
+      <OmbraRoot itemIds={itemIds}>
         <div className="grid grid-cols-4 gap-3">
           {items.map((item) => (
             <OmbraTrigger

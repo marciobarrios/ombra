@@ -36,6 +36,11 @@ export function isOpen(state: GalleryState): boolean {
   return state.phase !== "closed";
 }
 
+/** The active item's position in the collection, or -1 when there is none. */
+export function activeIndex(state: GalleryState): number {
+  return state.activeId === null ? -1 : state.itemIds.indexOf(state.activeId);
+}
+
 /** Open as the consumer sees it: a closing viewer is already closed for `onOpenChange`. */
 export function isOpening(phase: Phase): boolean {
   return phase === "opening" || phase === "open";

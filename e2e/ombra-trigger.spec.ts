@@ -149,10 +149,9 @@ test.describe("OmbraTrigger", () => {
     await expect(trigger(page, road.alt)).toHaveCount(0);
     await expect(page.locator("[data-slot=ombra-trigger][aria-expanded=true]")).toHaveCount(0);
 
-    // Without a viewer, Base UI's default applies: focus goes back to the page, not to
-    // another item's trigger. The gallery moves it to the nearest trigger instead.
+    // The viewer that OmbraPortal runs moves focus to the nearest trigger still rendered.
     await close(page);
-    await expect(page.locator("[data-slot=ombra-trigger]:focus")).toHaveCount(0);
+    await expect(trigger(page, ridge.alt)).toBeFocused();
   });
 });
 

@@ -3,6 +3,7 @@
 import { useEffect, useReducer, useRef } from "react";
 
 import { OmbraGallery } from "../../../../registry/ombra/ombra-gallery";
+import { OmbraDiagnostics } from "../../../../registry/ombra/ombra-viewer";
 import type { MorphEngine } from "../../../../registry/ombra/types";
 import { useReducedMotion } from "../../../../registry/ombra/use-reduced-motion";
 
@@ -120,16 +121,16 @@ export function SpikeApp({
             dispatch({ type: "spring-changed", spring: next });
           }}
         />
-        <OmbraGallery
-          items={photos}
-          engine={engine}
+        <OmbraDiagnostics
           slow={slow}
           spring={spring}
           onFrameSample={(kind, sample) => {
             benchListener.current?.(kind, sample);
             sendReadout({ type: "sampled", kind, condition: readoutConditionRef.current, sample });
           }}
-        />
+        >
+          <OmbraGallery items={photos} morph={engine} />
+        </OmbraDiagnostics>
       </div>
     </main>
   );

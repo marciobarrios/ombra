@@ -6,7 +6,7 @@ import { cn } from "cn";
 import { useCallback, useLayoutEffect, useRef } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
-import { ACTION_CLASSES } from "./ombra-dialog";
+import { activeIndex } from "./gallery-state";
 import { useOmbraRoot } from "./ombra-root";
 import type { OmbraRootContextValue } from "./ombra-root";
 import { useReducedMotion } from "./use-reduced-motion";
@@ -64,6 +64,13 @@ type ActionOptions<State extends Record<string, unknown>> = {
 };
 
 /**
+ * The viewer's round action buttons. Repeated taps must not invoke Safari's native
+ * double-tap zoom, so they set `touch-action: manipulation`.
+ */
+export const ACTION_CLASSES =
+  "inline-flex size-11 touch-manipulation items-center justify-center rounded-full text-current focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-30";
+
+/**
  * A button part. The caller's handler runs first, and may call
  * `event.preventBaseUIHandler()` to cancel `onPress`.
  */
@@ -111,10 +118,7 @@ export function useOmbraAction<State extends Record<string, unknown>>(
 }
 
 function navigationState({ state }: OmbraRootContextValue): OmbraNavigationState {
-  const { activeId, itemIds } = state;
-  const index = activeId === null ? -1 : itemIds.indexOf(activeId);
-
-  return { activeId, index, count: itemIds.length };
+  return { activeId: state.activeId, index: activeIndex(state), count: state.itemIds.length };
 }
 
 /**
