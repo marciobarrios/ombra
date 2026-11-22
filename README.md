@@ -25,10 +25,15 @@ The docs app serves the home page and the spike at <http://127.0.0.1:3000/spike>
 | `pnpm format` / `pnpm format:check` | Oxfmt                                                     |
 | `pnpm typecheck`                    | `next typegen` and `tsc`                                  |
 | `pnpm test:e2e`                     | Playwright (Chromium, WebKit, and mobile device profiles) |
+| `pnpm budget`                       | Core gzip size, animation libraries, and the overrun test |
 | `pnpm registry:build`               | `shadcn build` into `apps/docs/public/r`                  |
 | `pnpm registry:validate`            | `shadcn registry validate` on `registry.json`             |
 
 `pnpm test:e2e` expects a production build already, because Playwright starts `next start`.
+
+## Performance
+
+The budget, how each number is measured, and the iPhone frame-time readout are in [PERFORMANCE.md](PERFORMANCE.md) and on the docs site at `/performance`. `pnpm budget` fails when the gallery and album bundle, zoom included and Base UI excluded, gzip past 27 KB, or when the core imports an animation library. The Chromium suite fails when a sampled gesture frame passes 50 ms.
 
 ## Install
 

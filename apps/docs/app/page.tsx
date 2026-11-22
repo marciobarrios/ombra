@@ -23,6 +23,12 @@ export default function Home() {
         >
           Open the morph spike
         </Link>
+        <Link
+          href="/performance"
+          className="inline-flex min-h-11 items-center text-sm underline decoration-foreground/30 underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        >
+          Performance budget
+        </Link>
       </div>
     </main>
   );
