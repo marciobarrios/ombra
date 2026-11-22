@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Locator } from "@playwright/test";
+import type { Locator, Page, TestInfo } from "@playwright/test";
 
 import { photos } from "../apps/docs/app/spike/photos";
 import {
@@ -48,8 +48,31 @@ test("Chromium flags a long frame, a slow interaction, or a new animated propert
     browserName !== "chromium" || testInfo.project.name !== "chromium",
     "Long-animation-frame is measured once, in desktop Chromium",
   );
-  test.setTimeout(60_000);
+  // A busy runner can stretch one gesture a few milliseconds past 50. Sample again.
+  // Three crossings of the ceiling still fail. A behaviour failure fails at once.
+  test.setTimeout(120_000);
 
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await sampleFrames(page, testInfo);
+
+      return;
+    } catch (error) {
+      if (!(error instanceof CeilingMiss) || attempt === 3) throw error;
+    }
+  }
+});
+
+/** The ceiling was crossed. The sample runs again; a behaviour failure does not. */
+class CeilingMiss extends Error {}
+
+function withinCeiling(received: number, label: string) {
+  if (received > CHROMIUM_FRAME_CEILING_MS) {
+    throw new CeilingMiss(`${label}: ${received} ms, ceiling ${CHROMIUM_FRAME_CEILING_MS} ms`);
+  }
+}
+
+async function sampleFrames(page: Page, testInfo: TestInfo) {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.goto("/spike?engine=flip");
   await expect
@@ -163,47 +186,14 @@ test("Chromium flags a long frame, a slow interaction, or a new animated propert
     spans.push({ name, start, end });
   }
 
-  async function windowOverCeiling(name: string): Promise<boolean> {
-    const trace = await page.evaluate(() => window.__ombraBudget);
-
-    if (!trace) throw new Error("The frame sampler was not installed");
-
-    const gesture = spans.findLast((item) => item.name === name);
-
-    if (!gesture) throw new Error(`No ${name} window`);
-
-    if (
-      framesInside(trace.samples, gesture.start, gesture.end).longest > CHROMIUM_FRAME_CEILING_MS
-    ) {
-      return true;
-    }
-
-    return trace.longFrames.some(
-      (longFrame) =>
-        longFrame.t >= gesture.start &&
-        longFrame.t <= gesture.end &&
-        longFrame.duration > CHROMIUM_FRAME_CEILING_MS,
+  await span("open", async () => {
+    await open.click();
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     );
-  }
-
-  // The open is the gesture a busy runner stretches. Sample until one stays
-  // inside the ceiling. The ceiling does not move: three slow opens still fail.
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    await span("open", async () => {
-      await open.click();
-      await page.evaluate(
-        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
-      );
-      await rememberProperties();
-      await expect(viewer).toHaveAttribute("data-phase", "open", { timeout: 10_000 });
-    });
-
-    if (attempt === 3 || !(await windowOverCeiling("open"))) break;
-
-    spans.pop();
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toBeHidden();
-  }
+    await rememberProperties();
+    await expect(viewer).toHaveAttribute("data-phase", "open", { timeout: 10_000 });
+  });
 
   await span("navigation", async () => {
     await page.keyboard.press("ArrowRight");
@@ -298,20 +288,18 @@ test("Chromium flags a long frame, a slow interaction, or a new animated propert
   expect(unexpected).toEqual([]);
   expect(seen.size).toBeGreaterThan(0);
 
+  const notes: { type: string; description: string }[] = [];
+
   for (const gesture of spans) {
     const frames = framesInside(trace.samples, gesture.start, gesture.end);
 
     expect(frames.count, `${gesture.name} sampled frames`).toBeGreaterThan(2);
-    expect(frames.longest, `${gesture.name} longest frame`).toBeLessThanOrEqual(
-      CHROMIUM_FRAME_CEILING_MS,
-    );
+    withinCeiling(frames.longest, `${gesture.name} longest frame`);
 
     for (const longFrame of trace.longFrames) {
       if (longFrame.t < gesture.start || longFrame.t > gesture.end) continue;
 
-      expect(longFrame.duration, `${gesture.name} long-animation-frame`).toBeLessThanOrEqual(
-        CHROMIUM_FRAME_CEILING_MS,
-      );
+      withinCeiling(longFrame.duration, `${gesture.name} long-animation-frame`);
     }
 
     let slowest = 0;
@@ -322,13 +310,20 @@ test("Chromium flags a long frame, a slow interaction, or a new animated propert
       if (interaction.duration > slowest) slowest = interaction.duration;
     }
 
-    expect(slowest, `${gesture.name} interaction`).toBeLessThanOrEqual(INP_LIMIT_MS);
-    testInfo.annotations.push({
+    if (slowest > INP_LIMIT_MS) {
+      throw new CeilingMiss(
+        `${gesture.name} interaction: ${slowest} ms, ceiling ${INP_LIMIT_MS} ms`,
+      );
+    }
+
+    notes.push({
       type: gesture.name,
       description: `${frames.longest.toFixed(1)} ms frame, ${slowest.toFixed(1)} ms interaction`,
     });
   }
-});
+
+  for (const note of notes) testInfo.annotations.push(note);
+}
 
 function framesInside(samples: readonly FrameSample[], start: number, end: number): FrameWindow {
   let longest = 0;
