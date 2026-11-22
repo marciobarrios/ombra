@@ -201,7 +201,19 @@ test("a tap hides the chrome and the keyboard can still reach it", async ({ page
   await expect(page.getByRole("button", { name: "Close", exact: true })).not.toHaveAttribute(
     "aria-hidden",
   );
-  await expect(viewer(page)).toBeFocused();
+  // A click can focus the track instead of the dialog. Either is inside the viewer.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const dialog = document.querySelector("[data-slot=ombra-viewer]");
+        const active = document.activeElement;
+
+        return Boolean(
+          dialog && active instanceof Node && (dialog === active || dialog.contains(active)),
+        );
+      }),
+    )
+    .toBe(true);
 
   // The shortcuts do not depend on the controls being on screen.
   await page.keyboard.press("ArrowRight");

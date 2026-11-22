@@ -282,16 +282,20 @@ export function useOmbraViewer() {
 
     sendChrome({ type: "chrome-toggled" });
 
-    // A tap leaves focus on the close button, and focus inside a chrome region
-    // shows that region. Move focus to the dialog, which is not in the tab order,
-    // so the controls can actually disappear. The next Tab reaches them again.
+    // Focus inside a chrome region shows that region, and focus on the page means
+    // the next key never reaches the viewer. The dialog is outside the tab order,
+    // so it can hold focus while the controls disappear. A tap that focused the
+    // track leaves that focus alone: the track is inside the dialog and already
+    // receives the shortcuts.
     if (!hiding || !popup) return;
 
     const active = document.activeElement;
+    const inside = active instanceof Node && popup.contains(active);
 
-    if (active instanceof HTMLElement && active.closest("[data-slot=ombra-chrome]")) {
-      popup.focus({ preventScroll: true });
-    }
+    const inChrome =
+      active instanceof Element && active.closest("[data-slot=ombra-chrome]") !== null;
+
+    if (!inside || inChrome) popup.focus({ preventScroll: true });
   };
 
   rootRef.current = root;
