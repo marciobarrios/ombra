@@ -1359,9 +1359,11 @@ test.describe("spike viewer", () => {
       await page.emulateMedia({ reducedMotion: "no-preference" });
       await openAndHover(page, "engine=flip");
 
-      // A small push up, then sideways with no pause, while the wheel is still busy.
+      // A small push up, then sideways while that wheel is still busy. The sideways
+      // events go out together: a pause between them stretches past the track's
+      // rest on a busy runner, and the track snaps back to this photo.
       await swipe(page, 0, 8, 3);
-      await swipe(page, 40, 0, 8);
+      await Promise.all(Array.from({ length: 8 }, () => page.mouse.wheel(40, 0)));
 
       await expect
         .poll(() => page.locator("[data-slot=ombra-track]").evaluate((track) => track.scrollLeft))
