@@ -10,12 +10,20 @@ export default function Home() {
         browser animations, fluid gestures, and zero animation-library dependencies. Copy the
         source, make it yours, and give your images room to shine.
       </p>
-      <Link
-        href="/spike"
-        className="mt-8 inline-flex min-h-11 items-center self-start rounded-full bg-foreground px-5 text-sm text-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-      >
-        Open the morph spike
-      </Link>
+      <div className="mt-8 flex flex-col items-start gap-3">
+        <Link
+          href="/spike"
+          className="inline-flex min-h-11 items-center self-start rounded-full bg-foreground px-5 text-sm text-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        >
+          Open the morph spike
+        </Link>
+        <Link
+          href="/performance"
+          className="inline-flex min-h-11 items-center text-sm underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        >
+          Performance budget
+        </Link>
+      </div>
     </main>
   );
 }
