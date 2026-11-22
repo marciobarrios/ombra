@@ -1040,6 +1040,13 @@ export function useOmbraViewer() {
     sheetAnimationRef.current?.cancel();
     sheetAnimationRef.current = null;
 
+    // Reduced motion fades the close. The sheet stays where it rests, with no pull scale.
+    if (reducedRef.current) {
+      clearSheetHold();
+
+      return;
+    }
+
     // The pull is signed: negative while the photo is pushed up.
     const amount = Math.abs(pull);
 

@@ -38,6 +38,17 @@ type ViewAction = { type: "decoded"; id: string };
 
 const initialViewState: ViewState = { sharpIds: new Set() };
 
+function slideAnnouncement(
+  items: readonly OmbraGalleryItem[],
+  itemId: string,
+  position: number,
+  count: number,
+): string {
+  const caption = items.find((item) => item.id === itemId)?.caption;
+
+  return caption ? `Image ${position} of ${count}. ${caption}` : `Image ${position} of ${count}`;
+}
+
 function viewReducer(state: ViewState, action: ViewAction): ViewState {
   switch (action.type) {
     case "decoded":
@@ -123,7 +134,9 @@ function GalleryParts({ items, className }: Pick<OmbraGalleryProps, "items" | "c
       <OmbraPortal>
         <OmbraBackdrop />
         <OmbraContent data-slot="ombra-viewer" className="p-0">
-          <Dialog.Title className="sr-only">{active?.alt ?? "Photo"}</Dialog.Title>
+          <Dialog.Title className="sr-only">
+            {active?.alt || active?.caption || "Photo"}
+          </Dialog.Title>
           <Dialog.Description className="sr-only">{active?.caption ?? ""}</Dialog.Description>
           <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
             <OmbraChrome>
@@ -151,7 +164,12 @@ function GalleryParts({ items, className }: Pick<OmbraGalleryProps, "items" | "c
             </OmbraChrome>
 
             <div className="relative min-h-0 min-w-0 flex-1">
-              <OmbraSlides>
+              <OmbraSlides
+                aria-label="Photographs"
+                announce={(itemId, position, count) =>
+                  slideAnnouncement(items, itemId, position, count)
+                }
+              >
                 {items.map((item, itemIndex) => {
                   const sharp = sharpIds.has(item.id);
                   const current = itemIndex === index;
@@ -174,7 +192,7 @@ function GalleryParts({ items, className }: Pick<OmbraGalleryProps, "items" | "c
                             src={sharp ? item.src : item.thumbSrc}
                             srcSet={sharp ? item.srcSet : undefined}
                             sizes="100vw"
-                            alt=""
+                            alt={current ? item.alt : ""}
                             width={item.width}
                             height={item.height}
                             draggable={false}
@@ -231,9 +249,6 @@ function GalleryParts({ items, className }: Pick<OmbraGalleryProps, "items" | "c
               </footer>
             </OmbraChrome>
           </div>
-          <p role="status" data-slot="ombra-live" className="sr-only">
-            {open ? `${index + 1} of ${count}. ${active?.caption ?? ""}` : ""}
-          </p>
         </OmbraContent>
       </OmbraPortal>
     </div>
