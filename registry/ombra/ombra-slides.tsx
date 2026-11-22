@@ -206,9 +206,12 @@ export function OmbraSlides({ ref, className, render, children, ...props }: Ombr
     props: {
       "data-slot": "ombra-track",
       ...props,
+      // A tab stop, so this scrollable region is keyboard-reachable. The dialog handles
+      // Arrow, Home and End from here the same way it does from any other control.
+      tabIndex: 0,
       className: cn(
         // Each slide is 86% of the track, so its neighbours peek in from both sides.
-        "@container flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        "@container flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current",
         className,
       ),
       children: (
