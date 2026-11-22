@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useReducer, useRef } from "react";
 
 import { OmbraGallery } from "../../../../registry/ombra/ombra-gallery";
@@ -93,7 +94,11 @@ export function SpikeApp({
       <p className="mt-6 max-w-xl text-lg leading-8 text-foreground/80">
         Open a photograph. It should leave its place in the grid and come back to the same one.
         Switch the morph engine, including from the address bar, and watch the frame-time readout.
-        Nothing here is the final component API.
+        The pass bar is the{" "}
+        <Link href="/performance" className="underline-offset-4 hover:underline">
+          performance budget
+        </Link>
+        . Nothing here is the final component API.
       </p>
       {reducedNote()}
       {debugZoom && <ZoomDiagnostics />}
