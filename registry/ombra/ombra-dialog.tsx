@@ -170,6 +170,27 @@ export function OmbraContent({
   });
 }
 
+export type OmbraChromeProps = useRender.ComponentProps<"div">;
+
+/**
+ * A region of controls a tap on the photo hides, and a second tap shows. While it is
+ * hidden it stays in the tab order: focus inside it shows it again. The hiding rules
+ * ship in the registry item's CSS, and they fade the region without changing its box,
+ * so the photo does not move.
+ */
+export function OmbraChrome({ ref, className, render, ...props }: OmbraChromeProps) {
+  return useRender({
+    defaultTagName: "div",
+    render,
+    ref,
+    props: {
+      "data-slot": "ombra-chrome",
+      ...props,
+      className,
+    },
+  });
+}
+
 /** Supply visible text or aria-label in the consumer's language. */
 export function OmbraClose({ className, ...props }: OmbraCloseProps) {
   return (

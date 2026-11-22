@@ -175,10 +175,10 @@ slides.
 
 ## Implemented zoom (MAR-141)
 
-`registry/ombra/ombra-zoom.tsx` exports `OmbraZoom`, `OmbraZoomIn`, and
-`OmbraZoomOut`. Each renders one element with a `data-slot` (`ombra-zoom`,
-`ombra-zoom-in`, `ombra-zoom-out`), and accepts native props, a forwarded ref,
-`className` (merged through `cn()`), and Base UI's `render` prop.
+`registry/ombra/ombra-zoom.tsx` exports `OmbraZoom`, `OmbraZoomIn`, `OmbraZoomOut`,
+and `OmbraZoomReset`. Each renders one element with a `data-slot` (`ombra-zoom`,
+`ombra-zoom-in`, `ombra-zoom-out`, `ombra-zoom-reset`), and accepts native props, a
+forwarded ref, `className` (merged through `cn()`), and Base UI's `render` prop.
 
 ```tsx
 <OmbraSlide itemId={photo.id} aria-label={photo.alt}>
@@ -190,6 +190,7 @@ slides.
 </OmbraSlide>
 
 <OmbraZoomOut aria-label="Zoom out">−</OmbraZoomOut>
+<OmbraZoomReset aria-label="Reset zoom">1</OmbraZoomReset>
 <OmbraZoomIn aria-label="Zoom in">+</OmbraZoomIn>
 ```
 
@@ -205,10 +206,12 @@ slides.
   `touch-action: none`, the pull is off, and a pan past the photo's edge hands off
   to the next slide (MAR-104). Navigating to another slide resets the zoom.
 - **Actions.** `OmbraZoomIn` and `OmbraZoomOut` are buttons that zoom the active
-  slide one step. Both are disabled while the active slide has no `OmbraZoom`, and
-  `OmbraZoomOut` while the photo rests at its fitted size; both then carry
-  `data-disabled`. They supply no text or accessible label: consumers own both.
-  A handler that calls `event.preventBaseUIHandler()` cancels the step.
+  slide one step. `OmbraZoomReset` returns it to its fitted size, the same way the
+  `0` key does. All three are disabled while the active slide has no `OmbraZoom`;
+  `OmbraZoomOut` and `OmbraZoomReset` are also disabled while the photo rests at its
+  fitted size. A disabled button carries `data-disabled`. They supply no text or
+  accessible label: consumers own both. A handler that calls
+  `event.preventBaseUIHandler()` cancels the step.
 - **Driver.** The gestures run in `use-zoom.ts`, inside the viewer, which publishes
   its zoom to the actions through the root. The `/spike/zoom` bench renders every
   slide with `OmbraZoom`, none (`?zoom=off`), or only the first (`?zoom=first`).
@@ -243,7 +246,9 @@ receives the part's state.
 - **Previous and next.** Buttons that go one item back or forward from where a
   smooth navigation is heading, so rapid presses retarget. `OmbraPrevious` is
   disabled on the first item and `OmbraNext` on the last; both then carry
-  `data-disabled`. A handler that calls `event.preventBaseUIHandler()` cancels the step.
+  `data-disabled`. If one of them is focused when it becomes disabled, focus
+  moves to the dialog, so the viewer's keys keep working. A handler that calls
+  `event.preventBaseUIHandler()` cancels the step.
 - **Thumbnails.** `OmbraThumbnails` is the strip's scroller. It keeps the active
   thumbnail in view and, once its thumbnails overflow it, snaps and fades an edge
   cue in at each end with more beyond (scroll-driven, so only where the browser
@@ -252,13 +257,22 @@ receives the part's state.
   holds the cues. `OmbraThumbnail` is a button linked to its slide by `itemId`; it
   carries `data-active` and `aria-current` while its item is active.
 - **Keyboard.** The viewer's arrows, Home and End move between items; `+`, `-` and
-  `0` zoom. A key is left alone when a handler already called `preventDefault()`
-  on it, when it carries Ctrl, Alt or Meta (or Shift, for navigation), and when
-  focus is in an input, a textarea, a select, editable content, media controls or
-  an ARIA widget that uses the arrows. Navigation keys also stay with a scrolling
-  panel of the consumer's that holds focus. To replace a shortcut, call
-  `preventDefault()` on the key in an `onKeyDown` on `OmbraContent` or on an element
-  inside it: the viewer's handler runs after the caller's.
+  `0` zoom. Escape closes. A key is left alone when a handler already called
+  `preventDefault()` on it, when it carries Ctrl, Alt or Meta (or Shift, for
+  navigation), and when focus is in an input, a textarea, a select, editable
+  content, media controls or an ARIA widget that uses the arrows. Ctrl or Meta with
+  plus or minus stays with the browser, so its text zoom keeps working. Navigation
+  keys also stay with a scrolling panel of the consumer's that holds focus. To
+  replace a shortcut, call `preventDefault()` on the key in an `onKeyDown` on
+  `OmbraContent` or on an element inside it: the viewer's handler runs after the
+  caller's.
+- **Chrome.** `OmbraChrome` (`ombra-dialog.tsx`) wraps a region of controls. A tap
+  on the photo sets `data-chrome="hidden"` on the dialog and hides every region; a
+  second tap shows them. The hide is opacity only, so the photo does not move. A
+  region stays in the tab order while hidden, and focus inside it shows it again.
+  Taps on a region, a button, a link or a field do not toggle it, and the second
+  tap of a double-tap zoom does not either. The next time the viewer opens, the
+  chrome is shown.
 - **Omission.** Every control is optional; leaving one out is a JSX change. The
   `/spike/controls` bench labels them in Spanish, puts a text field and a scrolling
   panel in the viewer, and leaves them all out with `?controls=none`.
@@ -372,17 +386,18 @@ The caller can replace the grid with a feed or a single trigger, reposition the 
 
 ## Part responsibilities
 
-| Part                                           | Responsibility                                                                                                         |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `OmbraRoot`                                    | Coordinate open state, active item, the collection (`itemIds`), and the morph choice. Render no layout wrapper.        |
-| `OmbraTrigger`                                 | Open its `itemId`, expose dialog disclosure semantics, and register the source element for morph and focus return.     |
-| `OmbraPortal`, `OmbraBackdrop`, `OmbraContent` | Compose the dialog shell around Base UI and run the viewer. Preserve focus trapping, Escape, scroll lock, and naming.  |
-| `OmbraSlides`, `OmbraSlide`                    | Own native scroll-snap navigation and stable item identity. Each slide remains a stable snap box during pull and zoom. |
-| `OmbraZoom`                                    | Add pinch, double-tap, wheel, and keyboard zoom for its media; coordinate pan handoff with the track.                  |
-| `OmbraMedia`                                   | Register the destination morph element and intrinsic dimensions independently of the image renderer.                   |
-| `OmbraPrevious`, `OmbraNext`, `OmbraClose`     | Provide accessible actions with consumer-owned labels, children, positioning, and button rendering.                    |
-| `OmbraThumbnails`, `OmbraThumbnail`            | Provide an optional strip with navigation and selected state, linked by `itemId`.                                      |
-| `OmbraCounter`, `OmbraZoomIn`, `OmbraZoomOut`  | Provide optional state output and actions. Counter formatting belongs to the caller.                                   |
+| Part                                                            | Responsibility                                                                                                         |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `OmbraRoot`                                                     | Coordinate open state, active item, the collection (`itemIds`), and the morph choice. Render no layout wrapper.        |
+| `OmbraTrigger`                                                  | Open its `itemId`, expose dialog disclosure semantics, and register the source element for morph and focus return.     |
+| `OmbraPortal`, `OmbraBackdrop`, `OmbraContent`                  | Compose the dialog shell around Base UI and run the viewer. Preserve focus trapping, Escape, scroll lock, and naming.  |
+| `OmbraSlides`, `OmbraSlide`                                     | Own native scroll-snap navigation and stable item identity. Each slide remains a stable snap box during pull and zoom. |
+| `OmbraZoom`                                                     | Add pinch, double-tap, wheel, and keyboard zoom for its media; coordinate pan handoff with the track.                  |
+| `OmbraMedia`                                                    | Register the destination morph element and intrinsic dimensions independently of the image renderer.                   |
+| `OmbraPrevious`, `OmbraNext`, `OmbraClose`                      | Provide accessible actions with consumer-owned labels, children, positioning, and button rendering.                    |
+| `OmbraThumbnails`, `OmbraThumbnail`                             | Provide an optional strip with navigation and selected state, linked by `itemId`.                                      |
+| `OmbraChrome`                                                   | Hide a region of controls on a tap and show it again on focus, without taking it out of the tab order.                 |
+| `OmbraCounter`, `OmbraZoomIn`, `OmbraZoomOut`, `OmbraZoomReset` | Provide optional state output and actions. Counter formatting belongs to the caller.                                   |
 
 Use one slide identity layer initially; an additional item wrapper needs a concrete use case. Stable string `itemId` values connect triggers, slides, and thumbnails; slide order determines navigation order. Do not make array indices the public identity when content can reorder.
 

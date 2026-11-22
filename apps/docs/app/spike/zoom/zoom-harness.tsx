@@ -12,7 +12,12 @@ import {
 import { OmbraRoot, useOmbraState } from "../../../../../registry/ombra/ombra-root";
 import { OmbraMedia, OmbraSlide, OmbraSlides } from "../../../../../registry/ombra/ombra-slides";
 import { OmbraTrigger } from "../../../../../registry/ombra/ombra-trigger";
-import { OmbraZoom, OmbraZoomIn, OmbraZoomOut } from "../../../../../registry/ombra/ombra-zoom";
+import {
+  OmbraZoom,
+  OmbraZoomIn,
+  OmbraZoomOut,
+  OmbraZoomReset,
+} from "../../../../../registry/ombra/ombra-zoom";
 
 import { photos } from "../photos";
 
@@ -51,6 +56,7 @@ function Viewer({ mode }: { mode: ZoomMode }) {
                   {surfaces ? "Quitar zoom" : "Poner zoom"}
                 </button>
                 <OmbraZoomOut aria-label="Alejar">−</OmbraZoomOut>
+                <OmbraZoomReset aria-label="Restablecer zoom">1</OmbraZoomReset>
                 <OmbraZoomIn aria-label="Acercar">+</OmbraZoomIn>
               </div>
             </header>

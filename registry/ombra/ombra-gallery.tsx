@@ -14,12 +14,12 @@ import {
   OmbraThumbnail,
   OmbraThumbnails,
 } from "./ombra-controls";
-import { OmbraBackdrop, OmbraClose, OmbraContent, OmbraPortal } from "./ombra-dialog";
+import { OmbraBackdrop, OmbraChrome, OmbraClose, OmbraContent, OmbraPortal } from "./ombra-dialog";
 import { OmbraRoot, useOmbraState } from "./ombra-root";
 import type { OmbraRootProps } from "./ombra-root";
 import { OmbraMedia, OmbraSlide, OmbraSlides } from "./ombra-slides";
 import { OmbraTrigger } from "./ombra-trigger";
-import { OmbraZoom, OmbraZoomIn, OmbraZoomOut } from "./ombra-zoom";
+import { OmbraZoom, OmbraZoomIn, OmbraZoomOut, OmbraZoomReset } from "./ombra-zoom";
 import type { OmbraGalleryItem } from "./types";
 import { useReducerWithBailout } from "./use-reducer-with-bailout";
 
@@ -126,24 +126,29 @@ function GalleryParts({ items, className }: Pick<OmbraGalleryProps, "items" | "c
           <Dialog.Title className="sr-only">{active?.alt ?? "Photo"}</Dialog.Title>
           <Dialog.Description className="sr-only">{active?.caption ?? ""}</Dialog.Description>
           <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <header className="flex touch-none flex-col gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 flex-col items-start gap-2">
-                  <OmbraCounter className="font-mono text-xs tracking-wide text-(--ombra-ink)/80" />
+            <OmbraChrome>
+              <header className="flex touch-none flex-col gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 flex-col items-start gap-2">
+                    <OmbraCounter className="font-mono text-xs tracking-wide text-(--ombra-ink)/80" />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <OmbraZoomOut aria-label="Zoom out">
+                      <MinusIcon />
+                    </OmbraZoomOut>
+                    <OmbraZoomReset aria-label="Reset zoom">
+                      <ResetIcon />
+                    </OmbraZoomReset>
+                    <OmbraZoomIn aria-label="Zoom in">
+                      <PlusIcon />
+                    </OmbraZoomIn>
+                    <OmbraClose aria-label="Close">
+                      <CloseIcon />
+                    </OmbraClose>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <OmbraZoomOut aria-label="Zoom out">
-                    <MinusIcon />
-                  </OmbraZoomOut>
-                  <OmbraZoomIn aria-label="Zoom in">
-                    <PlusIcon />
-                  </OmbraZoomIn>
-                  <OmbraClose aria-label="Close">
-                    <CloseIcon />
-                  </OmbraClose>
-                </div>
-              </div>
-            </header>
+              </header>
+            </OmbraChrome>
 
             <div className="relative min-h-0 min-w-0 flex-1">
               <OmbraSlides>
@@ -182,49 +187,49 @@ function GalleryParts({ items, className }: Pick<OmbraGalleryProps, "items" | "c
                   );
                 })}
               </OmbraSlides>
-              <div
-                data-slot="ombra-nav"
-                className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2"
-              >
-                <OmbraPrevious
-                  aria-label="Previous photo"
-                  className="pointer-events-auto bg-(--ombra-surface)/40"
-                >
-                  <Chevron direction="left" />
-                </OmbraPrevious>
-              </div>
-              <div
-                data-slot="ombra-nav"
-                className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2"
-              >
-                <OmbraNext
-                  aria-label="Next photo"
-                  className="pointer-events-auto bg-(--ombra-surface)/40"
-                >
-                  <Chevron direction="right" />
-                </OmbraNext>
-              </div>
+              <OmbraChrome className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2">
+                <div data-slot="ombra-nav" className="flex">
+                  <OmbraPrevious
+                    aria-label="Previous photo"
+                    className="pointer-events-auto bg-(--ombra-surface)/40"
+                  >
+                    <Chevron direction="left" />
+                  </OmbraPrevious>
+                </div>
+              </OmbraChrome>
+              <OmbraChrome className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                <div data-slot="ombra-nav" className="flex">
+                  <OmbraNext
+                    aria-label="Next photo"
+                    className="pointer-events-auto bg-(--ombra-surface)/40"
+                  >
+                    <Chevron direction="right" />
+                  </OmbraNext>
+                </div>
+              </OmbraChrome>
             </div>
 
-            <footer className="px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-              <p
-                data-slot="ombra-caption"
-                className="mb-3 touch-none text-center text-sm text-(--ombra-ink)/80"
-              >
-                {active?.caption}
-              </p>
-              <OmbraThumbnails>
-                {items.map((item) => (
-                  <OmbraThumbnail key={item.id} itemId={item.id} aria-label={item.alt}>
-                    <img
-                      src={item.thumbSrc}
-                      alt=""
-                      className="h-full w-full rounded-[6px] object-cover outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
-                    />
-                  </OmbraThumbnail>
-                ))}
-              </OmbraThumbnails>
-            </footer>
+            <OmbraChrome>
+              <footer className="px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                <p
+                  data-slot="ombra-caption"
+                  className="mb-3 touch-none text-center text-sm text-(--ombra-ink)/80"
+                >
+                  {active?.caption}
+                </p>
+                <OmbraThumbnails>
+                  {items.map((item) => (
+                    <OmbraThumbnail key={item.id} itemId={item.id} aria-label={item.alt}>
+                      <img
+                        src={item.thumbSrc}
+                        alt=""
+                        className="h-full w-full rounded-[6px] object-cover outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
+                      />
+                    </OmbraThumbnail>
+                  ))}
+                </OmbraThumbnails>
+              </footer>
+            </OmbraChrome>
           </div>
           <p role="status" data-slot="ombra-live" className="sr-only">
             {open ? `${index + 1} of ${count}. ${active?.caption ?? ""}` : ""}
@@ -273,6 +278,23 @@ function MinusIcon() {
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ResetIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="size-5" aria-hidden="true">
+      <rect
+        x="5"
+        y="5"
+        width="10"
+        height="10"
+        rx="1.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
       />
     </svg>
   );
