@@ -5,8 +5,8 @@
  */
 export const CORE_GZIP_LIMIT_BYTES = 27 * 1024;
 
-/** Gzip size of that same bundle on the day the ceiling was chosen. */
-export const CORE_GZIP_MEASURED_BYTES = 26_252;
+/** Current gzip size of that bundle. Update it, and the reports that quote it, with the core. */
+export const CORE_GZIP_MEASURED_BYTES = 26_272;
 
 /**
  * Longest frame the Chromium check allows. Chromium's long-animation-frame entries
