@@ -8,6 +8,7 @@
       "type": "registry:component",
       "title": "Ombra",
       "description": "Composable lightbox parts (root, trigger, dialog shell, slides, media, zoom, controls) with two editable recipes: a grid gallery and a single-cover album.",
+      "docs": "The trigger image needs a laid-out size and object-fit so the morph has a box. Do not clip the trigger or put it inside a transformed ancestor. flip is the default engine, and reduced motion forces fade. Dependencies are React, @base-ui/react, and cn. Do not add an animation library.",
       "dependencies": ["@base-ui/react", "cn"],
       "registryDependencies": ["utils"],
       "css": {
@@ -147,6 +148,7 @@
       "type": "registry:lib",
       "title": "Ombra morph",
       "description": "View Transition, WAAPI FLIP, and fade helpers for the open and close morph.",
+      "docs": "The trigger image needs a laid-out size and object-fit so the morph has a box. Do not clip the trigger or put it inside a transformed ancestor. flip is the default engine, and reduced motion forces fade. Dependencies are React, @base-ui/react, and cn. Do not add an animation library.",
       "files": [
         {
           "path": "registry/ombra/types.ts",
@@ -180,6 +182,7 @@
       "type": "registry:hook",
       "title": "Ombra zoom",
       "description": "Pinch, double-tap, and ctrl+wheel zoom with scroll-snap hand-off.",
+      "docs": "The trigger image needs a laid-out size and object-fit so the morph has a box. Do not clip the trigger or put it inside a transformed ancestor. flip is the default engine, and reduced motion forces fade. Dependencies are React, @base-ui/react, and cn. Do not add an animation library.",
       "files": [
         {
           "path": "registry/ombra/use-zoom.ts",
