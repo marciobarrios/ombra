@@ -160,7 +160,8 @@ test.describe("agent docs", () => {
     const install = page.getByRole("region", { name: "Installation" });
     const command = `bunx --bun shadcn add ${origin}/r/ombra.json`;
 
-    await expect(install.getByRole("tabpanel")).toHaveText(
+    // Base UI keeps the outgoing panel mounted while it exits, so name the panel.
+    await expect(install.getByRole("tabpanel", { name: "pnpm" })).toHaveText(
       `pnpm dlx shadcn add ${origin}/r/ombra.json`,
     );
     await install.getByRole("tab", { name: "bun" }).click();
@@ -168,7 +169,7 @@ test.describe("agent docs", () => {
       "aria-selected",
       "true",
     );
-    await expect(install.getByRole("tabpanel")).toHaveText(command);
+    await expect(install.getByRole("tabpanel", { name: "bun" })).toHaveText(command);
 
     if (browserName !== "chromium") return;
 

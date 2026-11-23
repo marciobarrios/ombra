@@ -29,5 +29,13 @@ export default defineConfig({
     { name: "webkit", testIgnore: unitSpecs, use: { ...devices["Desktop Safari"] } },
     { name: "chromium-mobile", testIgnore: unitSpecs, use: { ...devices["Pixel 7"] } },
     { name: "webkit-mobile", testIgnore: unitSpecs, use: { ...devices["iPhone 13"] } },
+    // The frame sample runs after every other project, so no test competes with it for the CPU.
+    {
+      name: "frame-budget",
+      testMatch: /frame-budget\.spec\.ts$/,
+      grep: /Chromium flags a long frame/,
+      dependencies: ["unit", "chromium", "webkit", "chromium-mobile", "webkit-mobile"],
+      use: { ...devices["Desktop Chrome"] },
+    },
   ],
 });
