@@ -90,6 +90,7 @@ test("safe-area padding clears the thumbnail strip", async ({ page }) => {
 
   const header = viewer(page).locator("header");
   const footer = viewer(page).locator("footer");
+
   const previous = viewer(page)
     .locator("[data-slot=ombra-chrome]:has(> [data-slot=ombra-nav])")
     .first();
