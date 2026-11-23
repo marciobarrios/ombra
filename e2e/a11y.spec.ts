@@ -61,6 +61,18 @@ test.describe("accessibility", () => {
       await settle(page);
       await expectNoViolations(page, "[data-slot=ombra-album]");
     });
+
+    // The docs highlight code with a theme pair; a theme change can drop a token below 4.5:1.
+    for (const item of ["ombra", "ombra-morph", "ombra-zoom"]) {
+      test(`the ${item} docs page has no axe violations in ${colorScheme} mode`, async ({
+        page,
+      }) => {
+        await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+        await page.goto(`/docs/${item}`);
+        await expect(page.locator("[data-agent-prompt]")).toBeVisible();
+        await expectNoViolations(page, "main");
+      });
+    }
   }
 
   test("tab stays inside the viewer and escape returns focus", async ({ page }) => {

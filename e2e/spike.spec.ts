@@ -109,21 +109,29 @@ test.describe("spike viewer", () => {
     await page.goto("/spike?engine=flip&slow=1");
     await page.locator("[data-slot=ombra-trigger]").first().waitFor();
     // Stall the main thread a few frames into the open, so the drop lands mid-flight every time.
+    // The stall scales with the median frame so far: a drop is a frame 1.5 times the run's median,
+    // and a starved CI runner can already draw only every 300 ms or so, which hides a fixed 200 ms.
     await page.evaluate(() => {
       document.querySelector<HTMLElement>("[data-slot=ombra-trigger]")?.click();
 
-      let frames = 0;
+      const times: number[] = [];
 
-      const stall = () => {
-        frames += 1;
+      const stall = (now: number) => {
+        times.push(now);
 
-        if (frames < 5) {
+        if (times.length < 5) {
           requestAnimationFrame(stall);
 
           return;
         }
 
-        const until = performance.now() + 200;
+        const deltas = times
+          .slice(1)
+          .map((time, index) => time - (times[index] ?? time))
+          .toSorted((a, b) => a - b);
+
+        const median = deltas[Math.floor(deltas.length / 2)] ?? 0;
+        const until = performance.now() + Math.max(200, median * 4);
 
         while (performance.now() < until) {
           // Busy-wait: nothing else may run.

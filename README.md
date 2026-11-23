@@ -51,6 +51,8 @@ import { OmbraGallery } from "@/components/ombra/ombra-gallery";
 
 The repository is public, so the docs site's URL is the only install path; it needs no token. To install from a branch or a fork instead, build the registry (`pnpm registry:build`) and pass the built file's path or URL to `shadcn add`.
 
+Each registry item has a docs page with a Copy prompt button for a coding agent (`/docs/ombra`, and the same path for `ombra-morph` and `ombra-zoom`). The prompt is generated from this file's `title`, `description` and `docs`, the component props, and the usage example in `apps/docs/examples`, which the docs app typechecks. `/llms.txt` lists the pages, and every docs page is also served as Markdown with no site chrome (`/docs/ombra.md`).
+
 ## Registry
 
 `registry.json` at the repo root is the install entry. `pnpm registry:build` writes `apps/docs/public/r` (gitignored) so the docs site can serve the built items, and `pnpm registry:validate` checks it (CI runs both). Every file has a `target` in `components/ombra/`, because the files import each other relatively; without it shadcn would split them across `components/`, `lib/` and `hooks/`. Items:

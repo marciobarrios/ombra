@@ -7,10 +7,20 @@ type RegistryFile = { path: string; target?: string };
 
 type RegistryItem = {
   name: string;
+  title?: string;
+  description?: string;
+  docs?: string;
   dependencies?: string[];
   css?: object;
   files: RegistryFile[];
 };
+
+const constraints = [
+  "The trigger image needs a laid-out size and object-fit so the morph has a box.",
+  "Do not clip the trigger or put it inside a transformed ancestor.",
+  "flip is the default engine, and reduced motion forces fade.",
+  "Dependencies are React, @base-ui/react, and cn. Do not add an animation library.",
+];
 
 const root = join(import.meta.dirname, "..");
 
@@ -55,6 +65,18 @@ test.describe("registry items", () => {
     for (const item of registry.items) {
       for (const dependency of item.dependencies ?? []) {
         expect(["@base-ui/react", "cn"]).toContain(dependency);
+      }
+    }
+  });
+
+  test("every item has a title, description and docs", () => {
+    for (const item of registry.items) {
+      expect(item.title, item.name).toBeTruthy();
+      expect(item.description, item.name).toBeTruthy();
+      expect(item.docs, item.name).toBeTruthy();
+
+      for (const sentence of constraints) {
+        expect(item.docs, `${item.name}: ${sentence}`).toContain(sentence);
       }
     }
   });
