@@ -33,3 +33,30 @@ export const morphParamCount = morphParams.length satisfies Parameters<
 >["length"];
 
 export const zoomParamCount = zoomParams.length satisfies Parameters<typeof useZoom>["length"];
+
+/** Keys the type declares without `?`. */
+type RequiredKey<T> = {
+  [K in keyof T]-?: Record<never, never> extends Pick<T, K> ? never : K;
+}[keyof T];
+
+type ListedRequired<Entries extends readonly { name: string }[]> = Extract<
+  Entries[number],
+  { required: true }
+>["name"];
+
+/** Keys marked required in the docs but optional in the type, or the other way round. */
+type RequiredMismatch<T, Entries extends readonly { name: string }[]> =
+  | Exclude<RequiredKey<T>, ListedRequired<Entries>>
+  | Exclude<ListedRequired<Entries>, RequiredKey<T>>;
+
+type GalleryRequiredMismatch = RequiredMismatch<OmbraGalleryProps, typeof galleryProps>;
+
+export const galleryRequiredMarked: [GalleryRequiredMismatch] extends [never]
+  ? true
+  : GalleryRequiredMismatch = true;
+
+type GalleryItemRequiredMismatch = RequiredMismatch<OmbraGalleryItem, typeof galleryItemFields>;
+
+export const galleryItemRequiredMarked: [GalleryItemRequiredMismatch] extends [never]
+  ? true
+  : GalleryItemRequiredMismatch = true;

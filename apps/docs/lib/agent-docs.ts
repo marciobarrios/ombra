@@ -21,6 +21,10 @@ type ItemName = RegistryItem["name"];
 type PageMeta = {
   goal: string;
   exampleFile: string;
+  /** The file name shown above the usage example, as a reader would save it. */
+  usageFile: string;
+  /** What the first table lists: a component's props, or a function's parameters in order. */
+  propsTitle: "Props" | "Parameters";
   props: readonly SurfaceNote[];
   fields: readonly SurfaceNote[];
 };
@@ -29,18 +33,24 @@ const pageMeta = {
   ombra: {
     goal: "Add an Ombra lightbox to my React app.",
     exampleFile: "ombra.tsx",
+    usageFile: "gallery.tsx",
+    propsTitle: "Props",
     props: galleryProps,
     fields: galleryItemFields,
   },
   "ombra-morph": {
     goal: "Use Ombra's morph helpers in my React app.",
     exampleFile: "ombra-morph.tsx",
+    usageFile: "engine.ts",
+    propsTitle: "Parameters",
     props: morphParams,
     fields: [],
   },
   "ombra-zoom": {
     goal: "Add Ombra pinch and double-tap zoom to my React app.",
     exampleFile: "ombra-zoom.tsx",
+    usageFile: "zoomed-photo.tsx",
+    propsTitle: "Parameters",
     props: zoomParams,
     fields: [],
   },
@@ -53,7 +63,10 @@ export type ItemDoc = {
   goal: string;
   constraints: string;
   install: string;
+  installCommands: readonly InstallCommand[];
   example: string;
+  usageFile: string;
+  propsTitle: PageMeta["propsTitle"];
   props: readonly SurfaceNote[];
   fields: readonly SurfaceNote[];
   pagePath: string;
@@ -75,8 +88,21 @@ function metaFor(name: string): PageMeta {
   }
 }
 
+export type InstallCommand = { manager: "pnpm" | "npm" | "yarn" | "bun"; command: string };
+
 function installCommand(name: string): string {
   return `npx shadcn add ${DOCS_ORIGIN}/r/${name}.json`;
+}
+
+function installCommands(name: string): readonly InstallCommand[] {
+  const url = `${DOCS_ORIGIN}/r/${name}.json`;
+
+  return [
+    { manager: "pnpm", command: `pnpm dlx shadcn add ${url}` },
+    { manager: "npm", command: installCommand(name) },
+    { manager: "yarn", command: `yarn dlx shadcn add ${url}` },
+    { manager: "bun", command: `bunx --bun shadcn add ${url}` },
+  ];
 }
 
 function readExample(file: string): string {
@@ -95,7 +121,10 @@ function itemDoc(item: RegistryItem): ItemDoc {
     goal: meta.goal,
     constraints: item.docs,
     install: installCommand(item.name),
+    installCommands: installCommands(item.name),
     example: readExample(meta.exampleFile),
+    usageFile: meta.usageFile,
+    propsTitle: meta.propsTitle,
     props: meta.props,
     fields: meta.fields,
     pagePath,
@@ -119,31 +148,49 @@ export function itemDocByName(name: string): ItemDoc | undefined {
   return listItemDocs().find((item) => item.name === name);
 }
 
-export function promptFor(doc: ItemDoc): string {
+/** A run of prompt text. Code runs carry their language so the page can highlight them. */
+export type PromptBlock = { text: string; lang?: "bash" | "tsx" };
+
+/** The prompt in order. `promptFor` joins the blocks with newlines. */
+export function promptBlocks(doc: ItemDoc): readonly PromptBlock[] {
   const names = doc.props.map((prop) => prop.name).join(", ");
 
   return [
-    doc.goal,
-    "",
-    "Install:",
-    doc.install,
-    "",
-    AFTER_INSTALL,
-    "",
-    "Usage:",
-    doc.example,
-    "",
-    `Props: ${names}.`,
-    "",
-    "Constraints:",
-    doc.constraints,
-    "",
-    `Docs: ${doc.pageUrl}`,
-  ].join("\n");
+    { text: `${doc.goal}\n\nInstall:` },
+    { text: doc.install, lang: "bash" },
+    { text: `\n${AFTER_INSTALL}\n\nUsage:` },
+    { text: doc.example, lang: "tsx" },
+    {
+      text: `\nProps: ${names}.\n\nConstraints:\n${doc.constraints}\n\nDocs: ${doc.pageUrl}`,
+    },
+  ];
+}
+
+export function promptFor(doc: ItemDoc): string {
+  return promptBlocks(doc)
+    .map((block) => block.text)
+    .join("\n");
+}
+
+/** Marks required entries only in a list that also has optional ones, where the mark says something. */
+export function marksRequired(entries: readonly SurfaceNote[]): boolean {
+  return entries.some((entry) => !entry.required);
 }
 
 function notes(entries: readonly SurfaceNote[]): string {
-  return entries.map((entry) => `- \`${entry.name}\`: ${entry.note}`).join("\n");
+  const markRequired = marksRequired(entries);
+
+  return entries
+    .map((entry) => {
+      const facts = [
+        `\`${entry.type}\``,
+        markRequired && entry.required ? "required" : undefined,
+        entry.default ? `default \`${entry.default}\`` : undefined,
+      ];
+
+      return `- \`${entry.name}\` (${facts.filter(Boolean).join(", ")}): ${entry.note}`;
+    })
+    .join("\n");
 }
 
 export function markdownFor(doc: ItemDoc): string {
@@ -159,7 +206,7 @@ ${doc.description}
 ${promptFor(doc)}
 \`\`\`
 
-## Props
+## ${doc.propsTitle}
 
 ${notes(doc.props)}
 ${fieldSection}`;

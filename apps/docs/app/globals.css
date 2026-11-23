@@ -142,6 +142,18 @@
   font-family: var(--font-display), "Iowan Old Style", Palatino, serif;
 }
 
+/* Docs code highlighting. Shiki writes both theme colours on each token; the page picks one
+   with the same media query as the rest of the site. */
+.code-tokens span[style] {
+  color: var(--shiki-light);
+}
+
+@media (prefers-color-scheme: dark) {
+  .code-tokens span[style] {
+    color: var(--shiki-dark);
+  }
+}
+
 /* The pull styles below ship to users through the `css` field of the `ombra` item in
    registry.json. Keep the two copies the same. */
 @property --ombra-pull-live {

@@ -151,6 +151,47 @@ test.describe("agent docs", () => {
     });
   }
 
+  test("the install tabs copy the selected package manager's command", async ({
+    page,
+    browserName,
+  }) => {
+    await page.goto("/docs/ombra");
+
+    const install = page.getByRole("region", { name: "Installation" });
+    const command = `bunx --bun shadcn add ${origin}/r/ombra.json`;
+
+    await expect(install.getByRole("tabpanel")).toHaveText(
+      `pnpm dlx shadcn add ${origin}/r/ombra.json`,
+    );
+    await install.getByRole("tab", { name: "bun" }).click();
+    await expect(install.getByRole("tab", { name: "bun" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await expect(install.getByRole("tabpanel")).toHaveText(command);
+
+    if (browserName !== "chromium") return;
+
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    await install.getByRole("button", { name: "Copy code" }).click();
+    await expect(install.getByRole("button", { name: "Copied" })).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(command);
+  });
+
+  test("the props list shows each prop's type and default", async ({ page }) => {
+    await page.goto("/docs/ombra");
+
+    const morph = page
+      .getByRole("region", { name: "Props" })
+      .getByRole("listitem")
+      .filter({
+        has: page.getByText("morph", { exact: true }),
+      });
+
+    await expect(morph).toContainText('"flip" | "vt" | "fade"');
+    await expect(morph).toContainText('Default"flip"');
+  });
+
   test("the gallery docs page opens a lightbox", async ({ page }) => {
     const first = photos[0];
 
