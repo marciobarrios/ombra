@@ -7,6 +7,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "cn";
 
+import { OmbraCaption } from "./ombra-caption";
 import { OmbraCounter, OmbraNext, OmbraPrevious } from "./ombra-controls";
 import { OmbraBackdrop, OmbraChrome, OmbraClose, OmbraContent, OmbraPortal } from "./ombra-dialog";
 import { OmbraRoot, useOmbraState } from "./ombra-root";
@@ -107,11 +108,11 @@ function AlbumViewer({ title, photos }: Pick<OmbraAlbumProps, "title" | "photos"
       <OmbraChrome>
         <header
           data-slot="ombra-album-header"
-          className="flex touch-none items-center gap-1 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2"
+          className="flex touch-none items-center gap-1 pt-[max(0.75rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-2 pl-[max(0.75rem,env(safe-area-inset-left))]"
         >
           <div className="flex min-w-0 flex-1 flex-col">
             <Dialog.Title className="truncate text-base font-medium">{title}</Dialog.Title>
-            <OmbraCounter className="font-mono text-xs text-(--ombra-ink)/70">
+            <OmbraCounter className="font-mono text-xs whitespace-nowrap text-(--ombra-ink)/70 tabular-nums">
               {({ position, count }) => `${position} of ${count}`}
             </OmbraCounter>
           </div>
@@ -126,7 +127,6 @@ function AlbumViewer({ title, photos }: Pick<OmbraAlbumProps, "title" | "photos"
           </OmbraClose>
         </header>
       </OmbraChrome>
-      <Dialog.Description className="sr-only">{active?.alt ?? ""}</Dialog.Description>
 
       <div className="relative min-h-0 min-w-0 flex-1">
         <OmbraSlides aria-label={title}>
@@ -147,9 +147,11 @@ function AlbumViewer({ title, photos }: Pick<OmbraAlbumProps, "title" | "photos"
                   />
                 </OmbraMedia>
               </div>
-              <p className="min-h-12 touch-none px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-center text-sm text-(--ombra-ink)/80">
-                {photo.caption}
-              </p>
+              <OmbraChrome className="w-full pt-3 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]">
+                <OmbraCaption described={photo.id === active?.id && Boolean(photo.caption)}>
+                  {photo.caption}
+                </OmbraCaption>
+              </OmbraChrome>
             </OmbraSlide>
           ))}
         </OmbraSlides>

@@ -115,6 +115,11 @@
           "target": "components/ombra/ombra-controls.tsx"
         },
         {
+          "path": "registry/ombra/ombra-caption.tsx",
+          "type": "registry:component",
+          "target": "components/ombra/ombra-caption.tsx"
+        },
+        {
           "path": "registry/ombra/ombra-viewer.tsx",
           "type": "registry:component",
           "target": "components/ombra/ombra-viewer.tsx"

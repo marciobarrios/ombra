@@ -2,7 +2,7 @@
 
 Ombra's public API lets the caller assemble a lightbox from React components. Layout, media, captions, and controls belong in JSX. Props configure the behavior of the part receiving them.
 
-Every part below is implemented: `OmbraRoot` and its state contract, the dialog shell, `OmbraTrigger`, the slide parts (`OmbraSlides`, `OmbraSlide`, `OmbraMedia`), the zoom parts (`OmbraZoom`, `OmbraZoomIn`, `OmbraZoomOut`), and the controls (`OmbraPrevious`, `OmbraNext`, `OmbraCounter`, `OmbraThumbnails`, `OmbraThumbnail`). Two optional recipes are built from them: `OmbraGallery` and `OmbraAlbum` (see Recipes).
+Every part below is implemented: `OmbraRoot` and its state contract, the dialog shell, `OmbraTrigger`, the slide parts (`OmbraSlides`, `OmbraSlide`, `OmbraMedia`), the zoom parts (`OmbraZoom`, `OmbraZoomIn`, `OmbraZoomOut`), the controls (`OmbraPrevious`, `OmbraNext`, `OmbraCounter`, `OmbraThumbnails`, `OmbraThumbnail`), and the chrome (`OmbraChrome`, `OmbraCaption`). Two optional recipes are built from them: `OmbraGallery` and `OmbraAlbum` (see Recipes).
 
 Implementation was tracked in [MAR-64](https://linear.app/marciobarrios/issue/MAR-64/migrate-the-lightbox-spike-to-composable-primitives-and-gallery), in Ombra's v0.1 MVP milestone. The [Linear architecture document](https://linear.app/marciobarrios/document/ombra-composition-architecture-primitives-styled-parts-and-recipes-e67e6acc5788) records the same recommendation for project planning.
 
@@ -282,6 +282,30 @@ receives the part's state.
   `/spike/controls` bench labels them in Spanish, puts a text field and a scrolling
   panel in the viewer, and leaves them all out with `?controls=none`.
 
+## Implemented caption (MAR-25)
+
+`registry/ombra/ombra-caption.tsx` exports `OmbraCaption`. The gallery and album
+recipes use it.
+
+- **Caption.** `OmbraCaption` takes text or any node as children. It is the dialog
+  description, so the popup's `aria-describedby` points at its `id`. Its box is one
+  line tall and cuts the rest with an ellipsis, so a longer caption does not change the
+  photo's box or cover the controls, and it never becomes a scrollable region. Pass
+  `described={false}` for a second visible copy, such as the caption on an inactive
+  slide. `className` merges through `cn()`. The slot is `ombra-caption`.
+- **Counter.** `OmbraCounter` (above) is the slide count. A children function formats
+  it, for example `3 of 14`; without one it shows `position / count`. `whitespace-nowrap`
+  and `tabular-nums` in the recipes keep that line from wrapping onto a second row.
+- **Chrome.** The caption sits in an `OmbraChrome` region (above), so a tap on the
+  photo hides it with the other controls without moving the photo.
+- **Safe area.** Recipe headers, footers, side controls and captions pad with
+  `max(…, env(safe-area-inset-*))`, including the left and right insets, and the
+  docs viewport sets `viewport-fit=cover` so iOS applies those insets. The caption
+  sits above the thumbnail strip.
+
+The `/spike/chrome` bench renders a node caption, a caption long enough to be cut,
+and a counter formatted `1 of 3`.
+
 ## Recipes (MAR-143)
 
 Two optional recipes ship as editable source, built only from the parts above. Neither
@@ -402,6 +426,7 @@ The caller can replace the grid with a feed or a single trigger, reposition the 
 | `OmbraPrevious`, `OmbraNext`, `OmbraClose`                      | Provide accessible actions with consumer-owned labels, children, positioning, and button rendering.                    |
 | `OmbraThumbnails`, `OmbraThumbnail`                             | Provide an optional strip with navigation and selected state, linked by `itemId`.                                      |
 | `OmbraChrome`                                                   | Hide a region of controls on a tap and show it again on focus, without taking it out of the tab order.                 |
+| `OmbraCaption`                                                  | Show the active photo's caption on one line and link it to the dialog description.                                     |
 | `OmbraCounter`, `OmbraZoomIn`, `OmbraZoomOut`, `OmbraZoomReset` | Provide optional state output and actions. Counter formatting belongs to the caller.                                   |
 
 Use one slide identity layer initially; an additional item wrapper needs a concrete use case. Stable string `itemId` values connect triggers, slides, and thumbnails; slide order determines navigation order. Do not make array indices the public identity when content can reorder.

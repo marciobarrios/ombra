@@ -7,6 +7,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "cn";
 import { useLayoutEffect } from "react";
 
+import { OmbraCaption } from "./ombra-caption";
 import {
   OmbraCounter,
   OmbraNext,
@@ -137,13 +138,12 @@ function GalleryParts({ items, className }: Pick<OmbraGalleryProps, "items" | "c
           <Dialog.Title className="sr-only">
             {active?.alt || active?.caption || "Photo"}
           </Dialog.Title>
-          <Dialog.Description className="sr-only">{active?.caption ?? ""}</Dialog.Description>
           <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
             <OmbraChrome>
-              <header className="flex touch-none flex-col gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+              <header className="flex touch-none flex-col gap-2 pt-[max(0.75rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))]">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 flex-col items-start gap-2">
-                    <OmbraCounter className="font-mono text-xs tracking-wide text-(--ombra-ink)/80" />
+                    <OmbraCounter className="font-mono text-xs tracking-wide whitespace-nowrap text-(--ombra-ink)/80 tabular-nums" />
                   </div>
                   <div className="flex items-center gap-1">
                     <OmbraZoomOut aria-label="Zoom out">
@@ -205,7 +205,7 @@ function GalleryParts({ items, className }: Pick<OmbraGalleryProps, "items" | "c
                   );
                 })}
               </OmbraSlides>
-              <OmbraChrome className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2">
+              <OmbraChrome className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-[max(0.5rem,env(safe-area-inset-left))]">
                 <div data-slot="ombra-nav" className="flex">
                   <OmbraPrevious
                     aria-label="Previous photo"
@@ -215,7 +215,7 @@ function GalleryParts({ items, className }: Pick<OmbraGalleryProps, "items" | "c
                   </OmbraPrevious>
                 </div>
               </OmbraChrome>
-              <OmbraChrome className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+              <OmbraChrome className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-[max(0.5rem,env(safe-area-inset-right))]">
                 <div data-slot="ombra-nav" className="flex">
                   <OmbraNext
                     aria-label="Next photo"
@@ -228,13 +228,8 @@ function GalleryParts({ items, className }: Pick<OmbraGalleryProps, "items" | "c
             </div>
 
             <OmbraChrome>
-              <footer className="px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-                <p
-                  data-slot="ombra-caption"
-                  className="mb-3 touch-none text-center text-sm text-(--ombra-ink)/80"
-                >
-                  {active?.caption}
-                </p>
+              <footer className="pr-[max(1rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]">
+                <OmbraCaption className="mb-3">{active?.caption}</OmbraCaption>
                 <OmbraThumbnails>
                   {items.map((item) => (
                     <OmbraThumbnail key={item.id} itemId={item.id} aria-label={item.alt}>
