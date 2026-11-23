@@ -66,8 +66,8 @@ export default function PerformancePage() {
 
       <h2 className="font-display mt-14 text-3xl">Size</h2>
       <p className="mt-4 leading-7 text-foreground/80">
-        The pre-spike proposal was 12 KB gzipped. The shipped recipes measure 27,034 bytes, so the
-        enforced ceiling is 27 KB (27 × 1024 bytes). 614 bytes of headroom remain, so a comment
+        The pre-spike proposal was 12 KB gzipped. The shipped recipes measure 27,354 bytes, so the
+        enforced ceiling is 27 KB (27 × 1024 bytes). 294 bytes of headroom remain, so a comment
         still fits and a new module has to earn its place.
       </p>
       <p className="mt-4 leading-7 text-foreground/80">
