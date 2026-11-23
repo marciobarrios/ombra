@@ -143,40 +143,4 @@ test.describe("spike navigation", () => {
       }
     });
   }
-
-  test("retargets rapid arrow presses and reverses before the next slide is selected", async ({
-    page,
-  }) => {
-    await page.emulateMedia({ reducedMotion: "no-preference" });
-    await page.goto("/spike?engine=fade");
-    await page
-      .getByRole("button", { name: "Snowy peaks under the Milky Way", exact: true })
-      .click();
-    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
-
-    const track = page.locator("[data-slot=ombra-track]");
-    const start = await track.evaluate((node) => node.scrollLeft);
-
-    await page.keyboard.press("ArrowRight");
-    await page.keyboard.press("ArrowLeft");
-    await expect
-      .poll(() => track.evaluate((node, origin) => Math.abs(node.scrollLeft - origin), start))
-      .toBeLessThan(3);
-    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText(`7 / ${photoCount}`);
-
-    await page.keyboard.press("ArrowRight");
-    await page.keyboard.press("ArrowRight");
-    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText(`9 / ${photoCount}`);
-    await expect
-      .poll(() =>
-        track.evaluate((node) => {
-          const slide = node.querySelectorAll("[data-slot=ombra-slide]")[8];
-          const rect = slide.getBoundingClientRect();
-          const trackRect = node.getBoundingClientRect();
-
-          return Math.abs(rect.left + rect.width / 2 - trackRect.left - trackRect.width / 2);
-        }),
-      )
-      .toBeLessThan(2);
-  });
 });

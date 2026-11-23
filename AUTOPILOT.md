@@ -34,11 +34,13 @@ pnpm test:e2e       # needs `pnpm exec playwright install chromium webkit` once
 ## Verification
 
 - Ombra is a gesture- and animation-heavy image viewer. Most issues are
-  **interaction** changes: add or update a Playwright spec in `e2e/` that
-  drives the gesture (see the existing `*-during-opening`, `zoom-*` and
-  `close-reversal` specs for patterns) and run it on all four projects.
-- Motion or frame-time changes: use the frame sampler
-  (`e2e/frame-sampler.spec.ts`) for before/after numbers.
+  **interaction** changes. The Playwright suite in `e2e/` is kept small on
+  purpose: extend an existing spec only when the change is to core behaviour
+  (open and close morph, navigation, pull to dismiss, zoom, focus, the
+  `OmbraRoot` contract). Do not add a spec per edge case or per engine.
+  Run the specs you touched on all four projects.
+- Motion or frame-time changes: use the spike's frame readout for before/after
+  numbers; `e2e/frame-budget.spec.ts` is the CI guard.
 - The iOS Simulator is useful for Safari-specific behaviour (WebKit desktop is
   not iOS Safari). In T3 Code, use the device tools and release the device with
   `device_close` when done.

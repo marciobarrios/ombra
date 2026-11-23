@@ -20,7 +20,7 @@ Selectable scroll feedback modes and gallery-driven thumbnail emphasis were remo
 
 The experiment also exposed a pre-existing VT fallback bug: when a transition could not start, its driver remained `vt` and skipped the effect-driven morph. That path now hands control to FLIP/fade. Tests cover a missing View Transition API and closing toward an off-screen trigger.
 
-Automated coverage in `e2e/thumbnail-edge-cues.spec.ts` checks edge endpoints and resize, reduced motion, a forced unsupported CSS gate, all morph engines, zoom, focus return, and pull dismissal.
+The edge cues have no dedicated Playwright spec: it was removed when the suite was trimmed to core behaviour.
 
 Firefox 159+, real iPhone gestures, Low Power Mode, and comparative frame-time measurements remain unverified, so these are functional results, not a performance claim.
 

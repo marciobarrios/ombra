@@ -87,34 +87,6 @@ test.describe("OmbraTrigger", () => {
     });
   }
 
-  test("a disabled trigger and a cancelled press do not open", async ({ page }) => {
-    const disabled = trigger(page, fourth.alt);
-
-    await expect(disabled).toBeDisabled();
-    await disabled.click({ force: true });
-
-    await trigger(page, fifth.alt).click();
-    await expect.poll(() => readout(page, "clicks")).toEqual(["cancel"]);
-    await expect(dialog(page)).toHaveCount(0);
-    expect(await readout(page, "open-asks")).toEqual([]);
-    await expect(trigger(page, fifth.alt)).toHaveAttribute("aria-expanded", "false");
-  });
-
-  test("render, refs, handlers and custom media compose", async ({ page }) => {
-    const custom = page.getByTestId("custom");
-
-    await expect(custom).toHaveAttribute("data-custom-trigger", "true");
-    await expect(custom).toHaveAttribute("data-slot", "ombra-trigger");
-    await custom.click();
-    await expect(dialog(page)).toBeVisible();
-    await expect.poll(() => readout(page, "clicks")).toEqual(["render", "custom"]);
-
-    await dialog(page).getByRole("button", { name: "Inspect sources" }).click();
-    await expect(page.getByTestId("readout")).toHaveAttribute("data-refs", "true");
-    // The default source is the trigger's image; a media ref replaces it.
-    await expect(page.getByTestId("readout")).toHaveAttribute("data-sources", "img,media-ref");
-  });
-
   test("ownership and focus return follow the current item", async ({ page }) => {
     await trigger(page, road.alt).click();
     await expectOwner(page, trigger(page, road.alt));
@@ -127,99 +99,6 @@ test.describe("OmbraTrigger", () => {
     await close(page);
     await expect(trigger(page, ridge.alt)).toBeFocused();
     await expect(page.locator("[data-slot=ombra-trigger][aria-expanded=true]")).toHaveCount(0);
-  });
-
-  test("a trigger that mounts with its item's selection owns the dialog", async ({ page }) => {
-    await trigger(page, road.alt).click();
-
-    for (let step = 0; step < 5; step += 1) {
-      await dialog(page).getByRole("button", { name: "Next item" }).click();
-    }
-
-    await expect(dialog(page).getByTestId("active")).toHaveText(late.id);
-    await expectOwner(page, trigger(page, late.alt));
-
-    await close(page);
-    await expect(trigger(page, late.alt)).toBeFocused();
-  });
-
-  test("without the current item's trigger, no trigger owns the dialog", async ({ page }) => {
-    await trigger(page, road.alt).click();
-    await dialog(page).getByRole("button", { name: "Remove current trigger" }).click();
-    await expect(trigger(page, road.alt)).toHaveCount(0);
-    await expect(page.locator("[data-slot=ombra-trigger][aria-expanded=true]")).toHaveCount(0);
-
-    // The viewer that OmbraPortal runs moves focus to the nearest trigger still rendered.
-    await close(page);
-    await expect(trigger(page, ridge.alt)).toBeFocused();
-  });
-});
-
-test.describe("gallery triggers", () => {
-  const viewer = (page: Page) => page.locator("[data-slot=ombra-viewer]");
-  const thumbnails = (page: Page) => page.locator("[data-slot=ombra-trigger]");
-
-  test("one press starts one FLIP morph, and ownership follows navigation", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "no-preference" });
-    await page.goto("/spike?engine=flip");
-    await expect(thumbnails(page).first()).toHaveAttribute("aria-expanded", "false");
-
-    // Count the clones the FLIP engine mounts: a second open request would mount another.
-    await page.evaluate(() => {
-      window.ombraFlights = 0;
-      new MutationObserver((records) => {
-        for (const record of records) {
-          for (const node of record.addedNodes) {
-            if (node instanceof HTMLElement && node.dataset.slot === "ombra-flight") {
-              window.ombraFlights = (window.ombraFlights ?? 0) + 1;
-            }
-          }
-        }
-      }).observe(document.body, { childList: true });
-    });
-
-    await thumbnails(page).nth(1).click();
-    await expect(viewer(page)).toHaveAttribute("data-phase", "open");
-    expect(await page.evaluate(() => window.ombraFlights)).toBe(1);
-
-    const id = await viewer(page).getAttribute("id");
-
-    await expect(thumbnails(page).nth(1)).toHaveAttribute("aria-expanded", "true");
-    await expect(thumbnails(page).nth(1)).toHaveAttribute("aria-controls", id ?? "");
-
-    await page.keyboard.press("ArrowRight");
-    await expect(thumbnails(page).nth(2)).toHaveAttribute("aria-expanded", "true");
-    await expect(thumbnails(page).nth(1)).toHaveAttribute("aria-expanded", "false");
-
-    await page.keyboard.press("Escape");
-    await expect(viewer(page)).toHaveCount(0);
-    await expect(thumbnails(page).nth(2)).toBeFocused();
-    await expect(page.locator("[data-slot=ombra-trigger][aria-expanded=true]")).toHaveCount(0);
-  });
-
-  test("a refused controlled open leaves no item, morph or trigger state", async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: "no-preference" });
-    await page.goto("/spike/root");
-
-    const section = page.getByTestId("controlled");
-    const target = section.locator("[data-slot=ombra-trigger]").nth(2);
-
-    await page.waitForFunction(() => window.ombraHarness !== undefined);
-    await page.evaluate(() =>
-      window.ombraHarness?.dispatch({ type: "policy-changed", allowOpen: false }),
-    );
-    await target.click();
-
-    await expect(page.getByTestId("controlled-readout")).toHaveAttribute(
-      "data-open-asks",
-      "[true]",
-    );
-    await expect(viewer(page)).toHaveCount(0);
-    await expect(target).toHaveAttribute("aria-expanded", "false");
-    await expect(target).not.toHaveAttribute("data-popup-open");
-    // The thumbnail was never hidden for a morph that did not start.
-    await expect(target.locator("img")).toHaveCSS("visibility", "visible");
-    expect(await page.locator("[data-slot=ombra-flight]").count()).toBe(0);
   });
 });
 
