@@ -45,8 +45,8 @@ test("Chromium flags a long frame, a slow interaction, or a new animated propert
   browserName,
 }, testInfo) => {
   test.skip(
-    browserName !== "chromium" || testInfo.project.name !== "chromium",
-    "Long-animation-frame is measured once, in desktop Chromium",
+    browserName !== "chromium" || testInfo.project.name !== "frame-budget",
+    "Long-animation-frame is measured once, in desktop Chromium, after the other projects",
   );
   // A busy runner can stretch one gesture a few milliseconds past 50. Sample again.
   // Three crossings of the ceiling still fail. A behaviour failure fails at once.

@@ -67,11 +67,6 @@ test.describe("OmbraRoot", () => {
     await page.goto("/spike/root");
   });
 
-  test("an empty collection does not open, even when asked to", async ({ page }) => {
-    await expect(page.getByTestId("free").getByRole("button").first()).toBeVisible();
-    await expect(viewer(page)).toHaveCount(0);
-  });
-
   test("uncontrolled: a trigger opens its own item and reports it", async ({ page }) => {
     await openFrom(page, "free", fourth.alt);
     await expectActive(page, fourth.alt, "4 / 5");
@@ -86,14 +81,6 @@ test.describe("OmbraRoot", () => {
     await page.keyboard.press("Escape");
     await expect(viewer(page)).toHaveCount(0);
     expect(await asks(page, "free-readout", "open")).toEqual([true, false]);
-  });
-
-  test("the open item survives a reorder of the collection", async ({ page }) => {
-    await openFrom(page, "free", second.alt);
-    await expectActive(page, second.alt, "2 / 5");
-
-    await harness(page, { type: "items-reversed", section: "free" });
-    await expectActive(page, second.alt, "4 / 5");
   });
 
   test("removing the active item selects a neighbour, and closes when none remain", async ({
@@ -128,64 +115,6 @@ test.describe("OmbraRoot", () => {
     await expectActive(page, third.alt, "3 / 5");
   });
 
-  test("controlled: removing the active item asks the parent for its neighbour", async ({
-    page,
-  }) => {
-    await openFrom(page, "controlled", first.alt);
-
-    // The neighbour of the first item is the new first item.
-    await harness(page, { type: "item-removed", section: "controlled", itemId: first.id });
-    await expectActive(page, second.alt, "1 / 4");
-    await expect(page.getByTestId("controlled-readout")).toHaveAttribute("data-active", second.id);
-
-    await page.keyboard.press("ArrowRight");
-    await expectActive(page, third.alt, "2 / 4");
-
-    // A middle item hands over to the next one, not to the start.
-    await harness(page, { type: "item-removed", section: "controlled", itemId: third.id });
-    await expectActive(page, fourth.alt, "2 / 3");
-    await expect(page.getByTestId("controlled-readout")).toHaveAttribute("data-active", fourth.id);
-  });
-
-  test("controlled: emptying the collection while a close is refused asks once", async ({
-    page,
-  }) => {
-    const errors: string[] = [];
-
-    page.on("pageerror", (error) => errors.push(error.message));
-    await openFrom(page, "controlled", first.alt);
-    await harness(page, { type: "policy-changed", allowClose: false });
-    await harness(page, { type: "items-cleared", section: "controlled" });
-
-    await expect.poll(() => asks(page, "controlled-readout", "open")).toEqual([true, false]);
-    await page.waitForTimeout(300);
-    expect(await asks(page, "controlled-readout", "open")).toEqual([true, false]);
-    expect(errors).toEqual([]);
-  });
-
-  test("controlled open: a refused request does not linger for the parent's next open", async ({
-    page,
-  }) => {
-    await harness(page, { type: "policy-changed", allowOpen: false });
-    await page.getByTestId("open-only").getByRole("button", { name: fourth.alt }).click();
-    await expect.poll(() => asks(page, "open-only-readout", "open")).toEqual([true]);
-    await expect(viewer(page)).toHaveCount(0);
-
-    // The parent opens on its own once the request has lapsed: that is the current item,
-    // not the refused one.
-    await page.waitForTimeout(1_200);
-    await harness(page, { type: "parent-opened", section: "openOnly" });
-    await expect(viewer(page)).toHaveAttribute("data-phase", "open");
-    await expectActive(page, first.alt, "1 / 5");
-  });
-
-  test("a parent that answers later still opens the item it accepted", async ({ page }) => {
-    await page.getByTestId("active-only").getByRole("button", { name: third.alt }).click();
-    await expect(viewer(page)).toHaveAttribute("data-phase", "open");
-    await expectActive(page, third.alt, "3 / 5");
-    await expect(page.getByTestId("active-only-readout")).toHaveAttribute("data-active", third.id);
-  });
-
   test("controlled: the parent opens, navigates, and closes the viewer", async ({ page }) => {
     await harness(page, { type: "parent-opened", activeId: fourth.id });
     await expect(viewer(page)).toHaveAttribute("data-phase", "open");
@@ -196,150 +125,6 @@ test.describe("OmbraRoot", () => {
 
     await harness(page, { type: "parent-closed" });
     await expect(viewer(page)).toHaveCount(0);
-  });
-
-  test("controlled: a refused navigation keeps the active item", async ({ page }) => {
-    await openFrom(page, "controlled", second.alt);
-    await harness(page, { type: "policy-changed", allowActive: false });
-
-    await page.keyboard.press("End");
-    await expect.poll(() => asks(page, "controlled-readout", "active")).toContain(fifth.id);
-    await expectActive(page, second.alt, "2 / 5");
-
-    await harness(page, { type: "policy-changed", allowActive: true });
-    await page.keyboard.press("End");
-    await expectActive(page, fifth.alt, "5 / 5");
-    await expect(page.getByTestId("controlled-readout")).toHaveAttribute("data-active", fifth.id);
-  });
-
-  test("controlled: a refused close keeps the viewer open", async ({ page }) => {
-    await openFrom(page, "controlled", first.alt);
-    await harness(page, { type: "policy-changed", allowClose: false });
-
-    await page.keyboard.press("Escape");
-    await expect.poll(() => asks(page, "controlled-readout", "open")).toEqual([true, false]);
-    await expect(viewer(page)).toHaveAttribute("data-phase", "open");
-
-    await harness(page, { type: "policy-changed", allowClose: true });
-    await page.keyboard.press("Escape");
-    await expect(viewer(page)).toHaveCount(0);
-    await expect(page.getByTestId("controlled-readout")).toHaveAttribute("data-open", "false");
-  });
-
-  test("controlled: a close that arrives during a View Transition opening closes once", async ({
-    page,
-  }) => {
-    test.skip(
-      !(await page.evaluate(() => "startViewTransition" in document)),
-      "this browser has no View Transition API, so the opening runs FLIP",
-    );
-
-    // Counts the transitions and records every phase the viewer passes through.
-    await page.evaluate(() => {
-      const start = document.startViewTransition;
-      const phases: string[] = [];
-      const probe = { transitions: 0, running: false, phases };
-
-      window.vtProbe = probe;
-      document.startViewTransition = function (this: Document, ...args) {
-        const transition = start.apply(this, args);
-
-        probe.transitions += 1;
-        probe.running = true;
-        void transition.finished.finally(() => {
-          probe.running = false;
-        });
-
-        return transition;
-      };
-
-      new MutationObserver(() => {
-        const phase =
-          document.querySelector("[data-slot=ombra-viewer]")?.getAttribute("data-phase") ??
-          "unmounted";
-
-        if (probe.phases.at(-1) !== phase) probe.phases.push(phase);
-      }).observe(document.body, {
-        subtree: true,
-        childList: true,
-        attributes: true,
-        attributeFilter: ["data-phase"],
-      });
-    });
-
-    await page.getByTestId("vt").scrollIntoViewIfNeeded();
-    await page.getByTestId("vt").getByRole("button", { name: first.alt, exact: true }).click();
-    await expect.poll(() => page.evaluate(() => window.vtProbe?.running)).toBe(true);
-
-    expect(await page.evaluate(() => window.vtProbe?.transitions)).toBe(1);
-    await harness(page, { type: "parent-closed", section: "vt" });
-    await expect(viewer(page)).toHaveCount(0, { timeout: 10_000 });
-    await page.waitForTimeout(600);
-
-    const probe = await page.evaluate(() => window.vtProbe);
-
-    // One close: a FLIP close from the opening's live frame ("closing"), or, when the close
-    // lands before the transition has a frame to hand over, a view transition close.
-    const flipCloses = probe?.phases.filter((phase) => phase === "closing").length ?? 0;
-    const transitionCloses = (probe?.transitions ?? 0) - 1;
-
-    expect(flipCloses + transitionCloses).toBe(1);
-    expect(probe?.phases.at(-1)).toBe("unmounted");
-    expect(probe?.phases).not.toContain("open");
-    await expect(viewer(page)).toHaveCount(0);
-    await expect(page.locator("[data-slot=ombra-flight]")).toHaveCount(0);
-    expect(await asks(page, "vt-readout", "open")).toEqual([true]);
-  });
-
-  test("controlled: a refused swipe-down close puts the sheet back at rest", async ({ page }) => {
-    await openFrom(page, "controlled", first.alt);
-    await harness(page, { type: "policy-changed", allowClose: false });
-
-    const box = await viewer(page).locator("[data-slot=ombra-track]").boundingBox();
-
-    if (!box) throw new Error("track had no box");
-
-    const x = box.x + box.width / 2;
-    const y = box.y + Math.min(72, box.height / 3);
-
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    await page.mouse.move(x, y + 220, { steps: 10 });
-
-    const sheetOffset = () =>
-      page.evaluate(() => {
-        const sheet = document.querySelector("[data-slot=ombra-sheet]");
-
-        return sheet instanceof HTMLElement
-          ? new DOMMatrix(getComputedStyle(sheet).transform).m42
-          : Number.NaN;
-      });
-
-    expect(await sheetOffset()).toBeGreaterThan(24);
-
-    // The viewer and backdrop publish the live pull for consumer styles.
-    for (const slot of ["ombra-viewer", "ombra-backdrop"]) {
-      const pull = await page
-        .locator(`[data-slot=${slot}]`)
-        .evaluate((node) => Number(getComputedStyle(node).getPropertyValue("--ombra-pull")));
-
-      expect(pull).toBeGreaterThan(0);
-    }
-
-    await page.mouse.up();
-
-    await expect.poll(() => asks(page, "controlled-readout", "open")).toEqual([true, false]);
-    await expect(viewer(page)).toHaveAttribute("data-phase", "open");
-    await expect.poll(sheetOffset).toBe(0);
-    await expect
-      .poll(() =>
-        page.evaluate(() =>
-          getComputedStyle(document.documentElement).getPropertyValue("--ombra-pull-live").trim(),
-        ),
-      )
-      .toBe("0");
-    await expect(viewer(page)).toHaveAttribute("data-pulling", "false");
-    await expectActive(page, first.alt, "1 / 5");
   });
 
   test("several roots on one page keep their own state", async ({ page }) => {

@@ -5,8 +5,12 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  check:
+  static:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,16 +25,58 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm budget
       - run: pnpm registry:validate
+
+  # One job per Playwright project, so the projects run side by side and each installs one browser.
+  # The frame budget samples on a runner of its own, so no other test competes with it for the CPU.
+  e2e:
+    name: e2e (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # webkit-mobile is the slowest project, so it runs as two shards.
+        name: [chromium, chromium-mobile, webkit, webkit-mobile-1, webkit-mobile-2, frame-budget]
+        # Desktop WebKit runs on pushes to main only. Pull requests keep webkit-mobile, which
+        # shares most of its engine behaviour, so most WebKit regressions still block the merge.
+        exclude:
+          - name: ${{ github.event_name == 'pull_request' && 'webkit' || 'none' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm exec playwright install --with-deps chromium webkit
-      - run: pnpm test:e2e
+      - run: pnpm exec playwright install --with-deps ${{ startsWith(matrix.name, 'webkit') && 'webkit' || 'chromium' }}
+      - name: pnpm test:e2e
+        env:
+          PROJECT: ${{ matrix.name }}
+        run: |
+          case "$PROJECT" in
+            chromium) args="--project=unit --project=chromium" ;;
+            frame-budget) args="--project=frame-budget --no-deps" ;;
+            webkit-mobile-1) args="--project=webkit-mobile --shard=1/2" ;;
+            webkit-mobile-2) args="--project=webkit-mobile --shard=2/2" ;;
+            *) args="--project=$PROJECT" ;;
+          esac
+          pnpm test:e2e $args
       - name: Upload Playwright failure output
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-failure
+          name: playwright-failure-${{ matrix.name }}
           path: |
             test-results/
             playwright-report/
           retention-days: 14
           if-no-files-found: ignore
+
+  # Branch protection requires a check named "check". It passes only when every job above passed.
+  check:
+    if: always()
+    needs: [static, e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.static.result }}" = success && test "${{ needs.e2e.result }}" = success

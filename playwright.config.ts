@@ -2,6 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 const port = 3000;
 
+// Specs that test plain functions and files. They need no browser, so they run once.
+const unitSpecs = /(gallery-state|registry-items|spring)\.spec\.ts$/;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -21,9 +24,18 @@ export default defineConfig({
     timeout: 120_000,
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "webkit", use: { ...devices["Desktop Safari"] } },
-    { name: "chromium-mobile", use: { ...devices["Pixel 7"] } },
-    { name: "webkit-mobile", use: { ...devices["iPhone 13"] } },
+    { name: "unit", testMatch: unitSpecs },
+    { name: "chromium", testIgnore: unitSpecs, use: { ...devices["Desktop Chrome"] } },
+    { name: "webkit", testIgnore: unitSpecs, use: { ...devices["Desktop Safari"] } },
+    { name: "chromium-mobile", testIgnore: unitSpecs, use: { ...devices["Pixel 7"] } },
+    { name: "webkit-mobile", testIgnore: unitSpecs, use: { ...devices["iPhone 13"] } },
+    // The frame sample runs after every other project, so no test competes with it for the CPU.
+    {
+      name: "frame-budget",
+      testMatch: /frame-budget\.spec\.ts$/,
+      grep: /Chromium flags a long frame/,
+      dependencies: ["unit", "chromium", "webkit", "chromium-mobile", "webkit-mobile"],
+      use: { ...devices["Desktop Chrome"] },
+    },
   ],
 });
