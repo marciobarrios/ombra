@@ -34,22 +34,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: chromium
-            browser: chromium
-            projects: --project=unit --project=chromium
-          - name: chromium-mobile
-            browser: chromium
-            projects: --project=chromium-mobile
-          - name: webkit
-            browser: webkit
-            projects: --project=webkit
-          - name: webkit-mobile
-            browser: webkit
-            projects: --project=webkit-mobile
-          - name: frame-budget
-            browser: chromium
-            projects: --project=frame-budget --no-deps
+        name: [chromium, chromium-mobile, webkit, webkit-mobile, frame-budget]
+        # Desktop WebKit runs on pushes to main only. Pull requests keep webkit-mobile, which
+        # shares most of its engine behaviour, so most WebKit regressions still block the merge.
+        exclude:
+          - name: ${{ github.event_name == 'pull_request' && 'webkit' || 'none' }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -59,8 +48,17 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
-      - run: pnpm test:e2e ${{ matrix.projects }}
+      - run: pnpm exec playwright install --with-deps ${{ startsWith(matrix.name, 'webkit') && 'webkit' || 'chromium' }}
+      - name: pnpm test:e2e
+        env:
+          PROJECT: ${{ matrix.name }}
+        run: |
+          case "$PROJECT" in
+            chromium) args="--project=unit --project=chromium" ;;
+            frame-budget) args="--project=frame-budget --no-deps" ;;
+            *) args="--project=$PROJECT" ;;
+          esac
+          pnpm test:e2e $args
       - name: Upload Playwright failure output
         if: failure()
         uses: actions/upload-artifact@v4

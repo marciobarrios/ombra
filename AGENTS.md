@@ -34,7 +34,7 @@ Ombra is a shadcn registry, not an npm component library. Users copy files. Do n
 - shadcn on Base UI (`components.json` style `base-nova`). `lib/utils.ts` re-exports the `cn` package. Dialog primitives come from `@base-ui/react/dialog`.
 - Oxlint and Oxfmt. The anti-slop plugin is vendored at `tools/oxlint/anti-slop` (ignored by both tools). `@oxlint/plugins` must match the installed `oxlint` version exactly. Record any rule relaxation with an inline comment saying why.
 - Playwright projects: `chromium`, `webkit`, `chromium-mobile` (Pixel 7), `webkit-mobile` (iPhone 13). WebKit here is not iOS Safari.
-- Keep the Playwright suite small. It covers core behaviour only (open and close morph, navigation, pull to dismiss, zoom, focus and accessibility, the `OmbraRoot` contract, the registry files), and CI should finish it in a few minutes. Every browser test runs four times, once per project. Do not add a spec per edge case, engine or spike experiment. Specs that need no browser run once, in the `unit` project (`unitSpecs` in `playwright.config.ts`).
+- Keep the Playwright suite small. It covers core behaviour only (open and close morph, navigation, pull to dismiss, zoom, focus and accessibility, the `OmbraRoot` contract, the registry files), and CI should finish it in a few minutes. Every browser test runs four times, once per project. CI runs each project in its own job; pull requests skip desktop `webkit`, which runs on every push to `main`. Do not add a spec per edge case, engine or spike experiment. Specs that need no browser run once, in the `unit` project (`unitSpecs` in `playwright.config.ts`).
 
 ## Registry
 
