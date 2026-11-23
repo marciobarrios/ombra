@@ -1,9 +1,11 @@
 /**
  * Ceilings the performance checks enforce. The pre-spike proposal was 12 KB gzipped.
  * The gallery and album recipes, including zoom and excluding React, Base UI, and `cn`,
- * measured 26,252 bytes when this ceiling was set, so the size check fails above 27 KB.
+ * measured 26,252 bytes when the first 27 KB ceiling was set. At 27,570 bytes, with captions
+ * in, the ceiling moved to 32 KB to leave room for the v0.1 and v1 features that land in the
+ * gallery bundle, so the size check fails above 32 KB.
  */
-export const CORE_GZIP_LIMIT_BYTES = 27 * 1024;
+export const CORE_GZIP_LIMIT_BYTES = 32 * 1024;
 
 /** Current gzip size of that bundle. Update it, and the reports that quote it, with the core. */
 export const CORE_GZIP_MEASURED_BYTES = 27_570;

@@ -32,7 +32,7 @@ test("the performance report renders the budget", async ({ page }) => {
   await page.getByRole("link", { name: "Performance budget" }).click();
   await expect(page).toHaveURL(/\/performance$/);
   await expect(page.getByRole("heading", { name: "Performance budget" })).toBeVisible();
-  await expect(page.getByRole("table")).toContainText("27 KB");
+  await expect(page.getByRole("table")).toContainText("32 KB");
   await page.getByRole("link", { name: "Open the morph spike" }).click();
   await expect(page).toHaveURL(/\/spike$/);
   await expect(page.getByRole("heading", { name: "A shadow of the picture." })).toBeVisible();

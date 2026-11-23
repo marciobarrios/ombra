@@ -33,7 +33,7 @@ The docs app serves the home page and the spike at <http://127.0.0.1:3000/spike>
 
 ## Performance
 
-The budget, how each number is measured, and the iPhone frame-time readout are in [PERFORMANCE.md](PERFORMANCE.md) and on the docs site at `/performance`. `pnpm budget` fails when the gallery and album bundle, zoom included and Base UI excluded, gzip past 27 KB, or when the core imports an animation library. The Chromium suite fails when a sampled gesture frame passes 50 ms.
+The budget, how each number is measured, and the iPhone frame-time readout are in [PERFORMANCE.md](PERFORMANCE.md) and on the docs site at `/performance`. `pnpm budget` fails when the gallery and album bundle, zoom included and Base UI excluded, gzip past 32 KB, or when the core imports an animation library. The Chromium suite fails when a sampled gesture frame passes 50 ms.
 
 ## Install
 
