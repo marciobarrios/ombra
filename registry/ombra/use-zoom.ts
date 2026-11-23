@@ -31,9 +31,12 @@ type GestureEvent = UIEvent & { scale: number; clientX: number; clientY: number 
 const MIN_SCALE = 1;
 const MAX_SCALE = 4;
 const TAP_SCALE = 2.5;
-const DOUBLE_TAP_MS = 280;
-const DOUBLE_TAP_DISTANCE = 28;
-const TAP_SLOP = 12;
+
+// Shared with the chrome tap, so the second tap of a double-tap zooms and does not
+// also hide the controls.
+export const DOUBLE_TAP_MS = 280;
+export const DOUBLE_TAP_DISTANCE = 28;
+export const TAP_SLOP = 12;
 
 // A pan past the photo's edge moves the track. On release it pages when the track has
 // moved this share of a slide, or on a flick of this many pixels per second.

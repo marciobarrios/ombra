@@ -8,7 +8,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "cn";
 
 import { OmbraCounter, OmbraNext, OmbraPrevious } from "./ombra-controls";
-import { OmbraBackdrop, OmbraClose, OmbraContent, OmbraPortal } from "./ombra-dialog";
+import { OmbraBackdrop, OmbraChrome, OmbraClose, OmbraContent, OmbraPortal } from "./ombra-dialog";
 import { OmbraRoot, useOmbraState } from "./ombra-root";
 import type { OmbraRootProps } from "./ombra-root";
 import { OmbraMedia, OmbraSlide, OmbraSlides } from "./ombra-slides";
@@ -104,26 +104,28 @@ function AlbumViewer({ title, photos }: Pick<OmbraAlbumProps, "title" | "photos"
 
   return (
     <>
-      <header
-        data-slot="ombra-album-header"
-        className="flex touch-none items-center gap-1 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2"
-      >
-        <div className="flex min-w-0 flex-1 flex-col">
-          <Dialog.Title className="truncate text-base font-medium">{title}</Dialog.Title>
-          <OmbraCounter className="font-mono text-xs text-(--ombra-ink)/70">
-            {({ position, count }) => `${position} of ${count}`}
-          </OmbraCounter>
-        </div>
-        <OmbraPrevious aria-label="Previous photo">
-          <Chevron direction="left" />
-        </OmbraPrevious>
-        <OmbraNext aria-label="Next photo">
-          <Chevron direction="right" />
-        </OmbraNext>
-        <OmbraClose aria-label="Close album">
-          <CloseIcon />
-        </OmbraClose>
-      </header>
+      <OmbraChrome>
+        <header
+          data-slot="ombra-album-header"
+          className="flex touch-none items-center gap-1 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2"
+        >
+          <div className="flex min-w-0 flex-1 flex-col">
+            <Dialog.Title className="truncate text-base font-medium">{title}</Dialog.Title>
+            <OmbraCounter className="font-mono text-xs text-(--ombra-ink)/70">
+              {({ position, count }) => `${position} of ${count}`}
+            </OmbraCounter>
+          </div>
+          <OmbraPrevious aria-label="Previous photo">
+            <Chevron direction="left" />
+          </OmbraPrevious>
+          <OmbraNext aria-label="Next photo">
+            <Chevron direction="right" />
+          </OmbraNext>
+          <OmbraClose aria-label="Close album">
+            <CloseIcon />
+          </OmbraClose>
+        </header>
+      </OmbraChrome>
       <Dialog.Description className="sr-only">{active?.alt ?? ""}</Dialog.Description>
 
       <div className="relative min-h-0 min-w-0 flex-1">

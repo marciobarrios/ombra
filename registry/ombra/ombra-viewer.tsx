@@ -14,6 +14,7 @@ import {
 import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { flushSync } from "react-dom";
 
+import { attachChromeTap, chromeReducer } from "./chrome-tap";
 import { listenForCloseInput } from "./close-input";
 import {
   boxContains,
@@ -67,6 +68,7 @@ import { motionDuration } from "./types";
 import { fitToVisualViewport, usePageZoomGuard } from "./use-page-zoom-guard";
 import { usePull } from "./use-pull";
 import { useReducedMotion } from "./use-reduced-motion";
+import { useReducerWithBailout } from "./use-reducer-with-bailout";
 import { useZoom } from "./use-zoom";
 
 // The end of a close is a sliver of spring overshoot, moving too little to see. It
@@ -219,6 +221,10 @@ export function useOmbraViewer() {
   const index = Math.max(0, activeId === null ? 0 : ids.indexOf(activeId));
 
   const open = isOpen(gallery);
+  const [chrome, sendChrome] = useReducerWithBailout(chromeReducer, "shown");
+  const chromeRef = useRef(chrome);
+
+  chromeRef.current = chrome;
 
   // The pull hook listens on the track, so the viewer renders again when it mounts.
   const trackNode = useSyncExternalStore(
@@ -232,6 +238,8 @@ export function useOmbraViewer() {
   trackRef.current = trackNode;
 
   const popupRef = useRef<HTMLDivElement>(null);
+  const stopChromeRef = useRef<(() => void) | null>(null);
+  const toggleChromeRef = useRef<() => void>(() => {});
   const backdropRef = useRef<HTMLDivElement>(null);
   const backdropAnimationRef = useRef<Animation | null>(null);
   const popupAnimationRef = useRef<Animation | null>(null);
@@ -266,6 +274,30 @@ export function useOmbraViewer() {
 
   phaseRef.current = phase;
   indexRef.current = index;
+  toggleChromeRef.current = () => {
+    if (phaseRef.current !== "open") return;
+
+    const popup = popupRef.current;
+    const hiding = chromeRef.current === "shown";
+
+    sendChrome({ type: "chrome-toggled" });
+
+    // Focus inside a chrome region shows that region, and focus on the page means
+    // the next key never reaches the viewer. The dialog is outside the tab order,
+    // so it can hold focus while the controls disappear. A tap that focused the
+    // track leaves that focus alone: the track is inside the dialog and already
+    // receives the shortcuts.
+    if (!hiding || !popup) return;
+
+    const active = document.activeElement;
+    const inside = active instanceof Node && popup.contains(active);
+
+    const inChrome =
+      active instanceof Element && active.closest("[data-slot=ombra-chrome]") !== null;
+
+    if (!inside || inChrome) popup.focus({ preventScroll: true });
+  };
+
   rootRef.current = root;
   idsRef.current = ids;
   engineRef.current = engine;
@@ -368,6 +400,7 @@ export function useOmbraViewer() {
       zoomIn: () => zoomRef.current.zoomIn(),
       zoomOut: () => zoomRef.current.zoomOut(),
       reset: () => zoomRef.current.reset(),
+      home: () => zoomRef.current.home(),
       zoomed: () => zoomed,
     };
     root.notifyZoom();
@@ -460,14 +493,27 @@ export function useOmbraViewer() {
   }, []);
 
   const bindPopup = useCallback((node: HTMLDivElement | null) => {
+    stopChromeRef.current?.();
+    stopChromeRef.current = null;
     popupRef.current = node;
 
-    if (node) fitToVisualViewport(node);
+    if (node) {
+      fitToVisualViewport(node);
+      stopChromeRef.current = attachChromeTap(
+        node,
+        () => toggleChromeRef.current(),
+        () => phaseRef.current === "open",
+      );
+    }
 
     const opacity = openingOpacity("popup");
 
     if (node && opacity !== null) node.style.opacity = opacity;
   }, []);
+
+  useLayoutEffect(() => {
+    if (phase === "opening" || phase === "closed") sendChrome({ type: "chrome-reset" });
+  }, [phase, sendChrome]);
 
   useLayoutEffect(() => {
     if (phase !== "opening" && phase !== "closing") return;
@@ -1746,6 +1792,7 @@ export function useOmbraViewer() {
       ref: bindPopup,
       "data-engine": effective,
       "data-phase": phase,
+      "data-chrome": chrome,
       "data-zoomed": zoom.zoomed ? "true" : "false",
       "data-pulling": pulling ? "true" : "false",
       finalFocus: () => focusTarget() ?? true,
