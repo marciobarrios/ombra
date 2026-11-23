@@ -34,7 +34,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [chromium, chromium-mobile, webkit, webkit-mobile, frame-budget]
+        # webkit-mobile is the slowest project, so it runs as two shards.
+        name: [chromium, chromium-mobile, webkit, webkit-mobile-1, webkit-mobile-2, frame-budget]
         # Desktop WebKit runs on pushes to main only. Pull requests keep webkit-mobile, which
         # shares most of its engine behaviour, so most WebKit regressions still block the merge.
         exclude:
@@ -56,6 +57,8 @@ jobs:
           case "$PROJECT" in
             chromium) args="--project=unit --project=chromium" ;;
             frame-budget) args="--project=frame-budget --no-deps" ;;
+            webkit-mobile-1) args="--project=webkit-mobile --shard=1/2" ;;
+            webkit-mobile-2) args="--project=webkit-mobile --shard=2/2" ;;
             *) args="--project=$PROJECT" ;;
           esac
           pnpm test:e2e $args
