@@ -29,7 +29,7 @@ export default function PerformancePage() {
         <tbody>
           <tr className="border-b border-foreground/10">
             <td className="py-3 pr-4">Core JavaScript, gzip</td>
-            <td className="py-3 pr-4">27 KB</td>
+            <td className="py-3 pr-4">32 KB</td>
             <td className="py-3">
               <code className="font-mono">pnpm budget</code>
             </td>
@@ -67,8 +67,10 @@ export default function PerformancePage() {
       <h2 className="font-display mt-14 text-3xl">Size</h2>
       <p className="mt-4 leading-7 text-foreground/80">
         The pre-spike proposal was 12 KB gzipped. The shipped recipes measure 27,570 bytes, so the
-        enforced ceiling is 27 KB (27 × 1024 bytes). 78 bytes of headroom remain, so any addition
-        has to remove something first.
+        enforced ceiling is 32 KB (32 × 1024 bytes). 5,198 bytes of headroom remain, for the v0.1
+        and v1 features that go into the gallery bundle: image loading, deep links, windowing and
+        video. Each one still records its growth here. The first ceiling was 27 KB, set when the
+        core measured 26,252 bytes; it moved to 32 KB once captions left 78 bytes.
       </p>
       <p className="mt-4 leading-7 text-foreground/80">
         <code className="font-mono">pnpm budget</code> bundles{" "}
@@ -80,7 +82,7 @@ export default function PerformancePage() {
         . Gzip is zlib level 9. The script also scans registry imports and{" "}
         <code className="font-mono">registry.json</code> dependencies for Motion, GSAP, anime.js,
         Popmotion, and React Spring, and exits non-zero if it finds one or if the gzipped size is
-        over 27 KB. The unit test feeds the same check a size one byte over the limit and expects
+        over 32 KB. The unit test feeds the same check a size one byte over the limit and expects
         that failure.
       </p>
 

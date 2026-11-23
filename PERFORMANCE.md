@@ -4,7 +4,7 @@ The core is the gallery and album recipes bundled together, zoom included. React
 
 | Check                           | Ceiling                       | Where                                 |
 | ------------------------------- | ----------------------------- | ------------------------------------- |
-| Core JavaScript, gzip           | 27 KB                         | `pnpm budget`                         |
+| Core JavaScript, gzip           | 32 KB                         | `pnpm budget`                         |
 | Animated properties             | transform, opacity, clip-path | Chromium, during the gestures below   |
 | INP for open, close, navigation | 200 ms                        | Chromium event timing                 |
 | Longest frame in CI             | 50 ms                         | Chromium rAF and long-animation-frame |
@@ -13,11 +13,11 @@ The core is the gallery and album recipes bundled together, zoom included. React
 
 ## Size
 
-The pre-spike proposal was 12 KB gzipped. The shipped recipes measure 27,570 bytes, so the enforced ceiling is 27 KB (27 × 1024 bytes). 78 bytes of headroom remain, so any addition has to remove something first.
+The pre-spike proposal was 12 KB gzipped. The shipped recipes measure 27,570 bytes, so the enforced ceiling is 32 KB (32 × 1024 bytes). 5,198 bytes of headroom remain, for the v0.1 and v1 features that go into the gallery bundle: image loading, deep links, windowing and video. Each one still records its growth here. The first ceiling was 27 KB, set when the core measured 26,252 bytes; it moved to 32 KB once captions left 78 bytes.
 
-`pnpm budget` bundles `OmbraGallery` and `OmbraAlbum` with esbuild, minified, packages external. External means `react`, `react-dom`, `@base-ui/react`, and `cn`. Gzip is zlib level 9. The script also scans registry imports and `registry.json` dependencies for Motion, GSAP, anime.js, Popmotion, and React Spring, and exits non-zero if it finds one or if the gzipped size is over 27 KB. The unit test feeds the same check a size one byte over the limit and expects that failure.
+`pnpm budget` bundles `OmbraGallery` and `OmbraAlbum` with esbuild, minified, packages external. External means `react`, `react-dom`, `@base-ui/react`, and `cn`. Gzip is zlib level 9. The script also scans registry imports and `registry.json` dependencies for Motion, GSAP, anime.js, Popmotion, and React Spring, and exits non-zero if it finds one or if the gzipped size is over 32 KB. The unit test feeds the same check a size one byte over the limit and expects that failure.
 
-The measured 27,570 bytes is locked in `tools/budget/limits.ts`. Updating the core means updating that figure and this report in the same change, and staying under 27 KB.
+The measured 27,570 bytes is locked in `tools/budget/limits.ts`. Updating the core means updating that figure and this report in the same change, and staying under 32 KB.
 
 ## What the core is allowed to animate
 
