@@ -215,3 +215,42 @@
     transition: none;
   }
 }
+
+/* Chrome stays visible when the system replaces author colours. */
+@media (forced-colors: active) {
+  [data-slot="ombra-close"],
+  [data-slot="ombra-previous"],
+  [data-slot="ombra-next"],
+  [data-slot="ombra-zoom-in"],
+  [data-slot="ombra-zoom-out"] {
+    border: 1px solid ButtonText;
+  }
+
+  [data-slot="ombra-close"]:focus-visible,
+  [data-slot="ombra-previous"]:focus-visible,
+  [data-slot="ombra-next"]:focus-visible,
+  [data-slot="ombra-zoom-in"]:focus-visible,
+  [data-slot="ombra-zoom-out"]:focus-visible,
+  [data-slot="ombra-thumbnail"]:focus-visible,
+  [data-slot="ombra-track"]:focus-visible,
+  [data-slot="ombra-trigger"]:focus-visible {
+    outline: 2px solid Highlight;
+  }
+
+  [data-slot="ombra-previous"]:disabled,
+  [data-slot="ombra-next"]:disabled,
+  [data-slot="ombra-zoom-in"]:disabled,
+  [data-slot="ombra-zoom-out"]:disabled {
+    opacity: 1;
+    color: GrayText;
+  }
+
+  [data-slot="ombra-thumbnail"] {
+    opacity: 1;
+    border-color: ButtonText;
+  }
+
+  [data-slot="ombra-thumbnail"][data-active="true"] {
+    border-color: Highlight;
+  }
+}

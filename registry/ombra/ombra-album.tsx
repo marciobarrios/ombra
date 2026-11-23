@@ -129,7 +129,7 @@ function AlbumViewer({ title, photos }: Pick<OmbraAlbumProps, "title" | "photos"
       <Dialog.Description className="sr-only">{active?.alt ?? ""}</Dialog.Description>
 
       <div className="relative min-h-0 min-w-0 flex-1">
-        <OmbraSlides>
+        <OmbraSlides aria-label={title}>
           {photos.map((photo) => (
             <OmbraSlide
               key={photo.id}

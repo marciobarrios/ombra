@@ -9,11 +9,18 @@ import { indexFromScroll } from "./geometry";
 import { useOmbraRoot } from "./ombra-root";
 import type { OmbraSlidesHandle } from "./ombra-root";
 import { useReducedMotion } from "./use-reduced-motion";
+import { useReducerWithBailout } from "./use-reducer-with-bailout";
 
 // A scroll with no `scrollend` (older WebKit) counts as rested after this quiet spell.
 const SCROLL_REST_MS = 140;
 
-export type OmbraSlidesProps = useRender.ComponentProps<"div">;
+export type OmbraSlidesProps = useRender.ComponentProps<"div"> & {
+  /**
+   * Polite text for the slide the track has rested on. `position` is one-based.
+   * Without it, the announcement is `Image N of M`.
+   */
+  announce?: (itemId: string, position: number, count: number) => string;
+};
 
 export type OmbraSlideProps = useRender.ComponentProps<"div"> & {
   /** The item this slide shows. It matches the trigger's `itemId`, not a position. */
@@ -41,22 +48,66 @@ export function useSlideItem(part: string): string {
 /** The spacers let the first and last slides rest in the centre. */
 const SPACER = "shrink-0 basis-[max(0px,calc(7cqi-1rem))]";
 
+type LiveState = { text: string };
+
+type LiveAction = { type: "announced"; text: string };
+
+function liveReducer(state: LiveState, action: LiveAction): LiveState {
+  if (action.text === "" || action.text === state.text) return state;
+
+  return { text: action.text };
+}
+
+function defaultAnnouncement(_itemId: string, position: number, count: number): string {
+  return `Image ${position} of ${count}`;
+}
+
+function announcementFor(
+  itemIds: readonly string[],
+  itemId: string | null,
+  announce: (itemId: string, position: number, count: number) => string,
+): string {
+  if (itemId === null) return "";
+
+  const index = itemIds.indexOf(itemId);
+
+  if (index < 0) return "";
+
+  return announce(itemId, index + 1, itemIds.length);
+}
+
 /**
  * The native scroll-snap track. The active item follows the slide nearest the centre as the
  * track scrolls, so a smooth navigation publishes each slide it passes rather than jumping to
  * the destination. When the track rests on a slide a controlled parent refused, it glides back
  * to the active one.
  */
-export function OmbraSlides({ ref, className, render, children, ...props }: OmbraSlidesProps) {
+export function OmbraSlides({
+  ref,
+  className,
+  render,
+  children,
+  announce,
+  ...props
+}: OmbraSlidesProps) {
   const root = useOmbraRoot();
   const reduced = useReducedMotion();
   const rootRef = useRef(root);
   const reducedRef = useRef(reduced);
   const handleRef = useRef<OmbraSlidesHandle | null>(null);
   const snapRef = useRef<((behavior: ScrollBehavior) => void) | null>(null);
+  const announceRef = useRef(announce ?? defaultAnnouncement);
+
+  const [{ text }, sendLive] = useReducerWithBailout(liveReducer, {
+    text: announcementFor(root.state.itemIds, root.state.activeId, announce ?? defaultAnnouncement),
+  });
+
+  const sendLiveRef = useRef(sendLive);
 
   rootRef.current = root;
   reducedRef.current = reduced;
+  announceRef.current = announce ?? defaultAnnouncement;
+  sendLiveRef.current = sendLive;
 
   const bind = useCallback((node: HTMLDivElement | null) => {
     if (!node) return;
@@ -65,6 +116,15 @@ export function OmbraSlides({ ref, className, render, children, ...props }: Ombr
     let target: string | null = null;
     let timer = 0;
     const hold = () => rootRef.current.trackHoldRef.current?.() ?? "free";
+
+    const announceSettled = (itemId: string | null) => {
+      const current = rootRef.current;
+
+      sendLiveRef.current({
+        type: "announced",
+        text: announcementFor(current.state.itemIds, itemId, announceRef.current),
+      });
+    };
 
     const centred = () => {
       const slides = node.querySelectorAll<HTMLElement>("[data-slot=ombra-slide]");
@@ -109,6 +169,8 @@ export function OmbraSlides({ ref, className, render, children, ...props }: Ombr
       settled = true;
       target = null;
       publish();
+      // One announcement for the slide the track rested on, not each slide it passed.
+      announceSettled(centred());
       // A controlled parent may keep the active item. Glide back to it once the parent
       // has had its render, rather than rest on a slide it refused.
       requestAnimationFrame(() => {
@@ -197,31 +259,54 @@ export function OmbraSlides({ ref, className, render, children, ...props }: Ombr
     if (handleRef.current?.navigationTarget() != null) return;
 
     snapRef.current?.(reducedRef.current ? "auto" : "smooth");
+
+    const handle = handleRef.current;
+
+    // A change that does not scroll, such as opening on the slide already centred,
+    // still has one announcement. A swipe waits for settle instead.
+    if (handle?.settled() && activeId !== null && handle.centred() === activeId) {
+      sendLiveRef.current({
+        type: "announced",
+        text: announcementFor(rootRef.current.state.itemIds, activeId, announceRef.current),
+      });
+    }
   }, [activeId]);
+
+  const named = props["aria-label"] != null || props["aria-labelledby"] != null;
+
+  const carousel = {
+    "data-slot": "ombra-track",
+    ...props,
+    role: "region",
+    "aria-roledescription": "carousel",
+    // The track scrolls, so it has to be in the tab order. Arrow keys still change
+    // slides: the dialog handles them and prevents the native scroll.
+    tabIndex: 0,
+    className: cn(
+      // Each slide is 86% of the track, so its neighbours peek in from both sides.
+      "@container flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current",
+      className,
+    ),
+    children: (
+      <>
+        {/* role=status is the polite live region. Its text changes once per rested slide. */}
+        <p role="status" data-slot="ombra-live" className="pointer-events-none sr-only">
+          {text}
+        </p>
+        <div aria-hidden="true" className={SPACER} />
+        {children}
+        <div aria-hidden="true" className={SPACER} />
+      </>
+    ),
+  };
+
+  if (!named) carousel["aria-label"] = "Photos";
 
   // useRender merges the local and caller refs, including React 19 ref cleanups.
   return useRender({
     render,
     ref: [bind, ref ?? null],
-    props: {
-      "data-slot": "ombra-track",
-      ...props,
-      // A tab stop, so this scrollable region is keyboard-reachable. The dialog handles
-      // Arrow, Home and End from here the same way it does from any other control.
-      tabIndex: 0,
-      className: cn(
-        // Each slide is 86% of the track, so its neighbours peek in from both sides.
-        "@container flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current",
-        className,
-      ),
-      children: (
-        <>
-          <div aria-hidden="true" className={SPACER} />
-          {children}
-          <div aria-hidden="true" className={SPACER} />
-        </>
-      ),
-    },
+    props: carousel,
   });
 }
 
@@ -253,6 +338,8 @@ export function OmbraSlide({ itemId, ref, className, render, ...props }: OmbraSl
           role: "group",
           "aria-roledescription": "slide",
           ...props,
+          // Peeking neighbours stay on screen. Only the active slide is exposed.
+          "aria-hidden": active ? undefined : true,
           className: cn(
             // A size container, so the media inside can fit itself to the slide.
             "flex h-full min-h-0 w-[86cqi] shrink-0 snap-center snap-always items-center justify-center [container-type:size]",

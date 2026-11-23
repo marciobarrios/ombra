@@ -153,11 +153,16 @@ slides.
   slide nearest the centre as the track scrolls, so a smooth navigation publishes
   each slide it passes. When the track rests on a slide a controlled parent refused,
   it glides back to the active one. A reorder or removal puts the active slide back
-  under the track at once. One track per root.
+  under the track at once. One track per root. It is a carousel region
+  (`role="region"`, `aria-roledescription="carousel"`) in the tab order, named by
+  `aria-label` or `aria-labelledby`, or "Photos" when neither is set. A polite
+  live region (`role="status"`, `data-slot="ombra-live"`) announces the rested
+  slide once, as `Image N of M` unless `announce` formats it.
 - **Slide.** `OmbraSlide` takes an `itemId` and is the snap box: its size never
   changes during a pull or a zoom. It is a size container, sets `role="group"`,
   `aria-roledescription="slide"` and `data-active`; consumers supply `aria-label`.
-  Captions and other markup are ordinary children.
+  Inactive slides stay visible and are `aria-hidden`, so only the active slide's
+  content is exposed. Captions and other markup are ordinary children.
 - **Media.** `OmbraMedia` takes the media's intrinsic `width` and `height`, and
   sizes itself to the largest box of that ratio that fits its parent's size
   container, centred. That box is where the open morph lands and the close morph
