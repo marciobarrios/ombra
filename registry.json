@@ -27,10 +27,29 @@
         "[data-slot=\"ombra-backdrop\"]": {
           "opacity": "calc(1 - var(--ombra-pull-amount) * 0.7)"
         },
+        "[data-slot=\"ombra-chrome\"]": {
+          "transition": "opacity 200ms"
+        },
+        "[data-chrome=\"hidden\"] [data-slot=\"ombra-chrome\"]": {
+          "opacity": "0"
+        },
+        "[data-chrome=\"hidden\"] [data-slot=\"ombra-chrome\"], [data-chrome=\"hidden\"] [data-slot=\"ombra-chrome\"] *": {
+          "pointer-events": "none"
+        },
+        "[data-chrome=\"hidden\"] [data-slot=\"ombra-chrome\"]:focus-within": {
+          "opacity": "1",
+          "pointer-events": "auto"
+        },
+        "[data-chrome=\"hidden\"] [data-slot=\"ombra-chrome\"]:focus-within *": {
+          "pointer-events": "auto"
+        },
         "@media (prefers-reduced-motion: reduce)": {
           "[data-slot=\"ombra-sheet\"]": {
             "transform": "none",
             "border-radius": "0"
+          },
+          "[data-slot=\"ombra-chrome\"]": {
+            "transition": "none"
           }
         }
       },
@@ -84,6 +103,11 @@
           "path": "registry/ombra/close-input.ts",
           "type": "registry:lib",
           "target": "components/ombra/close-input.ts"
+        },
+        {
+          "path": "registry/ombra/chrome-tap.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/chrome-tap.ts"
         },
         {
           "path": "registry/ombra/types.ts",

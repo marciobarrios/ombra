@@ -68,7 +68,7 @@ type ActionOptions<State extends Record<string, unknown>> = {
  * double-tap zoom, so they set `touch-action: manipulation`.
  */
 export const ACTION_CLASSES =
-  "inline-flex size-11 touch-manipulation items-center justify-center rounded-full text-current focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-30";
+  "inline-flex size-11 shrink-0 touch-manipulation items-center justify-center rounded-full text-current focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-current disabled:opacity-30";
 
 /**
  * A button part. The caller's handler runs first, and may call
@@ -108,6 +108,20 @@ export function useOmbraAction<State extends Record<string, unknown>>(
           // A `render` element that is not a button ignores `disabled`.
           onClick: () => {
             if (!off) onPress();
+          },
+          // Disabling the focused control makes the browser drop focus on the page,
+          // and the viewer's keys stop working. The dialog itself can take it.
+          onBlur: (event) => {
+            const button = event.currentTarget;
+
+            if (!button.disabled || !button.isConnected) return;
+
+            const dialog = button.closest<HTMLElement>("[role=dialog]");
+            const next = event.relatedTarget;
+
+            if (!dialog || (next instanceof Node && dialog.contains(next))) return;
+
+            dialog.focus({ preventScroll: true });
           },
         },
         props,
@@ -491,7 +505,7 @@ export function OmbraThumbnail({ itemId, ...props }: OmbraThumbnailProps) {
       disabled: false,
       onPress: () => navigateTo(root, itemId, behavior),
       classes: cn(
-        "size-11 shrink-0 snap-center overflow-hidden rounded-lg border-2 p-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current",
+        "size-11 shrink-0 snap-center overflow-hidden rounded-lg border-2 p-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-current",
         active ? "border-current" : "border-transparent opacity-60",
       ),
       state: { active },

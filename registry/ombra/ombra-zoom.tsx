@@ -97,3 +97,21 @@ export function OmbraZoomOut(props: OmbraZoomActionProps) {
     props,
   );
 }
+
+/**
+ * Returns the active photo to its fitted size. Disabled while it already rests there,
+ * or the active slide has no `OmbraZoom`. Supply visible text or `aria-label` in the
+ * consumer's language.
+ */
+export function OmbraZoomReset(props: OmbraZoomActionProps) {
+  const { zoomControlsRef } = useOmbraRoot();
+
+  return useOmbraAction(
+    {
+      slot: "ombra-zoom-reset",
+      disabled: !useCanZoom(true),
+      onPress: () => zoomControlsRef.current?.home(),
+    },
+    props,
+  );
+}

@@ -88,12 +88,14 @@ export type OmbraMediaSource = {
 /** A zoom surface, registered by `OmbraZoom`. Only an item with one can zoom. */
 export type OmbraZoomRegistration = { itemId: string; element: HTMLElement };
 
-/** The viewer's zoom, which `OmbraZoomIn` and `OmbraZoomOut` drive. */
+/** The viewer's zoom, which the zoom buttons drive. */
 export type OmbraZoomControls = {
   zoomIn: () => void;
   zoomOut: () => void;
-  /** Returns the active item to its fitted size at once. */
+  /** Returns the active item to its fitted size at once, with no animation. */
   reset: () => void;
+  /** Returns the active item to its fitted size, the same way the `0` key does. */
+  home: () => void;
   /** Whether the active item rests above its fitted size. */
   zoomed: () => boolean;
 };
