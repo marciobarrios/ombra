@@ -157,6 +157,25 @@ function slideStep(track: HTMLElement): number {
   return second.offsetLeft - first.offsetLeft;
 }
 
+/**
+ * Puts the slide nearest the centre exactly there, at once. A new scroll ends any smooth
+ * scroll still in flight, which `overflow: hidden` alone would let carry on.
+ */
+function pinNearestSlide(track: HTMLElement) {
+  const mid = track.getBoundingClientRect().left + track.clientWidth / 2;
+  let offset = Number.POSITIVE_INFINITY;
+
+  for (const slide of track.querySelectorAll<HTMLElement>("[data-slot=ombra-slide]")) {
+    const rect = slide.getBoundingClientRect();
+    const candidate = rect.left + rect.width / 2 - mid;
+
+    if (Math.abs(candidate) < Math.abs(offset)) offset = candidate;
+  }
+
+  if (Number.isFinite(offset))
+    track.scrollTo({ left: track.scrollLeft + offset, behavior: "auto" });
+}
+
 function capturePointer(track: HTMLElement, pointerId: number) {
   try {
     track.setPointerCapture(pointerId);
@@ -609,6 +628,11 @@ export function useZoom(
       pinchStart.current = null;
       panStart.current = null;
       gestureRef.current = true;
+
+      // A glide can start the frame before its first scroll event says so. Pinning the
+      // track ends it, so the zoomed photo cannot travel away with it.
+      if (pose.current.scale <= 1.02) pinNearestSlide(track);
+
       rectRef.current = layoutRect(layer, pose.current);
       holdTrack(track, true);
 

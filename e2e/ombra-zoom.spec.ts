@@ -176,43 +176,56 @@ test.describe("OmbraZoom", () => {
 
   // MAR-22: a pinch while the track still moves waits for it to rest, so a photo is never
   // zoomed between two slides. The smooth scroll stands in for a fling.
-  test("a pinch while the track glides waits for it to rest on a slide", async ({ page }) => {
+  test("a pinch while the track glides never zooms a photo between two slides", async ({
+    page,
+  }) => {
     await openBench(page, "all");
     await page.emulateMedia({ reducedMotion: "no-preference" });
 
     const track = page.locator("[data-slot=ombra-track]");
 
-    const start = await track.evaluate((node) => {
-      node.scrollBy({ left: node.clientWidth * 0.9, behavior: "smooth" });
+    const offCentre = () =>
+      track.evaluate((node) => {
+        const mid = node.getBoundingClientRect().left + node.clientWidth / 2;
+        const slides = [...node.querySelectorAll("[data-slot=ombra-slide]")];
 
-      return node.scrollLeft;
+        return Math.min(
+          ...slides.map((slide) => {
+            const box = slide.getBoundingClientRect();
+
+            return Math.abs(box.left + box.width / 2 - mid);
+          }),
+        );
+      });
+
+    // Every frame, flag a zoomed photo while no slide sits in the centre.
+    await track.evaluate((node) => {
+      const watch = () => {
+        const mid = node.getBoundingClientRect().left + node.clientWidth / 2;
+
+        const centred = [...node.querySelectorAll("[data-slot=ombra-slide]")].some((slide) => {
+          const box = slide.getBoundingClientRect();
+
+          return Math.abs(box.left + box.width / 2 - mid) < 2;
+        });
+
+        if (!centred && node.querySelector("[data-zoomed=true]")) node.dataset.offCentre = "zoomed";
+
+        requestAnimationFrame(watch);
+      };
+
+      requestAnimationFrame(watch);
+      node.scrollBy({ left: node.clientWidth * 0.9, behavior: "smooth" });
     });
 
-    await expect.poll(() => track.evaluate((node) => node.scrollLeft)).toBeGreaterThan(start);
-    await pinch(track, [20, 40, 60], { up: false });
-    expect(await mediaScale(page)).toBeCloseTo(1, 2);
-
-    // The same fingers keep spreading once the next slide rests in the centre.
-    await expect
-      .poll(() =>
-        track.evaluate((node) => {
-          const slide = node.querySelector("[data-slot=ombra-slide][data-active=true]");
-          const box = slide?.getBoundingClientRect();
-          const mid = node.getBoundingClientRect().left + node.clientWidth / 2;
-
-          return box ? Math.abs(box.left + box.width / 2 - mid) : Number.POSITIVE_INFINITY;
-        }),
-      )
-      .toBeLessThan(2);
-    await expect(activeSlide(page)).toHaveAttribute("aria-label", second.alt);
+    await pinch(track, [20, 30, 40], { up: false });
+    await expect.poll(offCentre).toBeLessThan(2);
     await pinch(
       track,
-      Array.from({ length: 12 }, (_, step) => 70 + step * 10),
+      Array.from({ length: 12 }, (_, step) => 50 + step * 10),
       { down: false },
     );
-    await expect(activeSlide(page).locator("[data-slot=ombra-zoom]")).toHaveAttribute(
-      "data-zoomed",
-      "true",
-    );
+    await expect(viewer(page)).toHaveAttribute("data-zoomed", "true");
+    await expect(track).not.toHaveAttribute("data-off-centre");
   });
 });
