@@ -170,6 +170,11 @@
           "target": "components/ombra/gesture-arbitration.ts"
         },
         {
+          "path": "registry/ombra/zoom-limit.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/zoom-limit.ts"
+        },
+        {
           "path": "registry/ombra/gallery-state.ts",
           "type": "registry:lib",
           "target": "components/ombra/gallery-state.ts"
@@ -239,7 +244,7 @@
       "name": "ombra-zoom",
       "type": "registry:hook",
       "title": "Ombra zoom",
-      "description": "Pinch, double-tap, and ctrl+wheel zoom with scroll-snap hand-off.",
+      "description": "Pinch, double-tap, and ctrl+wheel zoom up to the photo's natural size, with scroll-snap hand-off.",
       "docs": "The trigger image needs a laid-out size and object-fit so the morph has a box. Do not clip the trigger or put it inside a transformed ancestor. flip is the default engine, and reduced motion forces fade. Dependencies are React, @base-ui/react, and cn. Do not add an animation library.",
       "files": [
         {
@@ -261,6 +266,11 @@
           "path": "registry/ombra/scroll-range.ts",
           "type": "registry:lib",
           "target": "components/ombra/scroll-range.ts"
+        },
+        {
+          "path": "registry/ombra/zoom-limit.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/zoom-limit.ts"
         },
         {
           "path": "registry/ombra/spring.ts",

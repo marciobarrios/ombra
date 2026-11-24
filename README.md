@@ -59,7 +59,7 @@ Each registry item has a docs page with a Copy prompt button for a coding agent 
 
 - `ombra` — the parts, the gallery and album recipes, and the morph, pull and zoom internals. Its `css` carries the pull styles, which the docs app keeps in `globals.css`.
 - `ombra-morph` — geometry, FLIP / View Transition helpers, and the frame sampler.
-- `ombra-zoom` — pinch, double-tap, ctrl+wheel, and Safari trackpad-pinch zoom.
+- `ombra-zoom` — pinch, double-tap, ctrl+wheel, and Safari trackpad-pinch zoom, up to the photo's natural size.
 
 One installable item per part and recipe comes in [MAR-87](https://linear.app/marciobarrios/issue/MAR-87).
 

@@ -86,7 +86,12 @@ export type OmbraMediaSource = {
 };
 
 /** A zoom surface, registered by `OmbraZoom`. Only an item with one can zoom. */
-export type OmbraZoomRegistration = { itemId: string; element: HTMLElement };
+export type OmbraZoomRegistration = {
+  itemId: string;
+  element: HTMLElement;
+  /** The consumer's zoom ceiling. Without it, zoom stops at the media's natural size. */
+  maxScale?: number;
+};
 
 /** The viewer's zoom, which the zoom buttons drive. */
 export type OmbraZoomControls = {
@@ -159,6 +164,8 @@ export type OmbraRootContextValue = {
   registerZoom: (zoom: OmbraZoomRegistration) => () => void;
   /** The first zoom surface still on the page for `itemId`, in document order. */
   zoomFor: (itemId: string) => HTMLElement | null;
+  /** The `maxScale` hint of that zoom surface, if it has one. */
+  zoomHintFor: (itemId: string) => number | undefined;
   /** Called when a zoom surface mounts or leaves, or the viewer's zoom changes. */
   subscribeZoom: (listener: () => void) => () => void;
   /** Tells the zoom subscribers that the viewer's zoom changed. */
@@ -521,6 +528,11 @@ export function OmbraRoot({
     [],
   );
 
+  const zoomHintFor = useCallback(
+    (itemId: string) => firstConnected(zoomParts.current, itemId)?.maxScale,
+    [],
+  );
+
   const subscribeZoom = useCallback((listener: () => void) => {
     zoomListeners.current.add(listener);
 
@@ -826,6 +838,7 @@ export function OmbraRoot({
       mediaFor,
       registerZoom,
       zoomFor,
+      zoomHintFor,
       subscribeZoom,
       notifyZoom,
       zoomControlsRef,
@@ -854,6 +867,7 @@ export function OmbraRoot({
       mediaFor,
       registerZoom,
       zoomFor,
+      zoomHintFor,
       subscribeZoom,
       notifyZoom,
       registerSlides,

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
 
+import { clampZoom, resistZoom, zoomCeiling } from "./zoom-limit";
 import { gestureMode, gestureOwner } from "./gesture-arbitration";
 import type { GestureInput, GestureOwner } from "./gesture-arbitration";
 import { clampScrollLeft } from "./scroll-range";
@@ -31,8 +32,6 @@ type Point = {
 // instead of ctrl+wheel; iOS Safari sends it alongside the touch pointers.
 type GestureEvent = UIEvent & { scale: number; clientX: number; clientY: number };
 
-const MIN_SCALE = 1;
-const MAX_SCALE = 4;
 const TAP_SCALE = 2.5;
 
 // Shared with the chrome tap, so the second tap of a double-tap zooms and does not
@@ -57,17 +56,11 @@ export type ZoomControls = {
   home: () => void;
 };
 
-function clampScale(scale: number): number {
-  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
-}
-
-function resistScale(scale: number): number {
-  if (scale > MAX_SCALE) return MAX_SCALE + (scale - MAX_SCALE) * 0.28;
-
-  if (scale < MIN_SCALE) return MIN_SCALE - (MIN_SCALE - scale) * 0.28;
-
-  return scale;
-}
+/**
+ * What limits the active photo's zoom: the media it scales, the file's natural width, and the
+ * consumer's `maxScale` hint, if any.
+ */
+export type ZoomLimit = { media: HTMLElement; width: number; hint?: number };
 
 function poseFromTransform(transform: string): Pose | null {
   const matrix3d = /matrix3d\(([^)]+)\)/.exec(transform);
@@ -227,6 +220,21 @@ function clearLayers(track: HTMLElement | null) {
 // Without a pull or a track that reports its rest, a pinch is never held back.
 const NEVER_PULLING: RefObject<boolean> = { current: false };
 const ALWAYS_RESTED: RefObject<boolean> = { current: true };
+const NO_LIMIT: RefObject<ZoomLimit | null> = { current: null };
+
+/**
+ * Asks for a sharper source the first time a photo zooms: each `img` with a `srcset` gets
+ * `sizes` at its magnified width, so the browser picks a larger candidate. The fitted
+ * `sizes` would keep the file chosen for the resting box.
+ */
+function sharpen(layer: HTMLElement, width: number, done: WeakSet<HTMLImageElement>) {
+  for (const image of layer.querySelectorAll<HTMLImageElement>("img[srcset]")) {
+    if (done.has(image)) continue;
+
+    done.add(image);
+    image.sizes = `${Math.round(width)}px`;
+  }
+}
 
 export function useZoom(
   trackRef: RefObject<HTMLElement | null>,
@@ -239,10 +247,15 @@ export function useZoom(
   gestureRef: RefObject<boolean>,
   pullingRef: RefObject<boolean> = NEVER_PULLING,
   restedRef: RefObject<boolean> = ALWAYS_RESTED,
+  limitRef: RefObject<ZoomLimit | null> = NO_LIMIT,
 ): ZoomControls {
   const pose = useRef<Pose>({ scale: 1, x: 0, y: 0 });
   const pointers = useRef(new Map<number, Point>());
   const rectRef = useRef<DOMRect | null>(null);
+  // The active photo's zoom ceiling and magnified width, measured with its box.
+  const ceilingRef = useRef(zoomCeiling(0, 0));
+  const sharpWidth = useRef(0);
+  const sharpened = useRef(new WeakSet<HTMLImageElement>());
   const pinchStart = useRef<{ distance: number; pose: Pose; mid: Point } | null>(null);
   const panStart = useRef<{ pointer: Point; pose: Pose } | null>(null);
   const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
@@ -273,6 +286,26 @@ export function useZoom(
   slowRef.current = slow;
   reducedRef.current = reduced;
 
+  /**
+   * Measures the zoom layer's resting box and the photo's zoom ceiling. Layout reads happen
+   * here, on a press or a discrete zoom, never in a pointer move.
+   */
+  const measure = useCallback(
+    (layer: HTMLElement): DOMRect => {
+      const rect = layoutRect(layer, pose.current);
+      const limit = limitRef.current;
+      const fitted = limit?.media.offsetWidth ?? 0;
+      const ceiling = zoomCeiling(limit?.width ?? 0, fitted, limit?.hint);
+
+      rectRef.current = rect;
+      ceilingRef.current = ceiling;
+      sharpWidth.current = (fitted > 0 ? fitted : rect.width) * ceiling;
+
+      return rect;
+    },
+    [limitRef],
+  );
+
   const apply = useCallback(
     (next: Pose, allowHandoff: boolean, limitScale = true) => {
       const layer = layerRef.current;
@@ -280,7 +313,7 @@ export function useZoom(
 
       if (!layer || !rect || rect.width <= 0 || rect.height <= 0) return;
 
-      const scale = limitScale ? clampScale(next.scale) : next.scale;
+      const scale = limitScale ? clampZoom(next.scale, ceilingRef.current) : next.scale;
       const maxX = Math.max(0, ((scale - 1) * rect.width) / 2);
       const maxY = Math.max(0, ((scale - 1) * rect.height) / 2);
       let x = next.x;
@@ -305,6 +338,8 @@ export function useZoom(
       const nowZoomed = scale > 1.02;
 
       layer.dataset.zoomed = nowZoomed ? "true" : "false";
+
+      if (nowZoomed) sharpen(layer, sharpWidth.current, sharpened.current);
 
       const track = trackRef.current;
 
@@ -484,6 +519,8 @@ export function useZoom(
       const nowZoomed = from.scale > 1.02 || target.scale > 1.02;
 
       layer.dataset.zoomed = nowZoomed ? "true" : "false";
+
+      if (target.scale > 1.02) sharpen(layer, sharpWidth.current, sharpened.current);
       holdTrack(trackRef.current, nowZoomed || pinching.current);
       dispatchZoom({ type: nowZoomed ? "zoom-entered" : "zoom-left" });
 
@@ -561,16 +598,14 @@ export function useZoom(
 
       stopSpring();
 
-      const rect = layoutRect(layer, pose.current);
-
-      rectRef.current = rect;
+      const rect = measure(layer);
 
       const point = origin ?? {
         x: rect.left + rect.width / 2,
         y: rect.top + rect.height / 2,
       };
 
-      const nextScale = clampScale(pose.current.scale * factor);
+      const nextScale = clampZoom(pose.current.scale * factor, ceilingRef.current);
       const next = zoomAt(pose.current, nextScale, point, rect);
 
       if (springRef.current && !reducedRef.current) {
@@ -581,7 +616,7 @@ export function useZoom(
 
       apply(next, false);
     },
-    [animatePose, apply, layerRef, stopSpring],
+    [animatePose, apply, layerRef, measure, stopSpring],
   );
 
   const zoomIn = useCallback(() => {
@@ -634,7 +669,7 @@ export function useZoom(
       // track ends it, so the zoomed photo cannot travel away with it.
       if (pose.current.scale <= 1.02) pinNearestSlide(track);
 
-      rectRef.current = layoutRect(layer, pose.current);
+      measure(layer);
       holdTrack(track, true);
 
       return true;
@@ -676,7 +711,9 @@ export function useZoom(
           }
 
           const raw = start.pose.scale * (distance / start.distance);
-          const nextScale = springRef.current ? resistScale(raw) : clampScale(raw);
+          const ceiling = ceilingRef.current;
+          const nextScale = springRef.current ? resistZoom(raw, ceiling) : clampZoom(raw, ceiling);
+
           const zoomedPose = zoomAt(start.pose, nextScale, start.mid, rect);
 
           const posed = {
@@ -741,7 +778,7 @@ export function useZoom(
 
       pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
       moved.current = 0;
-      rectRef.current = layoutRect(layer, pose.current);
+      measure(layer);
 
       if (pose.current.scale > 1.02) gestureRef.current = true;
 
@@ -821,14 +858,17 @@ export function useZoom(
           const layer = layerRef.current;
 
           if (layer) {
-            const rect = layoutRect(layer, pose.current);
-
-            rectRef.current = rect;
+            const rect = measure(layer);
 
             const target =
               pose.current.scale > 1.02
                 ? { scale: 1, x: 0, y: 0 }
-                : zoomAt(pose.current, TAP_SCALE, { x: event.clientX, y: event.clientY }, rect);
+                : zoomAt(
+                    pose.current,
+                    Math.min(TAP_SCALE, ceilingRef.current),
+                    { x: event.clientX, y: event.clientY },
+                    rect,
+                  );
 
             if (springRef.current && !reducedRef.current) animateRef.current(target, 0);
             else apply(target, false);
@@ -842,7 +882,7 @@ export function useZoom(
         if (handoffHome.current === null) gestureRef.current = false;
 
         const current = pose.current;
-        const scale = clampScale(current.scale);
+        const scale = clampZoom(current.scale, ceilingRef.current);
 
         if (
           springRef.current &&
@@ -897,14 +937,17 @@ export function useZoom(
 
       stopRef.current();
 
-      const rect = layoutRect(layer, pose.current);
-
-      rectRef.current = rect;
+      const rect = measure(layer);
 
       const target =
         pose.current.scale > 1.02
           ? { scale: 1, x: 0, y: 0 }
-          : zoomAt(pose.current, TAP_SCALE, { x: event.clientX, y: event.clientY }, rect);
+          : zoomAt(
+              pose.current,
+              Math.min(TAP_SCALE, ceilingRef.current),
+              { x: event.clientX, y: event.clientY },
+              rect,
+            );
 
       if (springRef.current && !reducedRef.current) animateRef.current(target, 0);
       else apply(target, false);
@@ -931,12 +974,13 @@ export function useZoom(
         settleFrame.current = 0;
       }
 
-      const rect = layoutRect(layer, pose.current);
-
-      rectRef.current = rect;
+      const rect = measure(layer);
 
       if (event.ctrlKey) {
-        const nextScale = clampScale(pose.current.scale * Math.exp(-event.deltaY * 0.002));
+        const nextScale = clampZoom(
+          pose.current.scale * Math.exp(-event.deltaY * 0.002),
+          ceilingRef.current,
+        );
 
         apply(zoomAt(pose.current, nextScale, { x: event.clientX, y: event.clientY }, rect), false);
 
@@ -994,13 +1038,11 @@ export function useZoom(
         return;
       }
 
-      const rect = layoutRect(layer, pose.current);
-
-      rectRef.current = rect;
+      const rect = measure(layer);
       apply(
         zoomAt(
           pose.current,
-          clampScale(gestureBase * gesture.scale),
+          clampZoom(gestureBase * gesture.scale, ceilingRef.current),
           { x: gesture.clientX, y: gesture.clientY },
           rect,
         ),
@@ -1014,13 +1056,13 @@ export function useZoom(
       if (!layer || pose.current.scale <= 1.02) return;
 
       if (pointers.current.size > 0) {
-        rectRef.current = layoutRect(layer, pose.current);
+        measure(layer);
 
         return;
       }
 
       stopRef.current();
-      rectRef.current = layoutRect(layer, pose.current);
+      measure(layer);
       apply(pose.current, false);
     };
 
@@ -1059,7 +1101,7 @@ export function useZoom(
       endHandoff();
       gestureRef.current = false;
     };
-  }, [apply, enabled, endHandoff, gestureRef, layerRef, trackRef, zoomBy]);
+  }, [apply, enabled, endHandoff, gestureRef, layerRef, measure, trackRef, zoomBy]);
 
   return { zoomed, zoomIn, zoomOut, reset, home };
 }
