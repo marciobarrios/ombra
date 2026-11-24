@@ -285,7 +285,8 @@ export function OmbraSlides({
     tabIndex: 0,
     className: cn(
       // Each slide is 86% of the track, so its neighbours peek in from both sides.
-      "@container flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current",
+      // `isolate` keeps the active slide's raise inside the track, under the chrome.
+      "@container isolate flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current",
       className,
     ),
     children: (
@@ -345,8 +346,11 @@ export function OmbraSlide({ itemId, ref, className, render, ...props }: OmbraSl
           // Peeking neighbours stay on screen. Only the active slide is exposed.
           "aria-hidden": active ? undefined : true,
           className: cn(
-            // A size container, so the media inside can fit itself to the slide.
-            "flex h-full min-h-0 w-[86cqi] shrink-0 snap-center snap-always items-center justify-center [container-type:size]",
+            // A size container, so the media inside can fit itself to the slide. Size
+            // containment makes each slide a stacking context, painted in DOM order, so the
+            // active one is raised: a zoomed photo spreads over the peeking neighbours, and
+            // the next slide would otherwise paint on top of it.
+            "flex h-full min-h-0 w-[86cqi] shrink-0 snap-center snap-always items-center justify-center [container-type:size] data-[active=true]:z-1",
             className,
           ),
         },
