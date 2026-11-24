@@ -83,7 +83,7 @@ function Viewer({ controls }: { controls: boolean }) {
             {controls && (
               <footer className="flex items-center gap-2 px-3 pb-3">
                 <OmbraPrevious aria-label="Foto anterior">‹</OmbraPrevious>
-                <OmbraThumbnails className="flex-1">
+                <OmbraThumbnails aria-label="Miniaturas" className="flex-1">
                   {items.map((item) => (
                     <OmbraThumbnail key={item.id} itemId={item.id} aria-label={item.alt}>
                       <img src={item.thumbSrc} alt="" className="h-full w-full object-cover" />

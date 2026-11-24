@@ -29,6 +29,8 @@ export type { OmbraGalleryItem };
 export type OmbraGalleryProps = Omit<OmbraRootProps, "children" | "itemIds"> & {
   /** Each item's `id` is its stable identity: a reorder keeps the open photo open. */
   items: readonly OmbraGalleryItem[];
+  /** Shows the thumbnail strip under the photo. Defaults to true. A single photo never has one. */
+  thumbnails?: boolean;
   className?: string;
 };
 
@@ -59,15 +61,19 @@ function viewReducer(state: ViewState, action: ViewAction): ViewState {
   }
 }
 
-export function OmbraGallery({ items, className, ...root }: OmbraGalleryProps) {
+export function OmbraGallery({ items, thumbnails = true, className, ...root }: OmbraGalleryProps) {
   return (
     <OmbraRoot {...root} itemIds={items.map((item) => item.id)}>
-      <GalleryParts items={items} className={className} />
+      <GalleryParts items={items} thumbnails={thumbnails} className={className} />
     </OmbraRoot>
   );
 }
 
-function GalleryParts({ items, className }: Pick<OmbraGalleryProps, "items" | "className">) {
+function GalleryParts({
+  items,
+  thumbnails,
+  className,
+}: Pick<OmbraGalleryProps, "items" | "thumbnails" | "className">) {
   const { open, index: activeAt } = useOmbraState();
   const index = Math.max(0, activeAt);
   const count = items.length;
@@ -230,17 +236,20 @@ function GalleryParts({ items, className }: Pick<OmbraGalleryProps, "items" | "c
             <OmbraChrome>
               <footer className="pr-[max(1rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]">
                 <OmbraCaption className="mb-3">{active?.caption}</OmbraCaption>
-                <OmbraThumbnails>
-                  {items.map((item) => (
-                    <OmbraThumbnail key={item.id} itemId={item.id} aria-label={item.alt}>
-                      <img
-                        src={item.thumbSrc}
-                        alt=""
-                        className="h-full w-full rounded-[6px] object-cover outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
-                      />
-                    </OmbraThumbnail>
-                  ))}
-                </OmbraThumbnails>
+                {thumbnails && (
+                  <OmbraThumbnails aria-label="Thumbnails">
+                    {items.map((item) => (
+                      <OmbraThumbnail key={item.id} itemId={item.id} aria-label={item.alt}>
+                        {/* The grid's source, so the strip costs no extra request. */}
+                        <img
+                          src={item.thumbSrc}
+                          alt=""
+                          className="h-full w-full rounded-[6px] object-cover outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
+                        />
+                      </OmbraThumbnail>
+                    ))}
+                  </OmbraThumbnails>
+                )}
               </footer>
             </OmbraChrome>
           </div>

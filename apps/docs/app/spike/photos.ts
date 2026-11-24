@@ -319,3 +319,18 @@ export const photos: readonly OmbraGalleryItem[] = sources.map((source) => {
     srcSet: `${thumbSrc} 960w, ${src} 1600w`,
   };
 });
+
+/**
+ * `count` photos for the spike's `?photos=` parameter, repeating the set past its end with
+ * distinct IDs, so the strip can be tried at 3, 14 and 50 images.
+ */
+export function spikePhotos(count: number): readonly OmbraGalleryItem[] {
+  return Array.from({ length: count }, (_, index) => {
+    const photo = photos[index % photos.length];
+    const round = Math.floor(index / photos.length);
+
+    if (!photo) throw new Error("The spike needs photos.");
+
+    return round === 0 ? photo : { ...photo, id: `${photo.id}-${round + 1}` };
+  });
+}

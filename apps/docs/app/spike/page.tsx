@@ -22,6 +22,7 @@ async function SpikeRoute({ searchParams }: { searchParams: PageProps<"/spike">[
       initialSpring={firstString(query.spring) === "1"}
       debugZoom={firstString(query.debug) === "zoom"}
       benchRuns={firstString(query.bench) === "1" ? benchRuns(firstString(query.runs)) : null}
+      photoCount={photoCount(firstString(query.photos))}
     />
   );
 }
@@ -30,6 +31,13 @@ function benchRuns(value: string | undefined): number {
   const runs = Number(value);
 
   return Number.isInteger(runs) && runs >= 1 && runs <= 50 ? runs : 10;
+}
+
+/** `?photos=` sets how many photos the gallery shows, from 1 to 50. */
+function photoCount(value: string | undefined): number | null {
+  const count = Number(value);
+
+  return Number.isInteger(count) && count >= 1 && count <= 50 ? count : null;
 }
 
 function firstString(value: string | string[] | undefined): string | undefined {
