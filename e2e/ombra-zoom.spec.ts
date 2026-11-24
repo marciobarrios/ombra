@@ -70,42 +70,54 @@ function doubleTap(target: Locator) {
   });
 }
 
-/** Two touch pointers spreading apart over a few frames, as the zoom hook sees a pinch. */
-function pinch(target: Locator) {
-  return target.evaluate(async (node) => {
-    const rect = node.getBoundingClientRect();
-    const x = rect.x + rect.width / 2;
-    const y = rect.y + rect.height / 2;
-    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+/**
+ * Two touch pointers spreading apart, one frame per spread (pixels each side of the centre),
+ * as the zoom hook sees a pinch. `down` and `up` let one pinch span several calls.
+ */
+function pinch(
+  target: Locator,
+  spreads = [20, 35, 50, 65, 80, 95, 110],
+  { down = true, up = true } = {},
+) {
+  return target.evaluate(
+    async (node, script) => {
+      const rect = node.getBoundingClientRect();
+      const x = rect.x + rect.width / 2;
+      const y = rect.y + rect.height / 2;
+      const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 
-    const send = (type: string, pointerId: number, clientX: number) => {
-      node.dispatchEvent(
-        new PointerEvent(type, {
-          bubbles: true,
-          cancelable: true,
-          pointerType: "touch",
-          pointerId,
-          isPrimary: pointerId === 91,
-          clientX,
-          clientY: y,
-        }),
-      );
-    };
+      const send = (type: string, pointerId: number, clientX: number) => {
+        node.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            pointerType: "touch",
+            pointerId,
+            isPrimary: pointerId === 91,
+            clientX,
+            clientY: y,
+          }),
+        );
+      };
 
-    send("pointerdown", 91, x - 20);
-    send("pointerdown", 92, x + 20);
-    await frame();
+      for (const [step, spread] of script.spreads.entries()) {
+        const type = step === 0 && script.down ? "pointerdown" : "pointermove";
 
-    for (let step = 1; step <= 6; step += 1) {
-      send("pointermove", 91, x - 20 - step * 15);
-      send("pointermove", 92, x + 20 + step * 15);
+        send(type, 91, x - spread);
+        send(type, 92, x + spread);
+        await frame();
+      }
+
+      if (!script.up) return;
+
+      const last = script.spreads.at(-1) ?? 0;
+
+      send("pointerup", 91, x - last);
+      send("pointerup", 92, x + last);
       await frame();
-    }
-
-    send("pointerup", 91, x - 110);
-    send("pointerup", 92, x + 110);
-    await frame();
-  });
+    },
+    { spreads, down, up },
+  );
 }
 
 test.describe("OmbraZoom", () => {
@@ -160,5 +172,60 @@ test.describe("OmbraZoom", () => {
     await page.mouse.move(x, y + 200, { steps: 8 });
     await page.mouse.up();
     await expect(page.getByRole("dialog")).toBeHidden();
+  });
+
+  // MAR-22: a pinch while the track still moves waits for it to rest, so a photo is never
+  // zoomed between two slides. The smooth scroll stands in for a fling.
+  test("a pinch while the track glides never zooms a photo between two slides", async ({
+    page,
+  }) => {
+    await openBench(page, "all");
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+
+    const track = page.locator("[data-slot=ombra-track]");
+
+    const offCentre = () =>
+      track.evaluate((node) => {
+        const mid = node.getBoundingClientRect().left + node.clientWidth / 2;
+        const slides = [...node.querySelectorAll("[data-slot=ombra-slide]")];
+
+        return Math.min(
+          ...slides.map((slide) => {
+            const box = slide.getBoundingClientRect();
+
+            return Math.abs(box.left + box.width / 2 - mid);
+          }),
+        );
+      });
+
+    // Every frame, flag a zoomed photo while no slide sits in the centre.
+    await track.evaluate((node) => {
+      const watch = () => {
+        const mid = node.getBoundingClientRect().left + node.clientWidth / 2;
+
+        const centred = [...node.querySelectorAll("[data-slot=ombra-slide]")].some((slide) => {
+          const box = slide.getBoundingClientRect();
+
+          return Math.abs(box.left + box.width / 2 - mid) < 2;
+        });
+
+        if (!centred && node.querySelector("[data-zoomed=true]")) node.dataset.offCentre = "zoomed";
+
+        requestAnimationFrame(watch);
+      };
+
+      requestAnimationFrame(watch);
+      node.scrollBy({ left: node.clientWidth * 0.9, behavior: "smooth" });
+    });
+
+    await pinch(track, [20, 30, 40], { up: false });
+    await expect.poll(offCentre).toBeLessThan(2);
+    await pinch(
+      track,
+      Array.from({ length: 12 }, (_, step) => 50 + step * 10),
+      { down: false },
+    );
+    await expect(viewer(page)).toHaveAttribute("data-zoomed", "true");
+    await expect(track).not.toHaveAttribute("data-off-centre");
   });
 });

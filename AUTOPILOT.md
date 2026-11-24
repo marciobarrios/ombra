@@ -38,7 +38,8 @@ pnpm test:e2e       # needs `pnpm exec playwright install chromium webkit` once
   purpose: extend an existing spec only when the change is to core behaviour
   (open and close morph, navigation, pull to dismiss, zoom, focus, the
   `OmbraRoot` contract). Do not add a spec per edge case or per engine.
-  Run the specs you touched on all four projects.
+  At most one new browser test per feature; the rest goes in unit specs
+  (see `AGENTS.md`). Run the specs you touched on all four projects.
 - Motion or frame-time changes: use the spike's frame readout for before/after
   numbers; `e2e/frame-budget.spec.ts` is the CI guard.
 - The iOS Simulator is useful for Safari-specific behaviour (WebKit desktop is

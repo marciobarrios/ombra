@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
 
+import { gestureMode, gestureOwner } from "./gesture-arbitration";
+import type { GestureInput, GestureOwner } from "./gesture-arbitration";
 import { SNAP_SPRING, springCurve } from "./spring";
 import { useReducerWithBailout } from "./use-reducer-with-bailout";
 
@@ -155,6 +157,25 @@ function slideStep(track: HTMLElement): number {
   return second.offsetLeft - first.offsetLeft;
 }
 
+/**
+ * Puts the slide nearest the centre exactly there, at once. A new scroll ends any smooth
+ * scroll still in flight, which `overflow: hidden` alone would let carry on.
+ */
+function pinNearestSlide(track: HTMLElement) {
+  const mid = track.getBoundingClientRect().left + track.clientWidth / 2;
+  let offset = Number.POSITIVE_INFINITY;
+
+  for (const slide of track.querySelectorAll<HTMLElement>("[data-slot=ombra-slide]")) {
+    const rect = slide.getBoundingClientRect();
+    const candidate = rect.left + rect.width / 2 - mid;
+
+    if (Math.abs(candidate) < Math.abs(offset)) offset = candidate;
+  }
+
+  if (Number.isFinite(offset))
+    track.scrollTo({ left: track.scrollLeft + offset, behavior: "auto" });
+}
+
 function capturePointer(track: HTMLElement, pointerId: number) {
   try {
     track.setPointerCapture(pointerId);
@@ -177,6 +198,17 @@ function publishZoom(node: HTMLElement | null, scale?: number) {
   else popup.style.setProperty("--ombra-zoom", String(Math.round(scale * 1000) / 1000));
 }
 
+/**
+ * While zoomed or pinching, the zoom owns every drag: the track stops scrolling and the
+ * browser stops panning it. Otherwise the track scrolls natively again.
+ */
+function holdTrack(track: HTMLElement | null, held: boolean) {
+  if (!track) return;
+
+  track.style.overflowX = held ? "hidden" : "";
+  track.style.touchAction = held ? "none" : "";
+}
+
 function clearLayers(track: HTMLElement | null) {
   if (!track) return;
 
@@ -190,6 +222,10 @@ function clearLayers(track: HTMLElement | null) {
   }
 }
 
+// Without a pull or a track that reports its rest, a pinch is never held back.
+const NEVER_PULLING: RefObject<boolean> = { current: false };
+const ALWAYS_RESTED: RefObject<boolean> = { current: true };
+
 export function useZoom(
   trackRef: RefObject<HTMLElement | null>,
   layerRef: RefObject<HTMLElement | null>,
@@ -199,6 +235,8 @@ export function useZoom(
   slow: boolean,
   reduced: boolean,
   gestureRef: RefObject<boolean>,
+  pullingRef: RefObject<boolean> = NEVER_PULLING,
+  restedRef: RefObject<boolean> = ALWAYS_RESTED,
 ): ZoomControls {
   const pose = useRef<Pose>({ scale: 1, x: 0, y: 0 });
   const pointers = useRef(new Map<number, Point>());
@@ -222,6 +260,8 @@ export function useZoom(
   const zoomAnim = useRef<Animation | null>(null);
   const scaleSample = useRef<{ scale: number; t: number } | null>(null);
   const scaleVelocity = useRef(0);
+  // Two fingers down only scale the photo once the behaviour table gives them the zoom.
+  const pinching = useRef(false);
   // Pan and pinch frames that stay on one side of the line are dropped before they render.
   const [zoomed, dispatchZoom] = useReducerWithBailout(zoomReducer, false);
 
@@ -266,11 +306,7 @@ export function useZoom(
 
       const track = trackRef.current;
 
-      if (track) {
-        track.style.overflowX = nowZoomed ? "hidden" : "";
-        track.style.touchAction = nowZoomed ? "none" : "";
-      }
-
+      holdTrack(track, nowZoomed || pinching.current);
       dispatchZoom({ type: nowZoomed ? "zoom-entered" : "zoom-left" });
 
       if (allowHandoff && track && (overflow !== 0 || handoffHome.current !== null)) {
@@ -299,6 +335,22 @@ export function useZoom(
 
     return pose.current.x + home - track.scrollLeft;
   }, [trackRef]);
+
+  /** Who the behaviour table gives an input to, from the state of every gesture now. */
+  const ownerOf = useCallback(
+    (input: GestureInput): GestureOwner =>
+      gestureOwner(
+        gestureMode({
+          pulling: pullingRef.current,
+          pinching: pinching.current,
+          handoff: handoffHome.current !== null,
+          zoomed: pose.current.scale > 1.02,
+          rested: restedRef.current,
+        }),
+        input,
+      ),
+    [pullingRef, restedRef],
+  );
 
   const endHandoff = useCallback(() => {
     if (settleFrame.current !== 0) cancelAnimationFrame(settleFrame.current);
@@ -431,14 +483,7 @@ export function useZoom(
       const nowZoomed = from.scale > 1.02 || target.scale > 1.02;
 
       layer.dataset.zoomed = nowZoomed ? "true" : "false";
-
-      const track = trackRef.current;
-
-      if (track) {
-        track.style.overflowX = nowZoomed ? "hidden" : "";
-        track.style.touchAction = nowZoomed ? "none" : "";
-      }
-
+      holdTrack(trackRef.current, nowZoomed || pinching.current);
       dispatchZoom({ type: nowZoomed ? "zoom-entered" : "zoom-left" });
 
       void animation.finished.then(
@@ -468,14 +513,7 @@ export function useZoom(
           const settled = pose.current.scale > 1.02;
 
           current.dataset.zoomed = settled ? "true" : "false";
-
-          const track = trackRef.current;
-
-          if (track) {
-            track.style.overflowX = settled ? "hidden" : "";
-            track.style.touchAction = settled ? "none" : "";
-          }
-
+          holdTrack(trackRef.current, settled || pinching.current);
           dispatchZoom({ type: settled ? "zoom-entered" : "zoom-left" });
         },
         () => undefined,
@@ -488,17 +526,20 @@ export function useZoom(
   const stopRef = useRef(stopSpring);
   const settleRef = useRef(settleHandoff);
   const panXRef = useRef(panX);
+  const ownerRef = useRef(ownerOf);
 
   animateRef.current = animatePose;
   stopRef.current = stopSpring;
   settleRef.current = settleHandoff;
   panXRef.current = panX;
+  ownerRef.current = ownerOf;
 
   const reset = useCallback(() => {
     endHandoff();
     zoomAnim.current?.cancel();
     zoomAnim.current = null;
     pose.current = { scale: 1, x: 0, y: 0 };
+    pinching.current = false;
     pinchStart.current = null;
     panStart.current = null;
     lastTap.current = null;
@@ -508,12 +549,7 @@ export function useZoom(
 
     clearLayers(trackRef.current);
 
-    const track = trackRef.current;
-
-    if (track) {
-      track.style.overflowX = "";
-      track.style.touchAction = "";
-    }
+    holdTrack(trackRef.current, false);
   }, [endHandoff, trackRef]);
 
   const zoomBy = useCallback(
@@ -576,6 +612,41 @@ export function useZoom(
 
     if (!track || !enabled) return;
 
+    /**
+     * Gives two fingers the zoom once the behaviour table allows it. A pinch that lands
+     * while the track still moves waits for it to rest on a slide, and starts from the
+     * fingers' spread at that moment, measured against the slide now in the centre.
+     */
+    const claimPinch = (): boolean => {
+      if (pinching.current) return true;
+
+      const layer = layerRef.current;
+
+      if (!layer || ownerRef.current("pinch") !== "zoom") return false;
+
+      pinching.current = true;
+      pinchStart.current = null;
+      panStart.current = null;
+      gestureRef.current = true;
+
+      // A glide can start the frame before its first scroll event says so. Pinning the
+      // track ends it, so the zoomed photo cannot travel away with it.
+      if (pose.current.scale <= 1.02) pinNearestSlide(track);
+
+      rectRef.current = layoutRect(layer, pose.current);
+      holdTrack(track, true);
+
+      return true;
+    };
+
+    /** Lets go of a pinch once fewer than two fingers are down. */
+    const releasePinch = () => {
+      if (!pinching.current) return;
+
+      pinching.current = false;
+      holdTrack(track, pose.current.scale > 1.02 || zoomAnim.current !== null);
+    };
+
     const schedule = () => {
       if (frame.current !== 0) return;
 
@@ -587,7 +658,7 @@ export function useZoom(
 
         if (!rect || points.length === 0) return;
 
-        if (points.length >= 2) {
+        if (points.length >= 2 && claimPinch()) {
           const first = points[0];
           const second = points[1];
 
@@ -671,12 +742,13 @@ export function useZoom(
       moved.current = 0;
       rectRef.current = layoutRect(layer, pose.current);
 
-      if (pose.current.scale > 1.02 || pointers.current.size >= 2) gestureRef.current = true;
+      if (pose.current.scale > 1.02) gestureRef.current = true;
 
       if (pointers.current.size >= 2) {
-        pinchStart.current = null;
-        panStart.current = null;
-        capturePointer(track, event.pointerId);
+        // A pull, a hand-off or a moving track keeps the fingers. The pinch is asked
+        // again on every move, so it can start once the track rests.
+        if (claimPinch()) capturePointer(track, event.pointerId);
+
         schedule();
 
         return;
@@ -715,6 +787,8 @@ export function useZoom(
 
       pointers.current.delete(event.pointerId);
       pinchStart.current = null;
+
+      if (pointers.current.size < 2) releasePinch();
 
       if (pointers.current.size === 1 && pose.current.scale > 1.02) {
         const remaining = [...pointers.current.values()][0];
@@ -843,6 +917,10 @@ export function useZoom(
 
       if (!layer) return;
 
+      // Before anything stops: a pinch ignored during a hand-off leaves it to settle.
+      // The page zoom guard already cancels the browser's own zoom.
+      if (event.ctrlKey && ownerRef.current("wheel-pinch") !== "zoom") return;
+
       event.preventDefault();
       stopRef.current();
       window.clearTimeout(wheelTimer.current);
@@ -897,6 +975,12 @@ export function useZoom(
       const layer = layerRef.current;
 
       if (!layer) return;
+
+      if (ownerRef.current("wheel-pinch") !== "zoom") {
+        gestureBase = null;
+
+        return;
+      }
 
       if (event.type === "gesturestart" || gestureBase === null) {
         stopRef.current();
@@ -970,6 +1054,7 @@ export function useZoom(
 
       zoomAnim.current?.cancel();
       zoomAnim.current = null;
+      pinching.current = false;
       endHandoff();
       gestureRef.current = false;
     };

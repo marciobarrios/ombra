@@ -207,9 +207,12 @@ forwarded ref, `className` (merged through `cn()`), and Base UI's `render` prop.
   media's resting box, so the morph still lands where the media rests. The surface
   sets `touch-action: manipulation` to keep Safari's native double-tap zoom off, and
   carries `data-zoomed` while zoomed.
-- **Arbitration.** Unchanged: while zoomed, the track has `overflow: hidden` and
+- **Arbitration.** While zoomed, the track has `overflow: hidden` and
   `touch-action: none`, the pull is off, and a pan past the photo's edge hands off
-  to the next slide (MAR-104). Navigating to another slide resets the zoom.
+  to the next slide (MAR-104). Navigating to another slide resets the zoom. The
+  behaviour table in `gesture-arbitration.ts` decides who owns each drag, pinch and
+  wheel (MAR-22): a pinch waits while the track still moves and starts once it rests
+  on a slide, and a pull or an edge hand-off keeps its fingers until release.
 - **Actions.** `OmbraZoomIn` and `OmbraZoomOut` are buttons that zoom the active
   slide one step. `OmbraZoomReset` returns it to its fitted size, the same way the
   `0` key does. All three are disabled while the active slide has no `OmbraZoom`;

@@ -217,7 +217,14 @@ export function revealElement(element: HTMLElement): "ready" | "hidden" {
   return "hidden";
 }
 
-export function indexFromScroll(track: HTMLElement): number {
+type NearestSlide = {
+  index: number;
+  /** Pixels between the slide's centre and the track's. Infinite with no slides. */
+  distance: number;
+};
+
+/** The slide nearest the track's centre, and how far its centre is from it. */
+function nearestSlide(track: HTMLElement): NearestSlide {
   const slides = track.querySelectorAll<HTMLElement>("[data-slot=ombra-slide]");
   const trackRect = track.getBoundingClientRect();
   const midpoint = trackRect.left + trackRect.width / 2;
@@ -239,5 +246,19 @@ export function indexFromScroll(track: HTMLElement): number {
     }
   }
 
-  return best;
+  return { index: best, distance: bestDistance };
+}
+
+export function indexFromScroll(track: HTMLElement): number {
+  return nearestSlide(track).index;
+}
+
+/**
+ * Whether a slide sits in the track's centre. A finger that catches a fling holds the
+ * track between two slides with no scroll events, so a quiet track is not enough.
+ */
+export function restsOnSlide(track: HTMLElement, tolerance = 2): boolean {
+  const { distance } = nearestSlide(track);
+
+  return !Number.isFinite(distance) || distance <= tolerance;
 }
