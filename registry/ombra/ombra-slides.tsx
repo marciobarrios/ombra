@@ -8,6 +8,7 @@ import type { CSSProperties } from "react";
 import { indexFromScroll } from "./geometry";
 import { useOmbraRoot } from "./ombra-root";
 import type { OmbraSlidesHandle } from "./ombra-root";
+import { clampScrollLeft } from "./scroll-range";
 import { useReducedMotion } from "./use-reduced-motion";
 import { useReducerWithBailout } from "./use-reducer-with-bailout";
 
@@ -141,7 +142,7 @@ export function OmbraSlides({
       const delta = slide.getBoundingClientRect().left - node.getBoundingClientRect().left;
       const left = node.scrollLeft + delta - (node.clientWidth - slide.clientWidth) / 2;
 
-      node.scrollTo({ left: Math.max(0, left), behavior });
+      node.scrollTo({ left: clampScrollLeft(node, left), behavior });
     };
 
     const behavior = (): ScrollBehavior => (reducedRef.current ? "auto" : "smooth");
@@ -313,6 +314,9 @@ export function OmbraSlides({
 /**
  * One item's snap box. It keeps its size while the viewer is pulled or a photo is zoomed, so
  * the track never re-snaps under a gesture. Captions and other markup go inside it as children.
+ *
+ * Never transform the slide itself: browsers take snap positions from the transformed box,
+ * so a scale or translate here moves the snap point. Animate the children instead.
  */
 export function OmbraSlide({ itemId, ref, className, render, ...props }: OmbraSlideProps) {
   const { registerSlide, state } = useOmbraRoot();

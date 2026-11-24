@@ -9,7 +9,7 @@
 export const CORE_GZIP_LIMIT_BYTES = 32 * 1024;
 
 /** Current gzip size of that bundle. Update it, and the reports that quote it, with the core. */
-export const CORE_GZIP_MEASURED_BYTES = 28_141;
+export const CORE_GZIP_MEASURED_BYTES = 28_125;
 
 /**
  * Longest frame the Chromium check allows. Chromium's long-animation-frame entries

@@ -140,6 +140,11 @@
           "target": "components/ombra/types.ts"
         },
         {
+          "path": "registry/ombra/scroll-range.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/scroll-range.ts"
+        },
+        {
           "path": "registry/ombra/geometry.ts",
           "type": "registry:lib",
           "target": "components/ombra/geometry.ts"
@@ -251,6 +256,11 @@
           "path": "registry/ombra/gesture-arbitration.ts",
           "type": "registry:lib",
           "target": "components/ombra/gesture-arbitration.ts"
+        },
+        {
+          "path": "registry/ombra/scroll-range.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/scroll-range.ts"
         },
         {
           "path": "registry/ombra/spring.ts",
