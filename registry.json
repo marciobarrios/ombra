@@ -160,6 +160,11 @@
           "target": "components/ombra/frame-sampler.ts"
         },
         {
+          "path": "registry/ombra/gesture-arbitration.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/gesture-arbitration.ts"
+        },
+        {
           "path": "registry/ombra/gallery-state.ts",
           "type": "registry:lib",
           "target": "components/ombra/gallery-state.ts"
@@ -241,6 +246,11 @@
           "path": "registry/ombra/use-reducer-with-bailout.ts",
           "type": "registry:hook",
           "target": "components/ombra/use-reducer-with-bailout.ts"
+        },
+        {
+          "path": "registry/ombra/gesture-arbitration.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/gesture-arbitration.ts"
         },
         {
           "path": "registry/ombra/spring.ts",

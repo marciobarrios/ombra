@@ -28,6 +28,7 @@ import {
   mostlyVisible,
   poseBetween,
   RESTING_POSE,
+  restsOnSlide,
   revealElement,
   uncropBox,
 } from "./geometry";
@@ -264,6 +265,8 @@ export function useOmbraViewer() {
   const reducedRef = useRef(reduced);
   const driverRef = useRef<MorphEngine>("flip");
   const zoomGestureRef = useRef(false);
+  // True while a pull holds the photo. The zoom reads it to leave a pinch alone.
+  const pullGestureRef = useRef(false);
   const sizesRef = useRef(new Map<string, { width: number; height: number }>());
   const samplerRef = useRef<FrameSampler | null>(null);
   const sampleKindRef = useRef<MorphKind>("open");
@@ -335,6 +338,27 @@ export function useOmbraViewer() {
     [],
   );
 
+  // Whether the track rests on the active slide, so a pinch can start on it. A finger
+  // that catches a fling holds the track between slides with no scroll events, and
+  // the active item lags one render behind the slide the track settled on.
+  const restedRef = useMemo<RefObject<boolean>>(
+    () => ({
+      get current() {
+        const slides = rootRef.current.slides();
+
+        if (!slides) return true;
+
+        return (
+          slides.settled() &&
+          restsOnSlide(slides.element) &&
+          slides.centred() === idsRef.current[indexRef.current]
+        );
+      },
+      set current(_: boolean) {},
+    }),
+    [],
+  );
+
   const settleTrack = () => {
     rootRef.current.slides()?.settle();
   };
@@ -348,6 +372,8 @@ export function useOmbraViewer() {
     slow,
     reduced,
     zoomGestureRef,
+    pullGestureRef,
+    restedRef,
   );
 
   // Before the morph layout effects, so FLIP measures the viewer where it is shown.
@@ -383,6 +409,7 @@ export function useOmbraViewer() {
         });
       });
     },
+    pullGestureRef,
   );
 
   const zoomRef = useRef(zoom);

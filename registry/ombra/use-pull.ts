@@ -86,6 +86,9 @@ function pullReducer(_pulling: boolean, action: PullAction): boolean {
  *
  * Takes the track element rather than a ref: an opening enables the pull before
  * the dialog portal has mounted the track, and the listeners must bind once it has.
+ *
+ * `pullingRef` is true while a pull holds the photo, synchronously, so the zoom hook
+ * can leave a pinch alone without waiting for a render (see `gesture-arbitration.ts`).
  */
 export function usePull(
   track: HTMLElement | null,
@@ -96,7 +99,10 @@ export function usePull(
   slow: boolean,
   spring: boolean,
   onDismiss: (velocity: number) => void,
+  pullingRefProp?: RefObject<boolean>,
 ): boolean {
+  const ownPullingRef = useRef(false);
+  const pullingRef = pullingRefProp ?? ownPullingRef;
   const enabledRef = useRef(enabled);
   const openingRef = useRef(opening);
   const reducedRef = useRef(reduced);
@@ -291,6 +297,7 @@ export function usePull(
      */
     const lockVertical = (dy: number, t: number): boolean => {
       if (!openingRef.current) {
+        pullingRef.current = true;
         dispatchPull({ type: "pull-started" });
 
         return true;
@@ -314,6 +321,7 @@ export function usePull(
       source = null;
       axis = null;
       window.clearTimeout(wheelTimer);
+      pullingRef.current = false;
       dispatchPull({ type: "pull-ended" });
 
       if (!vertical) {
@@ -350,11 +358,21 @@ export function usePull(
 
       if (event.pointerType === "mouse" && event.button !== 0) return;
 
-      if (source === "pointer") return;
+      if (source === "pointer") {
+        // A second finger before the drag picked its axis is a pinch, and the zoom
+        // owns it. Once the drag pulls, the pull keeps every finger until release.
+        if (event.pointerId !== pointerId && axis === null) {
+          source = null;
+          pointerId = -1;
+        }
+
+        return;
+      }
 
       // A finger on the trackpad's surface takes over from a wheel swipe.
       if (source === "wheel") {
         window.clearTimeout(wheelTimer);
+        pullingRef.current = false;
         dispatchPull({ type: "pull-ended" });
       }
 
@@ -483,6 +501,7 @@ export function usePull(
       source = null;
       axis = null;
       window.clearTimeout(wheelTimer);
+      pullingRef.current = false;
       dispatchPull({ type: "pull-ended" });
       swallowWheelMomentum(event.deltaY * unit, track);
       dismiss(velocity);
@@ -505,10 +524,11 @@ export function usePull(
       window.clearTimeout(wheelTimer);
       cancelSnap();
       // A pinch or a close can unbind the track mid-pull, and the lift never reaches `release`.
+      pullingRef.current = false;
       dispatchPull({ type: "pull-ended" });
       setProgress(0);
     };
-  }, [track, enabled]);
+  }, [track, enabled, pullingRef]);
 
   return pulling;
 }
