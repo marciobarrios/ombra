@@ -19,6 +19,12 @@ export const galleryProps = [
     required: true,
     note: "Photos, in navigation order. Each one needs every field listed under Item fields.",
   },
+  {
+    name: "thumbnails",
+    type: "boolean",
+    default: "true",
+    note: "Shows the thumbnail strip under the photo. A gallery of one photo never shows it.",
+  },
   { name: "className", type: "string", note: "Class on the gallery root." },
   {
     name: "morph",

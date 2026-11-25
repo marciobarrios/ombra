@@ -41,7 +41,7 @@ export type OmbraCounterProps = Omit<
 
 export type OmbraThumbnailsState = { overflowing: boolean };
 
-export type OmbraThumbnailsProps = useRender.ComponentProps<"div", OmbraThumbnailsState>;
+export type OmbraThumbnailsProps = useRender.ComponentProps<"nav", OmbraThumbnailsState>;
 
 export type OmbraThumbnailState = { active: boolean };
 
@@ -380,7 +380,7 @@ const EDGE_STYLES = `@media (prefers-reduced-motion: no-preference) {
 
 const STRIP_ATTRIBUTES: useRender.Parameters<
   OmbraThumbnailsState,
-  HTMLDivElement,
+  HTMLElement,
   undefined
 >["stateAttributesMapping"] = {
   overflowing: (overflowing) => ({ "data-overflowing": overflowing ? "true" : "false" }),
@@ -390,6 +390,9 @@ const STRIP_ATTRIBUTES: useRender.Parameters<
  * The thumbnail strip: a horizontal scroller around `OmbraThumbnail`s. It keeps the active
  * thumbnail in view, snaps and centres its ends once the thumbnails overflow it, and fades an
  * edge cue in at each end with more thumbnails beyond. It carries `data-overflowing`.
+ *
+ * It renders a `nav`: name it with `aria-label` in the consumer's language. With fewer than two
+ * items there is nowhere to go, so it renders nothing.
  */
 export function OmbraThumbnails({
   ref,
@@ -401,11 +404,12 @@ export function OmbraThumbnails({
   const { state: root } = useOmbraRoot();
   const behavior = useScrollBehavior();
   const [state, send] = useReducerWithBailout(stripReducer, { overflowing: false });
-  const stripRef = useRef<HTMLDivElement | null>(null);
+  const stripRef = useRef<HTMLElement | null>(null);
+  const single = root.itemIds.length < 2;
   const rowRef = useRef<HTMLDivElement>(null);
   const { overflowing } = state;
 
-  const bind = useCallback((node: HTMLDivElement | null) => {
+  const bind = useCallback((node: HTMLElement | null) => {
     stripRef.current = node;
   }, []);
 
@@ -413,7 +417,7 @@ export function OmbraThumbnails({
     const strip = stripRef.current;
     const row = rowRef.current;
 
-    if (!strip || !row) return;
+    if (single || !strip || !row) return;
 
     const measure = () => {
       const style = getComputedStyle(row);
@@ -435,7 +439,7 @@ export function OmbraThumbnails({
     return () => {
       observer.disconnect();
     };
-  }, [send]);
+  }, [send, single]);
 
   useLayoutEffect(() => {
     const strip = stripRef.current;
@@ -453,6 +457,7 @@ export function OmbraThumbnails({
   }, [root.activeId, root.phase, behavior, overflowing]);
 
   const strip = useRender({
+    defaultTagName: "nav",
     render,
     ref: [bind, ref ?? null],
     state,
@@ -480,6 +485,8 @@ export function OmbraThumbnails({
       ),
     },
   });
+
+  if (single) return null;
 
   return (
     <div data-slot="ombra-thumbnails-frame" className="relative min-w-0">

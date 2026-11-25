@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useMemo, useReducer, useRef } from "react";
 
 import { OmbraGallery } from "../../../../registry/ombra/ombra-gallery";
 import { OmbraDiagnostics } from "../../../../registry/ombra/ombra-viewer";
@@ -12,7 +12,7 @@ import { Bench } from "./bench";
 import type { BenchSampleListener } from "./bench";
 
 import { frameReadoutReducer, initialFrameReadout } from "./frame-readout";
-import { photos } from "./photos";
+import { photos, spikePhotos } from "./photos";
 import { SpikeControls } from "./spike-controls";
 import { ZoomDiagnostics } from "./zoom-diagnostics";
 
@@ -42,6 +42,7 @@ export function SpikeApp({
   initialSpring,
   debugZoom,
   benchRuns,
+  photoCount,
 }: {
   initialEngine: MorphEngine;
   initialSlow: boolean;
@@ -49,6 +50,8 @@ export function SpikeApp({
   debugZoom: boolean;
   /** Runs per engine for the `?bench=1` benchmark, or null when it is off. */
   benchRuns: number | null;
+  /** How many photos `?photos=` asks for, or null for the whole set. */
+  photoCount: number | null;
 }) {
   const [{ engine, slow, spring }, dispatch] = useReducer(settingsReducer, {
     engine: initialEngine,
@@ -68,6 +71,11 @@ export function SpikeApp({
   const readoutConditionRef = useRef(readoutCondition);
 
   readoutConditionRef.current = readoutCondition;
+
+  const items = useMemo(
+    () => (photoCount === null ? photos : spikePhotos(photoCount)),
+    [photoCount],
+  );
 
   const benchListener = useRef<BenchSampleListener | null>(null);
 
@@ -134,7 +142,7 @@ export function SpikeApp({
             sendReadout({ type: "sampled", kind, condition: readoutConditionRef.current, sample });
           }}
         >
-          <OmbraGallery items={photos} morph={engine} />
+          <OmbraGallery items={items} morph={engine} />
         </OmbraDiagnostics>
       </div>
     </main>
@@ -146,8 +154,9 @@ function reducedNote() {
     <p className="mt-4 max-w-xl text-sm leading-6 text-foreground/70">
       Add <span className="font-mono">?engine=vt</span>, <span className="font-mono">flip</span>, or{" "}
       <span className="font-mono">fade</span>, <span className="font-mono">?slow=1</span>, and{" "}
-      <span className="font-mono">?spring=1</span> to inspect. When the system asks for reduced
-      motion, movement falls back to a fade.
+      <span className="font-mono">?spring=1</span> to inspect, and{" "}
+      <span className="font-mono">?photos=3</span> (up to 50) to change how many photos there are.
+      When the system asks for reduced motion, movement falls back to a fade.
     </p>
   );
 }
