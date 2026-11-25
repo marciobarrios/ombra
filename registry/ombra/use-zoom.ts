@@ -5,6 +5,7 @@ import type { RefObject } from "react";
 
 import { gestureMode, gestureOwner } from "./gesture-arbitration";
 import type { GestureInput, GestureOwner } from "./gesture-arbitration";
+import { clampScrollLeft } from "./scroll-range";
 import { SNAP_SPRING, springCurve } from "./spring";
 import { useReducerWithBailout } from "./use-reducer-with-bailout";
 
@@ -154,7 +155,8 @@ function slideStep(track: HTMLElement): number {
 
   if (!first || !second) return track.clientWidth;
 
-  return second.offsetLeft - first.offsetLeft;
+  // Right to left, the second slide sits left of the first. The step is a distance.
+  return Math.abs(second.offsetLeft - first.offsetLeft);
 }
 
 /**
@@ -385,8 +387,7 @@ export function useZoom(
 
       if (velocity > HANDOFF_FLICK) direction = offset < 0 ? -1 : 0;
 
-      const max = track.scrollWidth - track.clientWidth;
-      const target = Math.min(max, Math.max(0, home + direction * step));
+      const target = clampScrollLeft(track, home + direction * step);
       const from = track.scrollLeft;
       const duration = reducedRef.current ? 0 : HANDOFF_SETTLE_MS * (slowRef.current ? 3 : 1);
 

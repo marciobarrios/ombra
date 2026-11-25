@@ -3,7 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 const port = 3000;
 
 // Specs that test plain functions and files. They need no browser, so they run once.
-const unitSpecs = /(gallery-state|gesture-arbitration|registry-items|spring)\.spec\.ts$/;
+const unitSpecs =
+  /(gallery-state|gesture-arbitration|registry-items|scroll-range|spring)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: "./e2e",
