@@ -70,7 +70,8 @@ function Viewer() {
         {/* The registry CSS scales this wrapper while the viewer is pulled to dismiss. */}
         <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
           <OmbraChrome>
-            <header className="flex items-center justify-between gap-3 p-3">
+            {/* The content drops its own padding, so the chrome keeps clear of the notch. */}
+            <header className="flex items-center justify-between gap-3 pt-[max(0.75rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-3 pl-[max(0.75rem,env(safe-area-inset-left))]">
               <OmbraCounter className="font-mono text-xs tabular-nums" />
               <div className="flex items-center gap-1">
                 <OmbraZoomOut aria-label="Zoom out">
@@ -113,12 +114,12 @@ function Viewer() {
                 </OmbraSlide>
               ))}
             </OmbraSlides>
-            <OmbraChrome className="pointer-events-none absolute inset-y-0 left-2 flex items-center">
+            <OmbraChrome className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-[max(0.5rem,env(safe-area-inset-left))]">
               <OmbraPrevious aria-label="Previous photo" className="pointer-events-auto">
                 <ChevronLeft aria-hidden="true" className="size-5" />
               </OmbraPrevious>
             </OmbraChrome>
-            <OmbraChrome className="pointer-events-none absolute inset-y-0 right-2 flex items-center">
+            <OmbraChrome className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-[max(0.5rem,env(safe-area-inset-right))]">
               <OmbraNext aria-label="Next photo" className="pointer-events-auto">
                 <ChevronRight aria-hidden="true" className="size-5" />
               </OmbraNext>
@@ -126,7 +127,7 @@ function Viewer() {
           </div>
 
           <OmbraChrome>
-            <footer className="px-4 pb-3">
+            <footer className="pr-[max(1rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]">
               <OmbraCaption className="mb-3">{active?.caption}</OmbraCaption>
               <OmbraThumbnails aria-label="Thumbnails">
                 {photos.map((photo) => (

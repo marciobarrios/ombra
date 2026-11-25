@@ -153,7 +153,7 @@ const minimal: Guide = {
         {
           kind: "list",
           items: [
-            "A press on a thumbnail morphs it into the viewer. Swipe, drag or use the arrow keys to move between photos.",
+            "A press on a thumbnail morphs it into the viewer. Swipe, scroll sideways on a trackpad, or use the arrow keys to move between photos.",
             "Close with the button, Escape, or a pull up or down. The viewer morphs back onto the thumbnail of the photo it shows.",
             "There is no `OmbraZoom`, so the photos do not zoom, and no controls beyond close.",
             "`aria-label` on `OmbraContent` names the dialog. Each slide is named after its photo, so the image itself has empty `alt`.",
