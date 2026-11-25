@@ -32,6 +32,8 @@ export type OmbraContentProps = ComponentPropsWithRef<typeof Dialog.Popup>;
 
 export type OmbraCloseProps = ComponentPropsWithRef<typeof Dialog.Close>;
 
+export type OmbraTitleProps = ComponentPropsWithRef<typeof Dialog.Title>;
+
 function classesFor<State>(
   defaults: string,
   className: string | ((state: State) => string | undefined) | undefined,
@@ -200,4 +202,12 @@ export function OmbraClose({ className, ...props }: OmbraCloseProps) {
       className={classesFor(ACTION_CLASSES, className)}
     />
   );
+}
+
+/**
+ * The dialog's name: the popup's `aria-labelledby` points at it. A heading by default.
+ * Add `sr-only` to name the dialog without showing the text.
+ */
+export function OmbraTitle(props: OmbraTitleProps) {
+  return <Dialog.Title data-slot="ombra-title" {...props} />;
 }

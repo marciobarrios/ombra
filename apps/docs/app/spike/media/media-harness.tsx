@@ -1,6 +1,5 @@
 "use client";
 
-import { Dialog } from "@base-ui/react/dialog";
 import Image from "next/image";
 
 import {
@@ -8,6 +7,7 @@ import {
   OmbraClose,
   OmbraContent,
   OmbraPortal,
+  OmbraTitle,
 } from "../../../../../registry/ombra/ombra-dialog";
 import { OmbraRoot, useOmbraState } from "../../../../../registry/ombra/ombra-root";
 import { OmbraMedia, OmbraSlide, OmbraSlides } from "../../../../../registry/ombra/ombra-slides";
@@ -26,7 +26,7 @@ function Viewer() {
       <OmbraPortal>
         <OmbraBackdrop />
         <OmbraContent data-slot="ombra-viewer">
-          <Dialog.Title className="sr-only">{active?.alt ?? "Photo"}</Dialog.Title>
+          <OmbraTitle className="sr-only">{active?.alt ?? "Photo"}</OmbraTitle>
           <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
             <header className="flex justify-end p-3">
               <OmbraClose aria-label="Close photos">×</OmbraClose>

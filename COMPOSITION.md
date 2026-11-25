@@ -9,7 +9,7 @@ Implementation was tracked in [MAR-64](https://linear.app/marciobarrios/issue/MA
 ## Implemented dialog shell (MAR-139)
 
 `registry/ombra/ombra-dialog.tsx` exports `OmbraPortal`, `OmbraBackdrop`,
-`OmbraContent`, and `OmbraClose`. They wrap the matching Base UI Dialog parts
+`OmbraContent`, `OmbraClose`, and `OmbraTitle`. They wrap the matching Base UI Dialog parts
 (`OmbraContent` wraps `Dialog.Popup`) and accept their native props, refs,
 state-aware `className`, and `render` contracts. Base UI merges handlers and refs
 on render elements. A render callback must spread the received props, including
@@ -33,7 +33,8 @@ morph, pull or zoom:
 </Dialog.Root>
 ```
 
-The slots are `ombra-portal`, `ombra-backdrop`, `ombra-content`, and `ombra-close`.
+The slots are `ombra-portal`, `ombra-backdrop`, `ombra-content`, `ombra-close`, and
+`ombra-title`.
 The gallery recipe renames its content slot `ombra-viewer`, and the album
 `ombra-album`. Base UI supplies open/closed and transition attributes on backdrop
 and content, and `data-disabled` on close; the portal has no independent state.
@@ -46,7 +47,9 @@ header and footer already account for safe areas. Classes merge through `cn()`;
 structural styles ship in the registry payload. The default initial focus is the
 first enabled `ombra-close` inside content, with `preventScroll`; without a close
 part it focuses content. An explicit `initialFocus` overrides that default.
-`OmbraClose` supplies no text or accessible label: consumers own both. The
+`OmbraClose` supplies no text or accessible label: consumers own both. `OmbraTitle`
+wraps `Dialog.Title`, so the content's `aria-labelledby` points at it; it renders a
+heading, and `sr-only` names the dialog without showing the text. The
 `/spike/dialog` bench exercises custom surfaces, labels, refs, dismissal, and pull
 targeting.
 
@@ -429,6 +432,7 @@ The caller can replace the grid with a feed or a single trigger, reposition the 
 | `OmbraPrevious`, `OmbraNext`, `OmbraClose`                      | Provide accessible actions with consumer-owned labels, children, positioning, and button rendering.                    |
 | `OmbraThumbnails`, `OmbraThumbnail`                             | Provide an optional strip with navigation and selected state, linked by `itemId`.                                      |
 | `OmbraChrome`                                                   | Hide a region of controls on a tap and show it again on focus, without taking it out of the tab order.                 |
+| `OmbraTitle`                                                    | Name the dialog, visibly or with `sr-only`, without importing the dialog library.                                      |
 | `OmbraCaption`                                                  | Show the active photo's caption on one line and link it to the dialog description.                                     |
 | `OmbraCounter`, `OmbraZoomIn`, `OmbraZoomOut`, `OmbraZoomReset` | Provide optional state output and actions. Counter formatting belongs to the caller.                                   |
 

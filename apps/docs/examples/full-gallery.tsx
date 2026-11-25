@@ -1,6 +1,5 @@
 "use client";
 
-import { Dialog } from "@base-ui/react/dialog";
 import { ChevronLeft, ChevronRight, Minus, Plus, Square, X } from "lucide-react";
 
 import { OmbraCaption } from "@/components/ombra/ombra-caption";
@@ -17,6 +16,7 @@ import {
   OmbraClose,
   OmbraContent,
   OmbraPortal,
+  OmbraTitle,
 } from "@/components/ombra/ombra-dialog";
 import { OmbraRoot, useOmbraState } from "@/components/ombra/ombra-root";
 import { OmbraMedia, OmbraSlide, OmbraSlides } from "@/components/ombra/ombra-slides";
@@ -66,7 +66,7 @@ function Viewer() {
     <OmbraPortal>
       <OmbraBackdrop />
       <OmbraContent className="p-0">
-        <Dialog.Title className="sr-only">{active?.alt ?? "Photo"}</Dialog.Title>
+        <OmbraTitle className="sr-only">{active?.alt ?? "Photo"}</OmbraTitle>
         {/* The registry CSS scales this wrapper while the viewer is pulled to dismiss. */}
         <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
           <OmbraChrome>

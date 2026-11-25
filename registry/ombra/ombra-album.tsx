@@ -4,12 +4,18 @@
 // the header holds the title and every control, photos render through `<picture>`, and
 // there is no thumbnail strip and no zoom. Each of those is a JSX choice in this file.
 
-import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "cn";
 
 import { OmbraCaption } from "./ombra-caption";
 import { OmbraCounter, OmbraNext, OmbraPrevious } from "./ombra-controls";
-import { OmbraBackdrop, OmbraChrome, OmbraClose, OmbraContent, OmbraPortal } from "./ombra-dialog";
+import {
+  OmbraBackdrop,
+  OmbraChrome,
+  OmbraClose,
+  OmbraContent,
+  OmbraPortal,
+  OmbraTitle,
+} from "./ombra-dialog";
 import { OmbraRoot, useOmbraState } from "./ombra-root";
 import type { OmbraRootProps } from "./ombra-root";
 import { OmbraMedia, OmbraSlide, OmbraSlides } from "./ombra-slides";
@@ -111,7 +117,7 @@ function AlbumViewer({ title, photos }: Pick<OmbraAlbumProps, "title" | "photos"
           className="flex touch-none items-center gap-1 pt-[max(0.75rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pb-2 pl-[max(0.75rem,env(safe-area-inset-left))]"
         >
           <div className="flex min-w-0 flex-1 flex-col">
-            <Dialog.Title className="truncate text-base font-medium">{title}</Dialog.Title>
+            <OmbraTitle className="truncate text-base font-medium">{title}</OmbraTitle>
             <OmbraCounter className="font-mono text-xs whitespace-nowrap text-(--ombra-ink)/70 tabular-nums">
               {({ position, count }) => `${position} of ${count}`}
             </OmbraCounter>

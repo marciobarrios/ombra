@@ -67,7 +67,8 @@ export const anatomy: Guide = {
         │           └── OmbraMedia
         │               └── <img>, <picture> or Next.js Image
         └── controls       optional: OmbraPrevious, OmbraNext,
-                           OmbraCounter, OmbraThumbnails, OmbraCaption`,
+                           OmbraCounter, OmbraThumbnails, OmbraCaption,
+                           OmbraTitle`,
         },
         {
           kind: "list",
@@ -106,7 +107,7 @@ export const anatomy: Guide = {
       blocks: [
         {
           kind: "text",
-          text: "Ombra ships no visible text. Name the dialog with `aria-label` on `OmbraContent` or a `Dialog.Title` inside it, and give every icon-only control an `aria-label` in your own language.",
+          text: "Ombra ships no visible text. Name the dialog with `aria-label` on `OmbraContent` or an `OmbraTitle` inside it, and give every icon-only control an `aria-label` in your own language.",
         },
       ],
     },
@@ -191,7 +192,7 @@ const fullGallery: Guide = {
           items: [
             "`OmbraZoom` around each slide's media: pinch, double-tap, Ctrl and the wheel, or the zoom buttons. Zoom stops where the photo shows at its natural size.",
             "`OmbraPrevious`, `OmbraNext` and `OmbraCounter`. The buttons disable themselves at the ends.",
-            "`OmbraCaption` is the dialog description. `Dialog.Title` names the dialog after the photo on screen, read through `useOmbraState()`, so `Viewer` is a child of the root.",
+            "`OmbraCaption` is the dialog description. `OmbraTitle` names the dialog after the photo on screen, read through `useOmbraState()`, so `Viewer` is a child of the root.",
             "`OmbraThumbnails` is a named navigation strip. With a single photo it renders nothing.",
             "`OmbraChrome` marks the regions a tap on the photo hides and a second tap shows.",
             "The `ombra-sheet` wrapper scales and rounds while the viewer is pulled to dismiss.",
