@@ -9,7 +9,14 @@ import type { OmbraActionProps } from "./ombra-controls";
 import { useOmbraRoot } from "./ombra-root";
 import { useSlideItem } from "./ombra-slides";
 
-export type OmbraZoomProps = useRender.ComponentProps<"div">;
+export type OmbraZoomProps = useRender.ComponentProps<"div"> & {
+  /**
+   * The largest scale, relative to the fitted media. Without it, zoom stops where the media
+   * shows at its natural size (the `width` given to `OmbraMedia`), and media that already
+   * fits at that size does not zoom.
+   */
+  maxScale?: number;
+};
 
 export type OmbraZoomActionProps = OmbraActionProps;
 
@@ -17,9 +24,11 @@ export type OmbraZoomActionProps = OmbraActionProps;
  * Makes its slide's media zoomable: pinch, double-tap, ctrl+wheel, trackpad pinch and the
  * `+`, `-` and `0` keys. A slide without it does not zoom, and its gestures stay with the
  * track and the pull. Wrap the `OmbraMedia`: zooming scales this surface, never the media's
- * resting box, so the morph still lands where the media rests.
+ * resting box, so the morph still lands where the media rests. The first zoom past the
+ * fitted size raises the `sizes` of each `img` with a `srcset` inside, so the browser fetches
+ * a sharper candidate.
  */
-export function OmbraZoom({ ref, className, render, ...props }: OmbraZoomProps) {
+export function OmbraZoom({ maxScale, ref, className, render, ...props }: OmbraZoomProps) {
   const itemId = useSlideItem("OmbraZoom");
   const { registerZoom } = useOmbraRoot();
 
@@ -27,9 +36,9 @@ export function OmbraZoom({ ref, className, render, ...props }: OmbraZoomProps) 
     (element: HTMLElement | null) => {
       if (!element) return;
 
-      return registerZoom({ itemId, element });
+      return registerZoom({ itemId, element, maxScale });
     },
-    [itemId, registerZoom],
+    [itemId, maxScale, registerZoom],
   );
 
   // useRender merges the local and caller refs, including React 19 ref cleanups.

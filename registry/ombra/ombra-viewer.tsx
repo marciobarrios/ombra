@@ -71,6 +71,7 @@ import { usePull } from "./use-pull";
 import { useReducedMotion } from "./use-reduced-motion";
 import { useReducerWithBailout } from "./use-reducer-with-bailout";
 import { useZoom } from "./use-zoom";
+import type { ZoomLimit } from "./use-zoom";
 
 // The end of a close is a sliver of spring overshoot, moving too little to see. It
 // would keep the page locked and read a swipe as a reversal, so a close ends here.
@@ -338,6 +339,29 @@ export function useOmbraViewer() {
     [],
   );
 
+  // What limits the active photo's zoom: its media, natural width and the consumer's hint.
+  const limitRef = useMemo<RefObject<ZoomLimit | null>>(
+    () => ({
+      get current() {
+        const itemId = idsRef.current[indexRef.current];
+
+        if (itemId === undefined) return null;
+
+        const media = rootRef.current.mediaFor(itemId);
+
+        if (!media) return null;
+
+        return {
+          media: media.element,
+          width: media.width,
+          hint: rootRef.current.zoomHintFor(itemId),
+        };
+      },
+      set current(_: ZoomLimit | null) {},
+    }),
+    [],
+  );
+
   // Whether the track rests on the active slide, so a pinch can start on it. A finger
   // that catches a fling holds the track between slides with no scroll events, and
   // the active item lags one render behind the slide the track settled on.
@@ -374,6 +398,7 @@ export function useOmbraViewer() {
     zoomGestureRef,
     pullGestureRef,
     restedRef,
+    limitRef,
   );
 
   // Before the morph layout effects, so FLIP measures the viewer where it is shown.

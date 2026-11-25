@@ -156,6 +156,23 @@ test.describe("OmbraZoom", () => {
     await expect(zoomOut).toBeDisabled();
   });
 
+  // MAR-21: without a `maxScale` hint, zoom stops where the photo shows at its natural width.
+  test("zoom stops at the photo's natural size and asks for a sharper file", async ({ page }) => {
+    await openBench(page, "all");
+
+    const image = activeMedia(page).locator("img");
+
+    await expect(image).toHaveAttribute("sizes", "40vw");
+
+    for (let step = 0; step < 12; step += 1) await page.keyboard.press("+");
+
+    // On screen, the photo is exactly as wide as its file.
+    await expect
+      .poll(() => activeMedia(page).evaluate((node) => node.getBoundingClientRect().width))
+      .toBeCloseTo(first.width, 0);
+    await expect(image).toHaveAttribute("sizes", `${first.width}px`);
+  });
+
   test("slides without OmbraZoom still pull to dismiss", async ({ page }) => {
     await openBench(page, "off");
     await pinch(activeMedia(page));

@@ -71,6 +71,9 @@ function Viewer({ mode }: { mode: ZoomMode }) {
                     >
                       <img
                         src={item.src}
+                        // A small resting size, so a spec can see the zoom ask for a sharper file.
+                        srcSet={item.srcSet}
+                        sizes="40vw"
                         alt=""
                         width={item.width}
                         height={item.height}
