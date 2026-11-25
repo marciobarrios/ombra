@@ -8,6 +8,7 @@ import type { CSSProperties } from "react";
 import { indexFromScroll } from "./geometry";
 import { useOmbraRoot } from "./ombra-root";
 import type { OmbraSlidesHandle } from "./ombra-root";
+import { clampScrollLeft } from "./scroll-range";
 import { useReducedMotion } from "./use-reduced-motion";
 import { useReducerWithBailout } from "./use-reducer-with-bailout";
 
@@ -141,7 +142,7 @@ export function OmbraSlides({
       const delta = slide.getBoundingClientRect().left - node.getBoundingClientRect().left;
       const left = node.scrollLeft + delta - (node.clientWidth - slide.clientWidth) / 2;
 
-      node.scrollTo({ left: Math.max(0, left), behavior });
+      node.scrollTo({ left: clampScrollLeft(node, left), behavior });
     };
 
     const behavior = (): ScrollBehavior => (reducedRef.current ? "auto" : "smooth");
@@ -284,7 +285,8 @@ export function OmbraSlides({
     tabIndex: 0,
     className: cn(
       // Each slide is 86% of the track, so its neighbours peek in from both sides.
-      "@container flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current",
+      // `isolate` keeps the active slide's raise inside the track, under the chrome.
+      "@container isolate flex h-full min-w-0 snap-x snap-mandatory items-stretch gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x select-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current",
       className,
     ),
     children: (
@@ -313,6 +315,9 @@ export function OmbraSlides({
 /**
  * One item's snap box. It keeps its size while the viewer is pulled or a photo is zoomed, so
  * the track never re-snaps under a gesture. Captions and other markup go inside it as children.
+ *
+ * Never transform the slide itself: browsers take snap positions from the transformed box,
+ * so a scale or translate here moves the snap point. Animate the children instead.
  */
 export function OmbraSlide({ itemId, ref, className, render, ...props }: OmbraSlideProps) {
   const { registerSlide, state } = useOmbraRoot();
@@ -341,8 +346,11 @@ export function OmbraSlide({ itemId, ref, className, render, ...props }: OmbraSl
           // Peeking neighbours stay on screen. Only the active slide is exposed.
           "aria-hidden": active ? undefined : true,
           className: cn(
-            // A size container, so the media inside can fit itself to the slide.
-            "flex h-full min-h-0 w-[86cqi] shrink-0 snap-center snap-always items-center justify-center [container-type:size]",
+            // A size container, so the media inside can fit itself to the slide. Size
+            // containment makes each slide a stacking context, painted in DOM order, so the
+            // active one is raised: a zoomed photo spreads over the peeking neighbours, and
+            // the next slide would otherwise paint on top of it.
+            "flex h-full min-h-0 w-[86cqi] shrink-0 snap-center snap-always items-center justify-center [container-type:size] data-[active=true]:z-1",
             className,
           ),
         },

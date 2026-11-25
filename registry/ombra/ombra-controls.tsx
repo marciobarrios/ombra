@@ -9,6 +9,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 import { activeIndex } from "./gallery-state";
 import { useOmbraRoot } from "./ombra-root";
 import type { OmbraRootContextValue } from "./ombra-root";
+import { clampScrollLeft } from "./scroll-range";
 import { useReducedMotion } from "./use-reduced-motion";
 import { useReducerWithBailout } from "./use-reducer-with-bailout";
 
@@ -452,7 +453,7 @@ export function OmbraThumbnails({
     const delta = current.getBoundingClientRect().left - strip.getBoundingClientRect().left;
     const left = strip.scrollLeft + delta - (strip.clientWidth - current.clientWidth) / 2;
 
-    strip.scrollTo({ left: Math.max(0, left), behavior });
+    strip.scrollTo({ left: clampScrollLeft(strip, left), behavior });
   }, [root.activeId, root.phase, behavior, overflowing]);
 
   const strip = useRender({

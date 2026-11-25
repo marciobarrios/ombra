@@ -143,4 +143,32 @@ test.describe("spike navigation", () => {
       }
     });
   }
+
+  test("a resize keeps the active slide centred", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/spike?engine=fade");
+    await page
+      .getByRole("button", { name: "Snowy peaks under the Milky Way", exact: true })
+      .click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+
+    const counter = page.locator("[data-slot=ombra-counter]");
+    const text = await counter.textContent();
+    const track = page.locator("[data-slot=ombra-track]");
+
+    const offCentre = () =>
+      track.evaluate((node) => {
+        const slide = node.querySelector<HTMLElement>("[data-slot=ombra-slide][data-active=true]");
+        const rect = slide!.getBoundingClientRect();
+        const trackRect = node.getBoundingClientRect();
+
+        return Math.abs(rect.left + rect.width / 2 - trackRect.left - trackRect.width / 2);
+      });
+
+    for (const width of [760, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect.poll(offCentre).toBeLessThan(2);
+      await expect(counter).toHaveText(text!);
+    }
+  });
 });
