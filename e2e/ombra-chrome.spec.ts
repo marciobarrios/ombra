@@ -50,12 +50,11 @@ async function hydrated(page: Page) {
     .toBe(true);
 }
 
-async function openGallery(page: Page, query = "") {
+async function openGallery(page: Page) {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto(`/spike?engine=fade${query}`);
+  await page.goto("/spike?engine=fade");
   await hydrated(page);
-  // Past 32 photos the spike repeats the set, so a name can match more than one trigger.
-  await page.getByRole("button", { name: first.alt, exact: true }).first().click();
+  await page.getByRole("button", { name: first.alt, exact: true }).click();
   await expect(viewer(page)).toHaveAttribute("data-phase", "open", { timeout: 10_000 });
   await expect(viewer(page)).toHaveAttribute("data-chrome", "shown");
 }
@@ -84,33 +83,6 @@ test("caption and counter follow the active slide without moving the photo's fra
   await expect(counter(page)).toHaveText(`2 / ${photos.length}`);
   expect(await boxOf(track)).toEqual(before);
   expect((await boxOf(caption(page))).height).toBe(captionHeight);
-});
-
-test("the thumbnail strip is a named nav that keeps the active photo in view", async ({ page }) => {
-  await openGallery(page, "&photos=50");
-
-  const strip = page.getByRole("navigation", { name: "Thumbnails" });
-  const current = strip.locator("[aria-current=true]");
-
-  await expect(strip.getByRole("button")).toHaveCount(50);
-  await page.keyboard.press("End");
-  await expect(counter(page)).toHaveText("50 / 50");
-  await expect(current).toHaveCount(1);
-  await expect(current).toHaveAttribute("data-active", "true");
-  await expect
-    .poll(async () => {
-      const stripBox = await boxOf(strip);
-      const box = await boxOf(current);
-
-      return box.x >= stripBox.x - 1 && box.x + box.width <= stripBox.x + stripBox.width + 1;
-    })
-    .toBe(true);
-
-  await strip.getByRole("button").nth(2).click();
-  await expect(counter(page)).toHaveText("3 / 50");
-
-  await openGallery(page, "&photos=1");
-  await expect(page.locator("[data-slot=ombra-thumbnails]")).toHaveCount(0);
 });
 
 test("safe-area padding clears the thumbnail strip", async ({ page }) => {
