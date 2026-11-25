@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
     return [
       { source: "/docs.md", destination: "/agent-md/docs" },
       { source: "/docs/:item.md", destination: "/agent-md/docs/:item" },
+      { source: "/docs/examples/:example.md", destination: "/agent-md/docs/examples/:example" },
     ];
   },
   turbopack: {

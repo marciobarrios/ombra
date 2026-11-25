@@ -3,10 +3,12 @@ import { join } from "node:path";
 
 import registry from "../../../registry.json";
 
+import { guideMarkdownPath, guidePath, listGuides } from "./guides";
 import { galleryItemFields, galleryProps, morphParams, zoomParams } from "./item-surface";
 import type { SurfaceNote } from "./item-surface";
+import { DOCS_ORIGIN } from "./origin";
 
-export const DOCS_ORIGIN = "https://www.useombra.dev";
+export { DOCS_ORIGIN };
 
 const AFTER_INSTALL =
   "After installing, read the files under the installed `ombra` directory before writing code.";
@@ -217,11 +219,21 @@ export function indexMarkdown(): string {
     .map((item) => `- [${item.title}](${item.pageUrl}): ${item.description}`)
     .join("\n");
 
+  const guides = listGuides()
+    .map((guide) => `- [${guide.title}](${DOCS_ORIGIN}${guidePath(guide)}): ${guide.description}`)
+    .join("\n");
+
   return `# Ombra docs
 
 ${DOCS_INTRO}
 
+## Registry items
+
 ${items}
+
+## Composition
+
+${guides}
 
 Machine-readable index: ${DOCS_ORIGIN}/llms.txt
 `;
@@ -244,6 +256,13 @@ export function llmsTxt(): string {
     "",
     `- [Ombra docs](${DOCS_ORIGIN}/docs.md): Install path, registry items, and the constraints an agent cannot guess from the source.`,
     ...items.map((item) => `- [${item.title}](${item.markdownUrl}): ${item.description}`),
+    "",
+    "## Composition",
+    "",
+    ...listGuides().map(
+      (guide) =>
+        `- [${guide.title}](${DOCS_ORIGIN}${guideMarkdownPath(guide)}): ${guide.description}`,
+    ),
   ];
 
   return `${lines.join("\n")}\n`;
