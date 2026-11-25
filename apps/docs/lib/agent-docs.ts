@@ -1,12 +1,11 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import registry from "../../../registry.json";
 
+import { exampleSource, guideMarkdownPath, guidePath, listGuides } from "./guides";
 import { galleryItemFields, galleryProps, morphParams, zoomParams } from "./item-surface";
 import type { SurfaceNote } from "./item-surface";
+import { DOCS_ORIGIN } from "./origin";
 
-export const DOCS_ORIGIN = "https://www.useombra.dev";
+export { DOCS_ORIGIN };
 
 const AFTER_INSTALL =
   "After installing, read the files under the installed `ombra` directory before writing code.";
@@ -105,10 +104,6 @@ function installCommands(name: string): readonly InstallCommand[] {
   ];
 }
 
-function readExample(file: string): string {
-  return readFileSync(join(process.cwd(), "examples", file), "utf8").trim();
-}
-
 function itemDoc(item: RegistryItem): ItemDoc {
   const meta = metaFor(item.name);
   const pagePath = `/docs/${item.name}`;
@@ -122,7 +117,7 @@ function itemDoc(item: RegistryItem): ItemDoc {
     constraints: item.docs,
     install: installCommand(item.name),
     installCommands: installCommands(item.name),
-    example: readExample(meta.exampleFile),
+    example: exampleSource(meta.exampleFile),
     usageFile: meta.usageFile,
     propsTitle: meta.propsTitle,
     props: meta.props,
@@ -217,11 +212,21 @@ export function indexMarkdown(): string {
     .map((item) => `- [${item.title}](${item.pageUrl}): ${item.description}`)
     .join("\n");
 
+  const guides = listGuides()
+    .map((guide) => `- [${guide.title}](${DOCS_ORIGIN}${guidePath(guide)}): ${guide.description}`)
+    .join("\n");
+
   return `# Ombra docs
 
 ${DOCS_INTRO}
 
+## Registry items
+
 ${items}
+
+## Composition
+
+${guides}
 
 Machine-readable index: ${DOCS_ORIGIN}/llms.txt
 `;
@@ -244,6 +249,13 @@ export function llmsTxt(): string {
     "",
     `- [Ombra docs](${DOCS_ORIGIN}/docs.md): Install path, registry items, and the constraints an agent cannot guess from the source.`,
     ...items.map((item) => `- [${item.title}](${item.markdownUrl}): ${item.description}`),
+    "",
+    "## Composition",
+    "",
+    ...listGuides().map(
+      (guide) =>
+        `- [${guide.title}](${DOCS_ORIGIN}${guideMarkdownPath(guide)}): ${guide.description}`,
+    ),
   ];
 
   return `${lines.join("\n")}\n`;

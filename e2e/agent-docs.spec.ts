@@ -28,6 +28,37 @@ function exampleSource(name: string): string {
   return readFileSync(join(root, "apps/docs/examples", `${name}.tsx`), "utf8").trim();
 }
 
+/** The composition examples: each page renders its file live and lists its source. */
+const compositions = [
+  {
+    path: "/docs/examples/minimal",
+    title: "Minimal lightbox",
+    file: "minimal-lightbox",
+    next: "keyboard",
+  },
+  {
+    path: "/docs/examples/full-gallery",
+    title: "Full gallery",
+    file: "full-gallery",
+    next: "button",
+  },
+] as const;
+
+const guidePaths = ["/docs/anatomy", ...compositions.map((example) => example.path)];
+
+/** Waits until React has hydrated the first trigger, so a click opens the viewer. */
+async function waitForHydratedTrigger(page: Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const trigger = document.querySelector("[data-slot=ombra-trigger]");
+
+        return trigger ? Object.keys(trigger).some((key) => key.startsWith("__reactProps")) : false;
+      }),
+    )
+    .toBe(true);
+}
+
 function goalFor(name: string): string {
   switch (name) {
     case "ombra":
@@ -68,12 +99,19 @@ test.describe("agent docs", () => {
       expect(body).toContain(item.description);
       expect(body).toContain(item.docs);
     }
+
+    for (const path of guidePaths) expect(body).toContain(`${origin}${path}.md`);
   });
 
   test("the docs index has a markdown version", async ({ page, request }) => {
     await page.goto("/docs");
 
-    const list = page.getByRole("list");
+    const list = page.getByRole("region", { name: "Registry items" });
+    const guides = page.getByRole("region", { name: "Composition" });
+
+    for (const path of guidePaths) {
+      await expect(guides.locator(`a[href="${path}"]`)).toHaveCount(1);
+    }
 
     for (const item of registry.items) {
       await expect(list.getByRole("link", { name: item.title, exact: true })).toHaveAttribute(
@@ -97,6 +135,8 @@ test.describe("agent docs", () => {
       expect(body).toContain(item.title);
       expect(body).toContain(item.description);
     }
+
+    for (const path of guidePaths) expect(body).toContain(`${origin}${path}`);
   });
 
   for (const item of registry.items) {
@@ -199,17 +239,7 @@ test.describe("agent docs", () => {
     if (!first) throw new Error("The docs demo needs a photo.");
 
     await page.goto("/docs/ombra");
-    await expect
-      .poll(() =>
-        page.evaluate(() => {
-          const trigger = document.querySelector("[data-slot=ombra-trigger]");
-
-          return trigger
-            ? Object.keys(trigger).some((key) => key.startsWith("__reactProps"))
-            : false;
-        }),
-      )
-      .toBe(true);
+    await waitForHydratedTrigger(page);
 
     await page.locator("[data-slot=ombra-trigger]").first().click();
     await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open", {
@@ -219,4 +249,40 @@ test.describe("agent docs", () => {
     await page.keyboard.press("Escape");
     await expect(page.locator("[data-slot=ombra-viewer]")).toHaveCount(0);
   });
+
+  for (const example of compositions) {
+    test(`the ${example.file} example opens, navigates and closes`, async ({ page }) => {
+      const source = exampleSource(example.file);
+
+      await page.goto(example.path);
+      await expect(page.getByRole("heading", { level: 1, name: example.title })).toBeVisible();
+      await expect(page.locator("pre").filter({ hasText: "export function" })).toHaveText(source);
+      await waitForHydratedTrigger(page);
+
+      await page.locator("[data-slot=ombra-trigger]").first().click();
+
+      const content = page.locator("[data-slot=ombra-content]");
+      const slides = content.locator("[data-slot=ombra-slide]");
+
+      await expect(content).toHaveAttribute("data-phase", "open", { timeout: 10_000 });
+      await expect(slides.first()).toHaveAttribute("data-active", "true");
+
+      if (example.next === "button") await page.getByRole("button", { name: "Next photo" }).click();
+      else await page.keyboard.press("ArrowRight");
+
+      await expect(slides.nth(1)).toHaveAttribute("data-active", "true");
+      await page.keyboard.press("Escape");
+      await expect(content).toHaveCount(0);
+
+      const markdown = await page.request.get(`${example.path}.md`);
+
+      expect(markdown.ok()).toBe(true);
+      expect(markdown.headers()["content-type"]).toContain("text/markdown");
+
+      const body = await markdown.text();
+
+      expect(body.startsWith(`# ${example.title}`)).toBe(true);
+      expect(body).toContain(source);
+    });
+  }
 });

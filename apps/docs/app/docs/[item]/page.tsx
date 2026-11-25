@@ -17,6 +17,7 @@ import {
   CodeBlock,
   HighlightedCode,
   InlineCode,
+  linkClassName,
   panelClassName,
   panelHeaderClassName,
 } from "../code";
@@ -38,9 +39,6 @@ export async function generateMetadata({ params }: ItemPageProps): Promise<Metad
 
   return { title: `${doc.title} — Ombra`, description: doc.description };
 }
-
-const linkClassName =
-  "rounded-sm underline decoration-foreground/30 underline-offset-4 hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 
 function Section({
   id,
