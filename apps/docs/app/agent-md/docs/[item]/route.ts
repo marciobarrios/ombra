@@ -1,8 +1,9 @@
 import { itemDocByName, markdownFor } from "../../../../lib/agent-docs";
-import { guideBySlug, guideMarkdown } from "../../../../lib/guides";
+import { guideBySlug, guideMarkdown, markdownResponse } from "../../../../lib/guides";
 
 type MarkdownRouteProps = { params: Promise<{ item: string }> };
 
+/** A registry item's page, or a top-level guide such as the anatomy. */
 function markdownForPage(name: string): string | undefined {
   const doc = itemDocByName(name);
 
@@ -14,12 +15,5 @@ function markdownForPage(name: string): string | undefined {
 }
 
 export async function GET(_request: Request, context: MarkdownRouteProps) {
-  const { item } = await context.params;
-  const markdown = markdownForPage(item);
-
-  if (markdown === undefined) return new Response("Not found", { status: 404 });
-
-  return new Response(markdown, {
-    headers: { "content-type": "text/markdown; charset=utf-8" },
-  });
+  return markdownResponse(markdownForPage((await context.params).item));
 }

@@ -3,14 +3,12 @@ import Link from "next/link";
 
 import { DOCS_INTRO, DOCS_ORIGIN, listItemDocs } from "../../lib/agent-docs";
 import { guideMarkdownPath, guidePath, listGuides } from "../../lib/guides";
+import { linkClassName } from "./code";
 
 export const metadata: Metadata = {
   title: "Docs — Ombra",
   description: DOCS_INTRO,
 };
-
-const linkClassName =
-  "underline decoration-foreground/30 underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 
 type Entry = { key: string; title: string; description: string; path: string; markdown: string };
 

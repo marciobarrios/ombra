@@ -3,10 +3,7 @@ import type { ReactNode } from "react";
 
 import { exampleSource, guideMarkdownPath } from "../../lib/guides";
 import type { Guide, GuideBlock } from "../../lib/guides";
-import { CodeBlock, CodePre, panelClassName } from "./code";
-
-const linkClassName =
-  "rounded-sm underline decoration-foreground/30 underline-offset-4 hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
+import { CodeBlock, CodePre, linkClassName, panelClassName } from "./code";
 
 const INLINE = /(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g;
 
@@ -76,7 +73,7 @@ function Block({ block }: { block: GuideBlock }) {
           code={exampleSource(block.file)}
           // TSX highlighting covers plain TypeScript too.
           lang="tsx"
-          title={block.title}
+          title={block.file}
         />
       );
   }

@@ -12,23 +12,20 @@ export type GuideBlock =
   | { kind: "text"; text: string }
   | { kind: "list"; items: readonly string[] }
   | { kind: "tree"; text: string }
-  | { kind: "file"; file: string; title: string };
+  /** A file under `apps/docs/examples`, shown with its name. */
+  | { kind: "file"; file: string };
 
 export type GuideSection = { id: string; title: string; blocks: readonly GuideBlock[] };
-
-export type GuideDemo = "minimal" | "full-gallery";
 
 export type Guide = {
   /** The path under `/docs`, without the leading slash. */
   slug: string;
   title: string;
   description: string;
-  /** A live demo rendered from the same example file the page lists. */
-  demo?: GuideDemo;
   sections: readonly GuideSection[];
 };
 
-const anatomy: Guide = {
+export const anatomy: Guide = {
   slug: "anatomy",
   title: "Anatomy",
   description:
@@ -129,14 +126,13 @@ const anatomy: Guide = {
   ],
 };
 
-const photosFile: GuideBlock = { kind: "file", file: "photos.ts", title: "photos.ts" };
+const photosFile: GuideBlock = { kind: "file", file: "photos.ts" };
 
 const minimal: Guide = {
   slug: "examples/minimal",
   title: "Minimal lightbox",
   description:
     "The smallest lightbox built from the parts: triggers, the dialog shell, slides, media and a close button.",
-  demo: "minimal",
   sections: [
     {
       id: "source",
@@ -146,7 +142,7 @@ const minimal: Guide = {
           kind: "text",
           text: "The docs app typechecks these files against the registry source, and the demo above renders them.",
         },
-        { kind: "file", file: "minimal-lightbox.tsx", title: "minimal-lightbox.tsx" },
+        { kind: "file", file: "minimal-lightbox.tsx" },
         photosFile,
       ],
     },
@@ -173,7 +169,6 @@ const fullGallery: Guide = {
   title: "Full gallery",
   description:
     "The minimal lightbox plus zoom, previous and next, a counter, a caption, a thumbnail strip and chrome. This is OmbraGallery written out from the parts.",
-  demo: "full-gallery",
   sections: [
     {
       id: "source",
@@ -183,7 +178,7 @@ const fullGallery: Guide = {
           kind: "text",
           text: "The docs app typechecks these files against the registry source, and the demo above renders them. The icons come from `lucide-react`; any icon works.",
         },
-        { kind: "file", file: "full-gallery.tsx", title: "full-gallery.tsx" },
+        { kind: "file", file: "full-gallery.tsx" },
         photosFile,
       ],
     },
@@ -213,12 +208,25 @@ const fullGallery: Guide = {
 
 const guides: readonly Guide[] = [anatomy, minimal, fullGallery];
 
+const EXAMPLES = "examples/";
+
 export function listGuides(): readonly Guide[] {
   return guides;
 }
 
 export function guideBySlug(slug: string): Guide | undefined {
   return guides.find((guide) => guide.slug === slug);
+}
+
+/** The names under `/docs/examples`, such as `minimal`. */
+export function exampleNames(): readonly string[] {
+  return guides.flatMap((guide) =>
+    guide.slug.startsWith(EXAMPLES) ? [guide.slug.slice(EXAMPLES.length)] : [],
+  );
+}
+
+export function exampleGuide(name: string): Guide | undefined {
+  return guideBySlug(`${EXAMPLES}${name}`);
 }
 
 export function guidePath(guide: Guide): string {
@@ -229,8 +237,19 @@ export function guideMarkdownPath(guide: Guide): string {
   return `/docs/${guide.slug}.md`;
 }
 
+const sources = new Map<string, string>();
+
+/** A file under `apps/docs/examples`, read once per server. */
 export function exampleSource(file: string): string {
-  return readFileSync(join(process.cwd(), "examples", file), "utf8").trim();
+  const cached = sources.get(file);
+
+  if (cached !== undefined) return cached;
+
+  const source = readFileSync(join(process.cwd(), "examples", file), "utf8").trim();
+
+  sources.set(file, source);
+
+  return source;
 }
 
 /** The page links within the site; the Markdown is read elsewhere, so its links carry the origin. */
@@ -249,9 +268,15 @@ function blockMarkdown(block: GuideBlock): string {
     case "file": {
       const lang = block.file.endsWith(".tsx") ? "tsx" : "ts";
 
-      return `\`${block.title}\`:\n\n\`\`\`${lang}\n${exampleSource(block.file)}\n\`\`\``;
+      return `\`${block.file}\`:\n\n\`\`\`${lang}\n${exampleSource(block.file)}\n\`\`\``;
     }
   }
+}
+
+export function markdownResponse(markdown: string | undefined): Response {
+  if (markdown === undefined) return new Response("Not found", { status: 404 });
+
+  return new Response(markdown, { headers: { "content-type": "text/markdown; charset=utf-8" } });
 }
 
 export function guideMarkdown(guide: Guide): string {

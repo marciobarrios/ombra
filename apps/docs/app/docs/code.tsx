@@ -11,6 +11,10 @@ type TokenStyle = CSSProperties & { "--shiki-light": string; "--shiki-dark": str
 export const panelClassName =
   "overflow-hidden rounded-xl border border-foreground/10 bg-card shadow-xs dark:shadow-none";
 
+/** Underlined text links on the docs pages. */
+export const linkClassName =
+  "rounded-sm underline decoration-foreground/30 underline-offset-4 hover:decoration-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
+
 export const panelHeaderClassName =
   "flex min-h-11 items-center justify-between gap-3 border-b border-foreground/10 bg-foreground/[0.025] px-3";
 

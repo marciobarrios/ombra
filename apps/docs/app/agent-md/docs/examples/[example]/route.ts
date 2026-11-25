@@ -1,14 +1,9 @@
-import { guideBySlug, guideMarkdown } from "../../../../../lib/guides";
+import { exampleGuide, guideMarkdown, markdownResponse } from "../../../../../lib/guides";
 
 type MarkdownRouteProps = { params: Promise<{ example: string }> };
 
 export async function GET(_request: Request, context: MarkdownRouteProps) {
-  const { example } = await context.params;
-  const guide = guideBySlug(`examples/${example}`);
+  const guide = exampleGuide((await context.params).example);
 
-  if (!guide) return new Response("Not found", { status: 404 });
-
-  return new Response(guideMarkdown(guide), {
-    headers: { "content-type": "text/markdown; charset=utf-8" },
-  });
+  return markdownResponse(guide ? guideMarkdown(guide) : undefined);
 }

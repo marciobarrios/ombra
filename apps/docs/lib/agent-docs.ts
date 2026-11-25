@@ -1,9 +1,6 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import registry from "../../../registry.json";
 
-import { guideMarkdownPath, guidePath, listGuides } from "./guides";
+import { exampleSource, guideMarkdownPath, guidePath, listGuides } from "./guides";
 import { galleryItemFields, galleryProps, morphParams, zoomParams } from "./item-surface";
 import type { SurfaceNote } from "./item-surface";
 import { DOCS_ORIGIN } from "./origin";
@@ -107,10 +104,6 @@ function installCommands(name: string): readonly InstallCommand[] {
   ];
 }
 
-function readExample(file: string): string {
-  return readFileSync(join(process.cwd(), "examples", file), "utf8").trim();
-}
-
 function itemDoc(item: RegistryItem): ItemDoc {
   const meta = metaFor(item.name);
   const pagePath = `/docs/${item.name}`;
@@ -124,7 +117,7 @@ function itemDoc(item: RegistryItem): ItemDoc {
     constraints: item.docs,
     install: installCommand(item.name),
     installCommands: installCommands(item.name),
-    example: readExample(meta.exampleFile),
+    example: exampleSource(meta.exampleFile),
     usageFile: meta.usageFile,
     propsTitle: meta.propsTitle,
     props: meta.props,
