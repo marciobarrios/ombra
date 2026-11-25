@@ -1,6 +1,5 @@
 "use client";
 
-import { Dialog } from "@base-ui/react/dialog";
 import { useReducer, useRef } from "react";
 import type { ComponentPropsWithRef, Dispatch } from "react";
 
@@ -9,6 +8,7 @@ import {
   OmbraClose,
   OmbraContent,
   OmbraPortal,
+  OmbraTitle,
 } from "../../../../../registry/ombra/ombra-dialog";
 import { OmbraRoot, useOmbraRoot } from "../../../../../registry/ombra/ombra-root";
 import { OmbraTrigger } from "../../../../../registry/ombra/ombra-trigger";
@@ -77,7 +77,7 @@ function Viewer({
     <OmbraPortal>
       <OmbraBackdrop />
       <OmbraContent className="inset-8 h-auto w-auto p-4">
-        <Dialog.Title>Composed photos</Dialog.Title>
+        <OmbraTitle>Composed photos</OmbraTitle>
         <output data-testid="active">{activeId}</output>
         <button onClick={() => root.requestActive(ids[(at + 1) % ids.length] ?? "")}>
           Next item

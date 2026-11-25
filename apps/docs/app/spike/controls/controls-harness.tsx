@@ -1,6 +1,5 @@
 "use client";
 
-import { Dialog } from "@base-ui/react/dialog";
 import type { KeyboardEvent } from "react";
 
 import {
@@ -15,6 +14,7 @@ import {
   OmbraClose,
   OmbraContent,
   OmbraPortal,
+  OmbraTitle,
 } from "../../../../../registry/ombra/ombra-dialog";
 import { OmbraRoot, useOmbraState } from "../../../../../registry/ombra/ombra-root";
 import { OmbraMedia, OmbraSlide, OmbraSlides } from "../../../../../registry/ombra/ombra-slides";
@@ -38,7 +38,7 @@ function Viewer({ controls }: { controls: boolean }) {
       <OmbraPortal>
         <OmbraBackdrop />
         <OmbraContent onKeyDown={onKeyDown} data-slot="ombra-viewer">
-          <Dialog.Title className="sr-only">{active?.alt ?? "Foto"}</Dialog.Title>
+          <OmbraTitle className="sr-only">{active?.alt ?? "Foto"}</OmbraTitle>
           <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
             <header className="flex flex-wrap items-center gap-2 p-3">
               <OmbraClose aria-label="Cerrar fotos">×</OmbraClose>

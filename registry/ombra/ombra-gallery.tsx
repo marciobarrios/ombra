@@ -3,7 +3,6 @@
 // The default gallery: an optional recipe built only from Ombra's public parts. Copy it and
 // edit the JSX to move, replace or leave out any part.
 
-import { Dialog } from "@base-ui/react/dialog";
 import { cn } from "cn";
 import { useLayoutEffect } from "react";
 
@@ -15,7 +14,14 @@ import {
   OmbraThumbnail,
   OmbraThumbnails,
 } from "./ombra-controls";
-import { OmbraBackdrop, OmbraChrome, OmbraClose, OmbraContent, OmbraPortal } from "./ombra-dialog";
+import {
+  OmbraBackdrop,
+  OmbraChrome,
+  OmbraClose,
+  OmbraContent,
+  OmbraPortal,
+  OmbraTitle,
+} from "./ombra-dialog";
 import { OmbraRoot, useOmbraState } from "./ombra-root";
 import type { OmbraRootProps } from "./ombra-root";
 import { OmbraMedia, OmbraSlide, OmbraSlides } from "./ombra-slides";
@@ -141,9 +147,7 @@ function GalleryParts({
       <OmbraPortal>
         <OmbraBackdrop />
         <OmbraContent data-slot="ombra-viewer" className="p-0">
-          <Dialog.Title className="sr-only">
-            {active?.alt || active?.caption || "Photo"}
-          </Dialog.Title>
+          <OmbraTitle className="sr-only">{active?.alt || active?.caption || "Photo"}</OmbraTitle>
           <div data-slot="ombra-sheet" className="flex min-h-0 min-w-0 flex-1 flex-col">
             <OmbraChrome>
               <header className="flex touch-none flex-col gap-2 pt-[max(0.75rem,env(safe-area-inset-top))] pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))]">
