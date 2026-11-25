@@ -115,12 +115,18 @@ function Viewer() {
               ))}
             </OmbraSlides>
             <OmbraChrome className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-[max(0.5rem,env(safe-area-inset-left))]">
-              <OmbraPrevious aria-label="Previous photo" className="pointer-events-auto">
+              <OmbraPrevious
+                aria-label="Previous photo"
+                className="pointer-events-auto bg-(--ombra-surface)/40"
+              >
                 <ChevronLeft aria-hidden="true" className="size-5" />
               </OmbraPrevious>
             </OmbraChrome>
             <OmbraChrome className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-[max(0.5rem,env(safe-area-inset-right))]">
-              <OmbraNext aria-label="Next photo" className="pointer-events-auto">
+              <OmbraNext
+                aria-label="Next photo"
+                className="pointer-events-auto bg-(--ombra-surface)/40"
+              >
                 <ChevronRight aria-hidden="true" className="size-5" />
               </OmbraNext>
             </OmbraChrome>
