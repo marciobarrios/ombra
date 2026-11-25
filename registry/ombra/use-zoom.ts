@@ -294,7 +294,9 @@ export function useZoom(
     (layer: HTMLElement): DOMRect => {
       const rect = layoutRect(layer, pose.current);
       const limit = limitRef.current;
-      const fitted = limit?.media.offsetWidth ?? 0;
+      // The fractional width: offsetWidth rounds, which let the ceiling pass natural size.
+      const scale = Math.abs(pose.current.scale) > 0.001 ? Math.abs(pose.current.scale) : 1;
+      const fitted = limit ? limit.media.getBoundingClientRect().width / scale : 0;
       const ceiling = zoomCeiling(limit?.width ?? 0, fitted, limit?.hint);
 
       rectRef.current = rect;

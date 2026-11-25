@@ -162,16 +162,14 @@ test.describe("OmbraZoom", () => {
 
     const image = activeMedia(page).locator("img");
 
-    const ceiling = await activeMedia(page).evaluate(
-      (node, width) => (node instanceof HTMLElement ? width / node.offsetWidth : 0),
-      first.width,
-    );
-
     await expect(image).toHaveAttribute("sizes", "40vw");
 
     for (let step = 0; step < 12; step += 1) await page.keyboard.press("+");
 
-    await expect.poll(() => mediaScale(page)).toBeCloseTo(ceiling, 2);
+    // On screen, the photo is exactly as wide as its file.
+    await expect
+      .poll(() => activeMedia(page).evaluate((node) => node.getBoundingClientRect().width))
+      .toBeCloseTo(first.width, 0);
     await expect(image).toHaveAttribute("sizes", `${first.width}px`);
   });
 
