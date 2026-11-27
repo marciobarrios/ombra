@@ -7,7 +7,7 @@ Everything in `AGENTS.md` still applies (stack, state rules, Linear and PR rules
 
 - Base branch: `main`. Merge method: `gh pr merge <n> --squash --delete-branch`.
 - Linear team: MAR. Confirm the issue belongs to Ombra before starting.
-- Package manager: pnpm 10 on Node 26 (`.nvmrc`). Put the Node 26 bin first on `PATH`.
+- Package manager: pnpm 12 on Node 26 (`.nvmrc`). Put the Node 26 bin first on `PATH`.
 
 ## Worktree setup
 
