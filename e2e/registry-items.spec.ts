@@ -124,6 +124,17 @@ test.describe("registry items", () => {
       for (const hook of [...(part.dataAttributes ?? []), ...(part.cssVariables ?? [])]) {
         expect(sources, `${part.name}: ${hook.name}`).toContain(hook.name);
       }
+
+      // `pnpm typecheck` only checks that a default fits the type, so find the value itself.
+      for (const table of part.tables) {
+        for (const entry of table.entries) {
+          if (entry.default === undefined) continue;
+
+          expect(sources, `${part.name}: ${entry.name} = ${entry.default}`).toContain(
+            `${entry.name} = ${entry.default},`,
+          );
+        }
+      }
     }
   });
 });

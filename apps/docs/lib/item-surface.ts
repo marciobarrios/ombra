@@ -64,9 +64,6 @@ export type ApiGroup = { id: string; title: string; intro: string; parts: readon
 
 const morphEngine = '"flip" | "vt" | "fade"';
 
-/** The root's props without `children` and `itemIds`, which the recipes pass for you. */
-const rootBase = 'Omit<OmbraRootProps, "children" | "itemIds">';
-
 const buttonBase = 'useRender.ComponentProps<"button">';
 
 const divBase = 'useRender.ComponentProps<"div">';
@@ -451,7 +448,7 @@ export const apiGroups: readonly ApiGroup[] = [
         item: "ombra",
         file: "ombra-dialog.tsx",
         summary:
-          "The dialog: a full-viewport shell whose header, media, controls and labels are yours. Name it with `aria-label` or an `OmbraTitle` inside. Focus starts on the first enabled `OmbraClose` without scrolling the page. Your `onKeyDown` runs before the viewer's shortcuts, so preventing a key replaces its shortcut. The state attributes and variables below need an `OmbraRoot`; Base UI's `data-open` and `data-closed` apply too.",
+          "The dialog: a full-viewport shell whose header, media, controls and labels are yours. Name it with `aria-label` or an `OmbraTitle` inside. Focus starts on the first enabled `OmbraClose` without scrolling the page. Your `onKeyDown` runs before the viewer's shortcuts, so preventing a key replaces its shortcut. The state attributes below, and updates to `--ombra-zoom` and `--ombra-pull`, need an `OmbraRoot`; Base UI's `data-open` and `data-closed` apply too.",
         renders: 'A `<div role="dialog">`, through Base UI\'s `Dialog.Popup`.',
         slot: "ombra-content",
         tables: [
@@ -888,13 +885,12 @@ export const apiGroups: readonly ApiGroup[] = [
         summary:
           "One cover that opens the whole album. The header holds the title and every control, the photos render through `<picture>`, and there is no thumbnail strip or zoom.",
         renders:
-          "The cover's `OmbraTrigger` button, and the viewer in a portal. Nothing without photos.",
+          'The cover\'s `OmbraTrigger` button, and the viewer in a portal: `OmbraContent` with `data-slot="ombra-album"` and a header with `data-slot="ombra-album-header"`. Nothing without photos.',
         tables: [
           {
             kind: "object",
             title: "Props",
             of: "OmbraAlbumProps",
-            base: rootBase,
             entries: [
               {
                 name: "title",
@@ -909,6 +905,7 @@ export const apiGroups: readonly ApiGroup[] = [
                 note: "The first photo is the cover. Each one takes the fields listed under Photo fields.",
               },
               { name: "className", type: "string", note: "Class on the cover." },
+              ...rootProps,
             ],
           },
           {
@@ -971,7 +968,7 @@ export const apiGroups: readonly ApiGroup[] = [
         item: "ombra-zoom",
         file: "use-zoom.ts",
         summary:
-          "Pinch, double-tap, wheel and keyboard zoom on a layer inside a scroll track, with the gesture rules the viewer uses. It publishes `--ombra-zoom` on the enclosing dialog.",
+          "Pinch, double-tap and wheel zoom on a layer inside a scroll track, with the gesture rules the viewer uses. It installs no keyboard handler: the viewer maps `+`, `-` and `0` to `zoomIn`, `zoomOut` and `home`, so wire your own keys the same way. It publishes `--ombra-zoom` on the enclosing dialog.",
         renders: "A hook.",
         tables: [
           { kind: "parameters", title: "Parameters", of: "useZoom", entries: zoomParams },
