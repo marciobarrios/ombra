@@ -80,7 +80,7 @@ export function DocsSidebar({ groups }: { groups: readonly NavGroup[] }) {
     <>
       <details
         ref={menu}
-        className="group mb-10 rounded-xl border border-foreground/10 bg-card lg:hidden"
+        className="group mb-10 rounded-xl border border-foreground/10 bg-foreground/[0.03] lg:hidden"
       >
         <summary
           className={`flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 text-sm [&::-webkit-details-marker]:hidden ${focusRing}`}
