@@ -4,7 +4,7 @@ import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 
 import { readableOn } from "./contrast";
 
-export type CodeLanguage = "tsx" | "bash";
+export type CodeLanguage = "tsx" | "bash" | "css";
 
 /** One coloured run of text. `light` and `dark` are the two theme colours. */
 export type CodeToken = { content: string; light: string; dark: string };
@@ -21,11 +21,15 @@ const panels = { light: "#ffffff", dark: "#171717" } as const;
 
 let highlighter: Promise<HighlighterCore> | undefined;
 
-// The JavaScript regex engine and two grammars keep Shiki out of WebAssembly and the full bundle.
+// The JavaScript regex engine and three grammars keep Shiki out of WebAssembly and the full bundle.
 function loadHighlighter(): Promise<HighlighterCore> {
   highlighter ??= createHighlighterCore({
     themes: [import("shiki/themes/ayu-light.mjs"), import("shiki/themes/ayu-dark.mjs")],
-    langs: [import("shiki/langs/tsx.mjs"), import("shiki/langs/bash.mjs")],
+    langs: [
+      import("shiki/langs/tsx.mjs"),
+      import("shiki/langs/bash.mjs"),
+      import("shiki/langs/css.mjs"),
+    ],
     engine: createJavaScriptRegexEngine(),
   });
 

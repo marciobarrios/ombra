@@ -597,7 +597,7 @@ export const apiGroups: readonly ApiGroup[] = [
           },
         ],
         dataAttributes: [
-          { name: "data-active", note: "`true` on the active slide, `false` on the rest." },
+          { name: "data-active", note: "`true` while its item is active, `false` otherwise." },
         ],
       },
       {
