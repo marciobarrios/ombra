@@ -44,6 +44,22 @@ test.describe("media status", () => {
     );
   });
 
+  test("a new image that is still loading clears an error and keeps the size", () => {
+    const thumb = mediaReducer(initialMediaState, {
+      type: "image-loaded",
+      width: 960,
+      height: 640,
+    });
+
+    const failed = mediaReducer(thumb, { type: "image-failed" });
+
+    expect(mediaReducer(failed, { type: "image-pending" })).toEqual({
+      status: "loading",
+      natural: thumb.natural,
+    });
+    expect(mediaReducer(initialMediaState, { type: "image-pending" })).toBe(initialMediaState);
+  });
+
   test("a load with no pixels is ignored", () => {
     expect(mediaReducer(initialMediaState, { type: "image-loaded", width: 0, height: 0 })).toBe(
       initialMediaState,

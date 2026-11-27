@@ -9,7 +9,8 @@ export type MediaState = { status: MediaStatus; natural: MediaSize | null };
 
 export type MediaAction =
   | { type: "image-loaded"; width: number; height: number }
-  | { type: "image-failed" };
+  | { type: "image-failed" }
+  | { type: "image-pending" };
 
 export const initialMediaState: MediaState = { status: "loading", natural: null };
 
@@ -41,6 +42,12 @@ export function mediaReducer(state: MediaState, action: MediaAction): MediaState
 
       // A size the image already reported still holds: only its file failed.
       return { status: "error", natural: state.natural };
+
+    case "image-pending":
+      if (state.status === "loading") return state;
+
+      // The known size holds, so the box does not move while the new image loads.
+      return { status: "loading", natural: state.natural };
   }
 }
 

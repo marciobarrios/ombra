@@ -419,10 +419,12 @@ export function OmbraMedia({
         }
       };
 
-      // A cached image can finish before this listens.
+      // A cached image can finish before this listens, and a node that replaces another
+      // may still be loading its own.
       const image = imageIn(element);
 
       if (image?.complete) report(image);
+      else if (image) sendMedia({ type: "image-pending" });
 
       // Load and error do not bubble, so listen while they pass down to the image. A failed
       // image has no natural width, so `report` tells the two apart.
