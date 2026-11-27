@@ -388,15 +388,12 @@ export function OmbraMedia({
   const itemId = useSlideItem("OmbraMedia");
   const { registerMedia } = useOmbraRoot();
   const [media, sendMedia] = useReducerWithBailout(mediaReducer, initialMediaState);
-  const elementRef = useRef<HTMLElement | null>(null);
   const size = mediaSize(width, height, media.natural);
   const sizeWidth = size?.width;
   const sizeHeight = size?.height;
 
   const register = useCallback(
     (element: HTMLElement | null) => {
-      elementRef.current = element;
-
       // A morph needs the size, so media still measuring itself is not a landing yet.
       if (!element || sizeWidth === undefined || sizeHeight === undefined) return;
 
@@ -405,44 +402,46 @@ export function OmbraMedia({
     [itemId, sizeWidth, sizeHeight, registerMedia],
   );
 
-  useLayoutEffect(() => {
-    const element = elementRef.current;
+  // Follows the node itself, so a `render` that swaps the element listens on the new one.
+  const listen = useCallback(
+    (element: HTMLElement | null) => {
+      if (!element) return;
 
-    if (!element) return;
+      const report = (image: HTMLImageElement) => {
+        if (image.naturalWidth > 0) {
+          sendMedia({
+            type: "image-loaded",
+            width: image.naturalWidth,
+            height: image.naturalHeight,
+          });
+        } else if (image.getAttribute("src") || image.getAttribute("srcset")) {
+          sendMedia({ type: "image-failed" });
+        }
+      };
 
-    const report = (image: HTMLImageElement) => {
-      if (image.naturalWidth > 0) {
-        sendMedia({
-          type: "image-loaded",
-          width: image.naturalWidth,
-          height: image.naturalHeight,
-        });
-      } else if (image.getAttribute("src") || image.getAttribute("srcset")) {
-        sendMedia({ type: "image-failed" });
-      }
-    };
+      // A cached image can finish before this listens.
+      const image = imageIn(element);
 
-    // A cached image can finish before this listens.
-    const image = imageIn(element);
+      if (image?.complete) report(image);
 
-    if (image?.complete) report(image);
+      // Load and error do not bubble, so listen while they pass down to the image. A failed
+      // image has no natural width, so `report` tells the two apart.
+      const settled = (event: Event) => {
+        const target = imageIn(element);
 
-    // Load and error do not bubble, so listen while they pass down to the image. A failed
-    // image has no natural width, so `report` tells the two apart.
-    const settled = (event: Event) => {
-      const target = imageIn(element);
+        if (target && event.target === target) report(target);
+      };
 
-      if (target && event.target === target) report(target);
-    };
+      element.addEventListener("load", settled, true);
+      element.addEventListener("error", settled, true);
 
-    element.addEventListener("load", settled, true);
-    element.addEventListener("error", settled, true);
-
-    return () => {
-      element.removeEventListener("load", settled, true);
-      element.removeEventListener("error", settled, true);
-    };
-  }, [sendMedia]);
+      return () => {
+        element.removeEventListener("load", settled, true);
+        element.removeEventListener("error", settled, true);
+      };
+    },
+    [sendMedia],
+  );
 
   const measuring = width === undefined || height === undefined;
   const hidden = size === null && media.status !== "error";
@@ -457,7 +456,7 @@ export function OmbraMedia({
 
   return useRender({
     render,
-    ref: [register, ref ?? null],
+    ref: [register, listen, ref ?? null],
     props: {
       "data-slot": "ombra-media",
       "data-status": media.status,

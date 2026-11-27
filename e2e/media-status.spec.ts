@@ -16,7 +16,7 @@ test.describe("media status", () => {
     expect(mediaReducer(loaded, { type: "image-loaded", width: 960, height: 640 })).toBe(loaded);
   });
 
-  test("a sharper file updates the natural size", () => {
+  test("a sharper file updates the width and keeps the first ratio", () => {
     const thumb = mediaReducer(initialMediaState, {
       type: "image-loaded",
       width: 960,
@@ -25,7 +25,7 @@ test.describe("media status", () => {
 
     expect(
       mediaReducer(thumb, { type: "image-loaded", width: 1600, height: 1067 }).natural,
-    ).toEqual({ width: 1600, height: 1067 });
+    ).toEqual({ width: 1600, height: (1600 * 640) / 960 });
   });
 
   test("a failure keeps a known size, and a later load recovers", () => {

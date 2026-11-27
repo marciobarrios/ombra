@@ -19,14 +19,21 @@ export function mediaReducer(state: MediaState, action: MediaAction): MediaState
     case "image-loaded": {
       if (!(action.width > 0) || !(action.height > 0)) return state;
 
-      const same = state.natural?.width === action.width && state.natural.height === action.height;
+      // The first file sets the ratio, and a later, sharper one only the width: the box has
+      // already painted, and a ratio rounded differently would move it.
+      const natural = state.natural
+        ? {
+            width: action.width,
+            height: (action.width * state.natural.height) / state.natural.width,
+          }
+        : { width: action.width, height: action.height };
+
+      const same =
+        state.natural?.width === natural.width && state.natural.height === natural.height;
 
       if (state.status === "loaded" && same) return state;
 
-      return {
-        status: "loaded",
-        natural: same ? state.natural : { width: action.width, height: action.height },
-      };
+      return { status: "loaded", natural: same ? state.natural : natural };
     }
 
     case "image-failed":
