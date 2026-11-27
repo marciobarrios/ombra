@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { AlbumRecipe, GalleryRecipe } from "../../../examples/recipes";
+import { AlbumRecipe, BentoRecipe, GalleryRecipe, MosaicRecipe } from "../../../examples/recipes";
 import { recipes } from "../../../lib/guides";
 import { GuidePage } from "../guide-page";
 
@@ -15,6 +15,14 @@ function RecipesDemo() {
       <div>
         <h3 className="mb-4 font-mono text-xs text-foreground/70">OmbraGallery</h3>
         <GalleryRecipe />
+      </div>
+      <div>
+        <h3 className="mb-4 font-mono text-xs text-foreground/70">OmbraGallery with OmbraBento</h3>
+        <BentoRecipe />
+      </div>
+      <div>
+        <h3 className="mb-4 font-mono text-xs text-foreground/70">OmbraGallery with OmbraMosaic</h3>
+        <MosaicRecipe />
       </div>
       <div>
         <h3 className="mb-4 font-mono text-xs text-foreground/70">OmbraAlbum</h3>

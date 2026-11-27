@@ -1,7 +1,14 @@
 import { exampleSource } from "./guides";
 import { installCommand, registryItems } from "./install";
 import type { ItemName, RegistryItem } from "./install";
-import { galleryItemFields, galleryProps, morphParams, zoomParams } from "./item-surface";
+import {
+  bentoProps,
+  galleryItemFields,
+  galleryProps,
+  mosaicProps,
+  morphParams,
+  zoomParams,
+} from "./item-surface";
 import type { SurfaceNote } from "./item-surface";
 import { docsNavigation } from "./navigation";
 import { DOCS_ORIGIN } from "./origin";
@@ -34,6 +41,22 @@ const pageMeta = {
     propsTitle: "Props",
     props: galleryProps,
     fields: galleryItemFields,
+  },
+  "ombra-bento": {
+    goal: "Show my Ombra gallery as a bento with a +N overflow tile.",
+    exampleFile: "ombra-bento.tsx",
+    usageFile: "trip-photos.tsx",
+    propsTitle: "Props",
+    props: bentoProps,
+    fields: [],
+  },
+  "ombra-mosaic": {
+    goal: "Show my Ombra gallery as a justified mosaic.",
+    exampleFile: "ombra-mosaic.tsx",
+    usageFile: "photo-wall.tsx",
+    propsTitle: "Props",
+    props: mosaicProps,
+    fields: [],
   },
   "ombra-morph": {
     goal: "Use Ombra's morph helpers in my React app.",
@@ -75,6 +98,10 @@ function metaFor(name: string): PageMeta {
   switch (name) {
     case "ombra":
       return pageMeta.ombra;
+    case "ombra-bento":
+      return pageMeta["ombra-bento"];
+    case "ombra-mosaic":
+      return pageMeta["ombra-mosaic"];
     case "ombra-morph":
       return pageMeta["ombra-morph"];
     case "ombra-zoom":

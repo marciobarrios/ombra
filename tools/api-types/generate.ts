@@ -41,7 +41,15 @@ import type {
   OmbraPortalProps,
   OmbraTitleProps,
 } from "${ombra}/ombra-dialog";
-import type { OmbraGalleryItem, OmbraGalleryProps } from "${ombra}/ombra-gallery";
+import type { OmbraBentoProps } from "${ombra}/ombra-bento";
+import type {
+  OmbraGalleryGrid,
+  OmbraGalleryItem,
+  OmbraGalleryProps,
+  OmbraGalleryTileProps,
+  useOmbraGalleryItems,
+} from "${ombra}/ombra-gallery";
+import type { OmbraMosaicProps } from "${ombra}/ombra-mosaic";
 import type { OmbraRootProps, useOmbraState } from "${ombra}/ombra-root";
 import type { OmbraMediaProps, OmbraSlideProps, OmbraSlidesProps } from "${ombra}/ombra-slides";
 import type { OmbraTriggerProps } from "${ombra}/ombra-trigger";
@@ -82,8 +90,13 @@ export type Referenced = [
   OmbraContentProps,
   OmbraPortalProps,
   OmbraTitleProps,
+  OmbraBentoProps,
+  typeof OmbraGalleryGrid,
   OmbraGalleryItem,
   OmbraGalleryProps,
+  OmbraGalleryTileProps,
+  typeof useOmbraGalleryItems,
+  OmbraMosaicProps,
   OmbraRootProps,
   typeof useOmbraState,
   OmbraMediaProps,

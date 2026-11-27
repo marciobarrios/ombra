@@ -16,7 +16,7 @@ import {
   panelHeaderClassName,
 } from "../code";
 import { CopyButton } from "../copy-button";
-import { GalleryDemo } from "../gallery-demo";
+import { GalleryDemo, hasGalleryDemo } from "../gallery-demo";
 import { ItemInstall } from "../item-install";
 
 type ItemPageProps = PageProps<"/docs/[item]">;
@@ -148,7 +148,7 @@ export default async function ItemDocsPage({ params }: ItemPageProps) {
       </Section>
       <ApiList title={doc.propsTitle} entries={doc.props} />
       <ApiList title="Item fields" entries={doc.fields} />
-      {doc.name === "ombra" ? <GalleryDemo /> : null}
+      {hasGalleryDemo(doc.name) ? <GalleryDemo item={doc.name} /> : null}
     </main>
   );
 }

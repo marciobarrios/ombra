@@ -21,6 +21,8 @@ const registry = JSON.parse(readFileSync(join(root, "registry.json"), "utf8")) a
 
 const goals = {
   ombra: "Add an Ombra lightbox to my React app.",
+  "ombra-bento": "Show my Ombra gallery as a bento with a +N overflow tile.",
+  "ombra-mosaic": "Show my Ombra gallery as a justified mosaic.",
   "ombra-morph": "Use Ombra's morph helpers in my React app.",
   "ombra-zoom": "Add Ombra pinch and double-tap zoom to my React app.",
 } as const;
@@ -95,6 +97,8 @@ async function waitForHydratedTrigger(page: Page) {
 function goalFor(name: string): string {
   switch (name) {
     case "ombra":
+    case "ombra-bento":
+    case "ombra-mosaic":
     case "ombra-morph":
     case "ombra-zoom":
       return goals[name];

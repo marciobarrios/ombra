@@ -339,7 +339,7 @@ export const recipes: Guide = {
       blocks: [
         {
           kind: "text",
-          text: "The demo above renders both recipes from this file. They come with the `ombra` registry item, at `components/ombra/ombra-gallery.tsx` and `components/ombra/ombra-album.tsx`.",
+          text: "The demo above renders both recipes, and the gallery in its two layouts, from this file. The recipes come with the `ombra` registry item, at `components/ombra/ombra-gallery.tsx` and `components/ombra/ombra-album.tsx`. The layouts are the `ombra-bento` and `ombra-mosaic` items.",
         },
         { kind: "file", file: "recipes.tsx" },
         photosFile,
@@ -351,7 +351,24 @@ export const recipes: Guide = {
       blocks: [
         {
           kind: "text",
-          text: "A masonry grid of triggers, and a viewer with zoom, previous and next, a counter, a caption and a thumbnail strip. It decodes the photos next to the active one before a swipe reaches them, and announces each photo's caption with its position. The [full gallery](/docs/examples/full-gallery) example is this recipe written out.",
+          text: "A plain grid of triggers, and a viewer with zoom, previous and next, a counter, a caption and a thumbnail strip. It decodes the photos next to the active one before a swipe reaches them, and announces each photo's caption with its position. The [full gallery](/docs/examples/full-gallery) example is this recipe written out.",
+        },
+      ],
+    },
+    {
+      id: "layouts",
+      title: "Gallery layouts",
+      blocks: [
+        {
+          kind: "text",
+          text: "The gallery's children are its layout. Left out, it is `OmbraGalleryGrid`. Two more install as registry items of their own, and each one is a file to edit like the recipes. A layout of your own reads the items with `useOmbraGalleryItems()` and renders an `OmbraGalleryTile` per photo, so every tile is a trigger the morph flies from.",
+        },
+        {
+          kind: "list",
+          items: [
+            '**`OmbraBento`** (`ombra-bento`): one large photo and up to four around it. Past `max` tiles, the last one dims its photo under a "+N" count and opens the first photo without a tile. While the viewer shows a hidden photo, that tile takes it, so the close lands on the tile.',
+            "**`OmbraMosaic`** (`ombra-mosaic`): justified rows of equal height that fill the width, in reading order. `--ombra-row-height` sets the target height.",
+          ],
         },
       ],
     },

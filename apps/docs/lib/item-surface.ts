@@ -44,7 +44,7 @@ export type ApiHook = { name: string; note: string };
 export type ApiPart = {
   name: string;
   /** The registry item that installs it. */
-  item: "ombra" | "ombra-morph" | "ombra-zoom";
+  item: "ombra" | "ombra-bento" | "ombra-mosaic" | "ombra-morph" | "ombra-zoom";
   /** Its file under `components/ombra`. */
   file: string;
   /** What it does. Backticks render as code. */
@@ -124,7 +124,41 @@ export const galleryProps = [
     note: "Shows the thumbnail strip under the photo. A gallery of one photo never shows it.",
   },
   { name: "className", type: "string", note: "Class on the gallery root." },
+  {
+    name: "children",
+    type: "ReactNode",
+    note: "The triggers' layout: `OmbraGalleryGrid` when left out, or `OmbraBento`, `OmbraMosaic` or your own tiles.",
+  },
   ...rootProps,
+] as const satisfies readonly SurfaceNote[];
+
+/** Props of `OmbraBento`, its item page's first table. */
+export const bentoProps = [
+  {
+    name: "max",
+    type: "number",
+    default: "5",
+    note: 'The most tiles to show, the overflow tile included, from 1 to 5. Past it, the last tile reads "+N" and opens the first photo without a tile.',
+  },
+  {
+    name: "overflowLabel",
+    type: "(hidden: number) => string",
+    note: "The overflow tile's accessible name, given the number of photos behind it. Defaults to `N more photos`.",
+  },
+  {
+    name: "className",
+    type: "string",
+    note: "Class on the bento grid, merged after the defaults. Override the aspect ratio, gap or template here.",
+  },
+] as const satisfies readonly SurfaceNote[];
+
+/** Props of `OmbraMosaic`, its item page's first table. */
+export const mosaicProps = [
+  {
+    name: "className",
+    type: "string",
+    note: "Class on the mosaic, merged after the defaults. Set `--ombra-row-height` here to change the row height.",
+  },
 ] as const satisfies readonly SurfaceNote[];
 
 /** Fields of `OmbraGalleryItem`. */
@@ -875,6 +909,113 @@ export const apiGroups: readonly ApiGroup[] = [
             title: "Item fields",
             of: "OmbraGalleryItem",
             entries: galleryItemFields,
+          },
+        ],
+      },
+      {
+        name: "OmbraGalleryGrid",
+        item: "ombra",
+        file: "ombra-gallery.tsx",
+        summary:
+          "The gallery's default layout: a plain grid with one tile per item, each in its `frame`. Two columns, three from 768px.",
+        renders: "A `<div>` of `OmbraGalleryTile` triggers. Renders inside `OmbraGallery`.",
+        slot: "ombra-gallery-grid",
+        tables: [
+          {
+            kind: "object",
+            title: "Props",
+            of: "Parameters<typeof OmbraGalleryGrid>[0]",
+            entries: [
+              {
+                name: "className",
+                type: "string",
+                note: "Class on the grid, merged after the defaults.",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "OmbraGalleryTile",
+        item: "ombra",
+        file: "ombra-gallery.tsx",
+        summary:
+          "One gallery trigger: an `OmbraTrigger` button holding the item's cover-cropped thumbnail, named by its `alt`. Layouts are built from it.",
+        renders:
+          'The `OmbraTrigger` button (`data-slot="ombra-trigger"`) with an `<img>` and its children.',
+        tables: [
+          {
+            kind: "object",
+            title: "Props",
+            of: "OmbraGalleryTileProps",
+            base: 'Omit<OmbraTriggerProps, "itemId" | "className" | "children">',
+            entries: [
+              {
+                name: "item",
+                type: "OmbraGalleryItem",
+                required: true,
+                note: "The photo the tile shows and opens.",
+              },
+              {
+                name: "sizes",
+                type: "string",
+                default: '"(min-width: 768px) 30vw, 50vw"',
+                note: "The thumbnail's `sizes`, for the tile's width in the layout.",
+              },
+              {
+                name: "className",
+                type: "string",
+                note: "Class on the button, merged after the defaults.",
+              },
+              {
+                name: "children",
+                type: "ReactNode",
+                note: "Drawn over the photo, such as a count.",
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: "useOmbraGalleryItems",
+        item: "ombra",
+        file: "ombra-gallery.tsx",
+        summary:
+          "The items of the enclosing `OmbraGallery`, for a layout of your own. Throws outside one.",
+        renders: "A hook.",
+        tables: [],
+        returns: "readonly OmbraGalleryItem[]",
+      },
+      {
+        name: "OmbraBento",
+        item: "ombra-bento",
+        file: "ombra-bento.tsx",
+        summary:
+          'A gallery layout: one large photo and up to four around it. When the photos outnumber the tiles, the last tile dims its photo under a "+N" count and opens the first photo without a tile. While the viewer shows a hidden photo, that tile takes the photo, so the close lands on it.',
+        renders: "A `<div>` grid of `OmbraGalleryTile` triggers. Renders inside `OmbraGallery`.",
+        slot: "ombra-bento",
+        tables: [{ kind: "object", title: "Props", of: "OmbraBentoProps", entries: bentoProps }],
+        dataAttributes: [
+          {
+            name: "data-tiles",
+            note: "On the grid: the number of tiles, 1 to 5, which picks the template.",
+          },
+          { name: "data-overflow", note: "On the overflow tile's button." },
+        ],
+      },
+      {
+        name: "OmbraMosaic",
+        item: "ombra-mosaic",
+        file: "ombra-mosaic.tsx",
+        summary:
+          "A justified gallery layout: rows of equal height that fill the width, each photo in its `frame`, in reading order. Plain flexbox, so it reflows at any width.",
+        renders: "A `<div>` of `OmbraGalleryTile` triggers. Renders inside `OmbraGallery`.",
+        slot: "ombra-mosaic",
+        tables: [{ kind: "object", title: "Props", of: "OmbraMosaicProps", entries: mosaicProps }],
+        cssVariables: [
+          {
+            name: "--ombra-row-height",
+            note: "The target row height: 8rem, 12rem from 768px. Rows stretch past it to fill the width, up to 1.5 times; a taller row crops its photos.",
           },
         ],
       },
