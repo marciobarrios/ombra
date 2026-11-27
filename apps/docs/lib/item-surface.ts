@@ -467,7 +467,7 @@ export const apiGroups: readonly ApiGroup[] = [
           },
           {
             name: "data-engine",
-            note: "The morph that runs: `flip`, `vt` or `fade`, after reduced motion and browser support.",
+            note: "The requested morph, `flip`, `vt` or `fade`, or `fade` under reduced motion. A browser without View Transitions still reports `vt` while it runs FLIP.",
           },
           {
             name: "data-chrome",

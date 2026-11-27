@@ -78,11 +78,11 @@ export const styling: Guide = {
       blocks: [
         {
           kind: "text",
-          text: "Every part's default classes are Tailwind CSS classes merged with yours through `cn()`, so a class you pass wins over a default it conflicts with. On Base UI parts, `className` may also be a function of the part's state that returns a string.",
+          text: "Where a part has default classes, they are Tailwind CSS classes merged with yours through `cn()`, so a class you pass wins over a default it conflicts with. On the Base UI dialog parts and the controls, `className` may also be a function of the part's state that returns a string.",
         },
         {
           kind: "text",
-          text: "Base UI's `render` prop swaps the element a part renders while keeping its behaviour, attributes and handlers: pass an element such as `render={<a href={href} />}`, or a function of the props and state. The [API reference](/docs/api) lists the element each part renders by default.",
+          text: "Every part but `OmbraCaption` and the two recipes takes Base UI's `render` prop, which swaps the element the part renders while keeping its behaviour, attributes and handlers. Pass an element, such as `render={<a href={href} />}`, or a function that spreads the props it receives onto your element: `render={(props) => <a {...props} href={href} />}`. The [API reference](/docs/api) lists the element each part renders by default.",
         },
         {
           kind: "text",
@@ -109,7 +109,7 @@ export const styling: Guide = {
             "`ombra-sheet`: a wrapper you add around the content's children. The registry CSS scales and rounds it while the viewer is pulled.",
             "`ombra-thumbnails-frame` and `ombra-thumbnails-row`: the frame around the thumbnail strip and the row inside it.",
             "`ombra-live`: the polite live region inside `OmbraSlides`.",
-            "`ombra-root`, `ombra-viewer`, `ombra-image` and `ombra-nav` in `OmbraGallery`; `ombra-album` and `ombra-album-header` in `OmbraAlbum`. They are plain attributes in the recipe files, so rename them freely there.",
+            "`ombra-root`, `ombra-image` and `ombra-nav` in `OmbraGallery`, and `ombra-album-header` in `OmbraAlbum`. The recipes also replace the content's slot: their `OmbraContent` is `ombra-viewer` in the gallery and `ombra-album` in the album, so select those, not `ombra-content`, when you style a recipe. Keep `ombra-nav` on the gallery's previous and next wrappers: the opening morph fades it in with the controls around the photo.",
           ],
         },
       ],
@@ -135,7 +135,7 @@ export const styling: Guide = {
       blocks: [
         {
           kind: "text",
-          text: "Values that change every frame are CSS variables, not props, so a drag or a pinch re-renders nothing. Read them in `calc()` to tie your own styles to the gesture: `opacity: calc(1 - max(var(--ombra-pull), -1 * var(--ombra-pull)))` fades a header as the viewer is pulled.",
+          text: "Values that change every frame are CSS variables, not props, so a drag or a pinch does not re-render React on each frame; the viewer renders only when a state such as `data-pulling` or `data-zoomed` changes. Read the variables in `calc()` to tie your own styles to the gesture: `opacity: calc(1 - max(var(--ombra-pull), -1 * var(--ombra-pull)))` fades a header as the viewer is pulled.",
         },
         { kind: "list", items: hookItems((part) => part.cssVariables) },
         {
@@ -183,12 +183,12 @@ export const behaviour: Guide = {
       blocks: [
         {
           kind: "text",
-          text: "`OmbraRoot` takes `morph`, the engine that carries the photo between the thumbnail and the viewer. `data-engine` on the content reports the one that runs.",
+          text: "`OmbraRoot` takes `morph`, the engine that carries the photo between the thumbnail and the viewer. `data-engine` on the content reports the engine requested, or `fade` under reduced motion.",
         },
         {
           kind: "list",
           items: [
-            "`flip`, the default, animates a fixed copy of the photo with the Web Animations API. It animates `transform` only, so the compositor runs it even when the main thread is busy. It follows its target while in flight: a page scroll or a viewport resize retargets the close.",
+            "`flip`, the default, animates a fixed copy of the photo with the Web Animations API. Its movement runs in `transform`-only effects, so the compositor runs it even when the main thread is busy; the corners animate in an effect of their own. It follows its target while in flight: a page scroll or a viewport resize retargets the close.",
             "`vt` runs the morph as a View Transition. A browser without `document.startViewTransition` runs `flip` instead.",
             "`fade` cross-fades the viewer in and out without moving the photo.",
             "**Reduced motion** forces `fade`, whatever `morph` asks for.",
@@ -207,6 +207,7 @@ export const behaviour: Guide = {
           items: [
             "A view transition cannot run backwards, so a close during a `vt` opening hands the photo to a `flip` copy first.",
             "A view transition shows a snapshot of the page, so a swipe during the opening has to restart from the live box. On iOS Safari the swipe is blocked until the `vt` opening ends; `flip` lets it through.",
+            "A press during a `vt` opening closes the viewer as a press outside it, so a vertical drag cannot cut the opening into a pull as it does with `flip`.",
             "While a view transition runs, every other `view-transition-name` on the page is cleared, so only the photo travels.",
           ],
         },
@@ -225,7 +226,7 @@ export const behaviour: Guide = {
           items: [
             "**A laid-out size.** Give the image a width and a height in CSS, so it has a box before the file loads.",
             "**Object fit.** Use `object-fit: cover`. The morph crops the full photo to the thumbnail's box as `cover` would, centred. A different fit, or an `object-position` off centre, starts the morph from a different frame than the one on screen.",
-            "**No clipping and no transformed ancestor.** An `overflow: hidden` parent cuts the box the morph lands on, and a transform on an ancestor moves it away from where the morph measures it. Round the image itself rather than a clipping wrapper.",
+            "**No clipping and no transformed ancestor.** The morph measures the thumbnail's box on screen and flies its copy above the page, untransformed. A parent with `overflow: hidden` that cuts the thumbnail off, or a rotated, skewed or animating ancestor, makes the flight start or land somewhere the visible thumbnail is not. Round the image itself rather than a clipping wrapper.",
           ],
         },
         {
@@ -234,7 +235,7 @@ export const behaviour: Guide = {
         },
         {
           kind: "text",
-          text: "When the viewer closes on a photo whose trigger is gone, or still clipped by a scroll container after the page scrolls it into view, it fades instead of morphing. It never morphs onto another photo's thumbnail.",
+          text: "When the viewer closes on a photo whose trigger is gone, or still mostly clipped by a scroll container after the page scrolls it into view, it fades instead of morphing. It never morphs onto another photo's thumbnail.",
         },
       ],
     },
@@ -257,8 +258,8 @@ export const behaviour: Guide = {
         {
           kind: "list",
           items: [
-            "**Focus on open.** Focus starts on the first enabled `OmbraClose`, without scrolling the page.",
-            "**Focus on close.** Focus returns to the trigger of the photo on screen, even after navigating. With that trigger gone, it goes to the nearest rendered trigger. The focus ring shows only when the viewer was last used from the keyboard.",
+            "**Focus on open.** Focus starts on the first enabled `OmbraClose`, without scrolling the page. With no enabled close button, it goes to the dialog itself.",
+            "**Focus on close.** Focus returns to the trigger of the photo on screen, even after navigating. With that trigger gone, it goes to the nearest rendered trigger. In browsers that support `focusVisible`, the focus ring shows only when the viewer was last used from the keyboard.",
             "**Live region.** `OmbraSlides` holds a polite live region that announces each slide the track comes to rest on, `Image 3 of 12` by default. Pass `announce` to word it, as `OmbraGallery` does to add the caption.",
             "**Only the active slide** is exposed to assistive technology; the others are hidden until they become active.",
             "**Reduced motion** turns every morph into a fade, keeps the pulled sheet still and jumps between slides instead of scrolling.",
@@ -276,14 +277,14 @@ export const behaviour: Guide = {
           items: [
             "`ArrowLeft` and `ArrowRight`: the previous and next photo.",
             "`Home` and `End`: the first and last photo.",
-            "`+` or `=`: zoom in. `-` or `_`: zoom out. `0`: back to the fitted size. Only on a slide with `OmbraZoom`.",
+            "`+` or `=`: zoom in. `-` or `_`: zoom out. `0`: back to the fitted size. On a slide without `OmbraZoom` these keys do nothing, but the viewer still takes them.",
             "`Escape`: close.",
             "`Tab` moves through the controls and stays inside the viewer. `Enter` or `Space` presses the focused control.",
           ],
         },
         {
           kind: "text",
-          text: "The shortcuts stand aside when they would take a key from something else: with Ctrl, Meta or Alt held, while an IME composes, inside a form field, a media control, an editable element or a widget with keys of its own such as a menu, slider or tab list, and, for the arrows and `Home` or `End`, inside a scroller of your own on that axis or with Shift held. Your `onKeyDown` on `OmbraContent` runs first, and `event.preventDefault()` there replaces a shortcut.",
+          text: "The navigation and zoom shortcuts above stand aside when they would take a key from something else: with Ctrl, Meta or Alt held, while an IME composes, inside a form field, a media control, an editable element or a widget with keys of its own such as a menu, slider or tab list, and, for the arrows and `Home` or `End`, inside a scroller of your own on that axis or with Shift held. `Escape`, `Tab`, `Enter` and `Space` are the dialog's and the buttons' own. Your `onKeyDown` on `OmbraContent` runs first, and `event.preventDefault()` there replaces a shortcut.",
         },
       ],
     },
@@ -295,15 +296,15 @@ export const behaviour: Guide = {
           kind: "list",
           items: [
             "**Swipe** between photos with a finger, a sideways trackpad scroll, or a sideways wheel. The track is native CSS scroll snap, so it moves the way the platform scrolls.",
-            "**Pull to dismiss** up or down, by touch, mouse drag or a vertical trackpad swipe. A pull past the threshold closes the viewer onto its thumbnail; a shorter one settles back. While the track is still snapping, only a plainly vertical drag pulls, so a slightly diagonal flick to the next photo does not close it.",
+            "**Pull to dismiss** up or down, by touch, mouse drag or a vertical trackpad swipe. A pull that goes far enough, or is released fast enough, closes the viewer, morphing onto its thumbnail when there is one to land on; otherwise it settles back. While the track is still snapping, only a plainly vertical drag pulls, so a slightly diagonal flick to the next photo does not close it.",
             "**Zoom** on a slide with `OmbraZoom`: pinch, double-tap or double-click, Ctrl and the wheel, or a trackpad pinch. Zoom stops where the photo shows at its natural size, or at `maxScale`, and the first zoom past the fitted size raises `sizes` on an `img` with `srcset`, so the browser loads a sharper file.",
-            "**Pan** a zoomed photo by dragging it. Past its edge the drag moves on to the next photo, and the track glides there on release.",
+            "**Pan** a zoomed photo by dragging it. Past its edge the drag carries on into the neighbouring photo, and on release the track glides there or back, depending on how far and how fast it went.",
             "**Tap** the photo to hide or show the `OmbraChrome` regions.",
           ],
         },
         {
           kind: "text",
-          text: "One gesture owns the photo at a time: a pinch never scales a photo that is being pulled, and a pull ignores a second finger once it starts. A vertical drag during an opening morph cuts it and closes from where the photo is. A trackpad swipe that closes the viewer does not scroll the page with the momentum that follows.",
+          text: "One gesture owns the photo at a time: a pinch never scales a photo that is being pulled, and a pull ignores a second finger once it starts. A vertical drag during a `flip` or `fade` opening cuts it and closes from where the photo is; during a `vt` opening, a press closes the viewer as a press outside it. A trackpad swipe that closes the viewer does not scroll the page with the momentum that follows.",
         },
       ],
     },
