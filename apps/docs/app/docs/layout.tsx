@@ -1,29 +1,29 @@
 import Link from "next/link";
 
+import { docsNavigation } from "../../lib/navigation";
+import { DocsSidebar } from "./docs-sidebar";
+
+const topLinkClassName =
+  "rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
+
 export default function DocsLayout({ children }: LayoutProps<"/docs">) {
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-6 py-16">
-      <nav className="mb-10 flex flex-wrap gap-x-5 gap-y-2 text-sm">
-        <Link
-          href="/"
-          className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-        >
+    <div className="mx-auto w-full max-w-6xl flex-1 px-6 pt-12 pb-16">
+      <nav aria-label="Site" className="mb-10 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+        <Link href="/" className={topLinkClassName}>
           Ombra
         </Link>
-        <Link
-          href="/docs"
-          className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-        >
+        <Link href="/docs" className={topLinkClassName}>
           Docs
         </Link>
-        <Link
-          href="/spike"
-          className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-        >
+        <Link href="/spike" className={topLinkClassName}>
           Spike
         </Link>
       </nav>
-      {children}
+      <div className="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-14">
+        <DocsSidebar groups={docsNavigation()} />
+        <div className="max-w-3xl min-w-0">{children}</div>
+      </div>
     </div>
   );
 }

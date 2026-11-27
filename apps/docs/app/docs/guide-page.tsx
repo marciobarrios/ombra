@@ -5,6 +5,7 @@ import type { Guide, GuideBlock } from "../../lib/guides";
 import { ApiPartView } from "./api-part";
 import { CodeBlock, CodePre, linkClassName, panelClassName } from "./code";
 import { Inline } from "./inline";
+import { ItemInstall } from "./item-install";
 
 function Block({ block }: { block: GuideBlock }) {
   switch (block.kind) {
@@ -36,9 +37,11 @@ function Block({ block }: { block: GuideBlock }) {
           code={exampleSource(block.file)}
           // TSX highlighting covers plain TypeScript too.
           lang="tsx"
-          title={block.file}
+          title={block.title ?? block.file}
         />
       );
+    case "install":
+      return <ItemInstall item={block.item} />;
     case "api":
       return <ApiPartView part={block.part} />;
   }
