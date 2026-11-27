@@ -13,6 +13,7 @@ type RegistryItem = {
   description?: string;
   docs?: string;
   dependencies?: string[];
+  registryDependencies?: string[];
   css?: object;
   files: RegistryFile[];
 };
@@ -47,9 +48,17 @@ test.describe("registry items", () => {
     }
   });
 
-  test("every relative import is in the same item", () => {
+  // A layout item imports the core item's files, which `shadcn add` installs through its
+  // registry dependency on that item's URL.
+  test("every relative import is in the same item or an Ombra item it depends on", () => {
     for (const item of registry.items) {
-      const shipped = new Set(item.files.map((file) => file.path));
+      const dependencies = registry.items.filter((other) =>
+        item.registryDependencies?.includes(`https://www.useombra.dev/r/${other.name}.json`),
+      );
+
+      const shipped = new Set(
+        [item, ...dependencies].flatMap((entry) => entry.files.map((file) => file.path)),
+      );
 
       for (const file of item.files) {
         const source = readFileSync(join(root, file.path), "utf8");

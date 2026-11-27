@@ -4,7 +4,8 @@
 // edit the JSX to move, replace or leave out any part.
 
 import { cn } from "cn";
-import { useLayoutEffect } from "react";
+import { createContext, useContext, useLayoutEffect } from "react";
+import type { ReactNode } from "react";
 
 import { OmbraCaption } from "./ombra-caption";
 import {
@@ -26,6 +27,7 @@ import { OmbraRoot, useOmbraState } from "./ombra-root";
 import type { OmbraRootProps } from "./ombra-root";
 import { OmbraMedia, OmbraSlide, OmbraSlides } from "./ombra-slides";
 import { OmbraTrigger } from "./ombra-trigger";
+import type { OmbraTriggerProps } from "./ombra-trigger";
 import { OmbraZoom, OmbraZoomIn, OmbraZoomOut, OmbraZoomReset } from "./ombra-zoom";
 import type { OmbraGalleryItem } from "./types";
 import { useReducerWithBailout } from "./use-reducer-with-bailout";
@@ -38,7 +40,23 @@ export type OmbraGalleryProps = Omit<OmbraRootProps, "children" | "itemIds"> & {
   /** Shows the thumbnail strip under the photo. Defaults to true. A single photo never has one. */
   thumbnails?: boolean;
   className?: string;
+  /**
+   * The triggers' layout. Defaults to `OmbraGalleryGrid`; pass `OmbraBento`, `OmbraMosaic` or
+   * your own triggers. Layouts read the items with `useOmbraGalleryItems()`.
+   */
+  children?: ReactNode;
 };
+
+const GalleryItemsContext = createContext<readonly OmbraGalleryItem[] | null>(null);
+
+/** The gallery's items, for a layout rendered inside `OmbraGallery`. */
+export function useOmbraGalleryItems(): readonly OmbraGalleryItem[] {
+  const items = useContext(GalleryItemsContext);
+
+  if (!items) throw new Error("Ombra: a gallery layout must render inside OmbraGallery.");
+
+  return items;
+}
 
 /** Photos whose full-size source has decoded, so the slide can drop its thumbnail. */
 type ViewState = { sharpIds: ReadonlySet<string> };
@@ -67,11 +85,78 @@ function viewReducer(state: ViewState, action: ViewAction): ViewState {
   }
 }
 
-export function OmbraGallery({ items, thumbnails = true, className, ...root }: OmbraGalleryProps) {
+export function OmbraGallery({
+  items,
+  thumbnails = true,
+  className,
+  children,
+  ...root
+}: OmbraGalleryProps) {
   return (
     <OmbraRoot {...root} itemIds={items.map((item) => item.id)}>
-      <GalleryParts items={items} thumbnails={thumbnails} className={className} />
+      <GalleryItemsContext.Provider value={items}>
+        <GalleryParts items={items} thumbnails={thumbnails} className={className}>
+          {children ?? <OmbraGalleryGrid />}
+        </GalleryParts>
+      </GalleryItemsContext.Provider>
     </OmbraRoot>
+  );
+}
+
+export type OmbraGalleryTileProps = Omit<OmbraTriggerProps, "itemId" | "className" | "children"> & {
+  /** The photo the tile shows and opens. */
+  item: OmbraGalleryItem;
+  /** The thumbnail's `sizes`, for the tile's width in the layout. */
+  sizes?: string;
+  className?: string;
+  /** Drawn over the photo, such as an overflow count. */
+  children?: ReactNode;
+};
+
+/** One trigger: a button holding the item's cover-cropped thumbnail, named by its `alt`. */
+export function OmbraGalleryTile({
+  item,
+  sizes = "(min-width: 768px) 30vw, 50vw",
+  className,
+  children,
+  ...props
+}: OmbraGalleryTileProps) {
+  return (
+    <OmbraTrigger
+      {...props}
+      itemId={item.id}
+      className={cn(
+        "relative block min-w-0 overflow-hidden rounded-[6px] after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:inset-ring after:inset-ring-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground",
+        className,
+      )}
+    >
+      <img
+        src={item.thumbSrc}
+        srcSet={item.srcSet}
+        sizes={sizes}
+        alt={item.alt}
+        width={item.width}
+        height={item.height}
+        className="h-full w-full rounded-[inherit] object-cover"
+      />
+      {children}
+    </OmbraTrigger>
+  );
+}
+
+/** The default layout: a plain grid with one tile per item, each in its own frame. */
+export function OmbraGalleryGrid({ className }: { className?: string }) {
+  const items = useOmbraGalleryItems();
+
+  return (
+    <div
+      data-slot="ombra-gallery-grid"
+      className={cn("grid grid-cols-2 items-start gap-3 md:grid-cols-3", className)}
+    >
+      {items.map((item) => (
+        <OmbraGalleryTile key={item.id} item={item} style={{ aspectRatio: item.frame }} />
+      ))}
+    </div>
   );
 }
 
@@ -79,7 +164,8 @@ function GalleryParts({
   items,
   thumbnails,
   className,
-}: Pick<OmbraGalleryProps, "items" | "thumbnails" | "className">) {
+  children,
+}: Pick<OmbraGalleryProps, "items" | "thumbnails" | "className" | "children">) {
   const { open, index: activeAt } = useOmbraState();
   const index = Math.max(0, activeAt);
   const count = items.length;
@@ -117,26 +203,7 @@ function GalleryParts({
 
   return (
     <div data-slot="ombra-root" className={cn("text-foreground", className)}>
-      <div className="columns-2 gap-3 md:columns-3">
-        {items.map((item) => (
-          <OmbraTrigger
-            key={item.id}
-            itemId={item.id}
-            className="relative mb-3 block w-full break-inside-avoid overflow-hidden rounded-[6px] after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:inset-ring after:inset-ring-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
-            style={{ aspectRatio: item.frame }}
-          >
-            <img
-              src={item.thumbSrc}
-              srcSet={item.srcSet}
-              sizes="(min-width: 768px) 30vw, 50vw"
-              alt={item.alt}
-              width={item.width}
-              height={item.height}
-              className="h-full w-full rounded-[inherit] object-cover"
-            />
-          </OmbraTrigger>
-        ))}
-      </div>
+      {children}
 
       <p className="mt-10 max-w-xl text-sm leading-6 text-foreground/70">
         Photographs from Unsplash, used under the Unsplash License. Thumbnails are cover crops; the
