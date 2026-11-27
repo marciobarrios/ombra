@@ -200,6 +200,11 @@
           "target": "components/ombra/use-pull.ts"
         },
         {
+          "path": "registry/ombra/wheel-momentum.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/wheel-momentum.ts"
+        },
+        {
           "path": "registry/ombra/use-zoom.ts",
           "type": "registry:hook",
           "target": "components/ombra/use-zoom.ts"

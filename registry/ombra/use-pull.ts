@@ -6,6 +6,7 @@ import type { RefObject } from "react";
 import { MORPH_EASING } from "./morph";
 import { SNAP_SPRING, normalizeVelocity, springCurve } from "./spring";
 import { useReducerWithBailout } from "./use-reducer-with-bailout";
+import { judgeMomentum, startMomentumTail } from "./wheel-momentum";
 
 /** A drag picks its axis once it has moved this far, so a tap or a jitter never pulls. */
 const AXIS_LOCK_PX = 8;
@@ -35,21 +36,6 @@ const WHEEL_IDLE_MS = 140;
  * the page.
  */
 const MOMENTUM_IDLE_MS = 300;
-
-/**
- * Momentum only ever slows down. A wheel event this much bigger than the quietest
- * one so far (times the ratio, plus the pixels) is the fingers scrolling again.
- */
-const MOMENTUM_RISE_RATIO = 1.5;
-const MOMENTUM_RISE_PX = 4;
-
-/**
- * This many wheel events in a row that do not slow down, each at least this big,
- * are a scroll too: mouse wheel notches stay the same size, while momentum shrinks
- * every frame and only holds steady once it is down to a few pixels.
- */
-const MOMENTUM_STEADY_EVENTS = 3;
-const MOMENTUM_STEADY_PX = 12;
 
 /** A wheel flick also has to travel this far, so a single fast event cannot close. */
 const WHEEL_FLICK_DISTANCE = 32;
@@ -566,56 +552,35 @@ function wheelUnit(event: WheelEvent): number {
 /**
  * A trackpad keeps sending momentum after the swipe that closed the viewer. Without
  * this, it scrolls the page. It outlives the hook, whose listeners unbind as soon
- * as the close starts.
- *
- * While the viewer is still on screen, every event in the swipe's direction is
- * swallowed. The close can leave the page unlocked (a thumbnail that was off
- * screen), and a page scrolling under the flight sends it chasing the thumbnail.
- * Real momentum is too noisy to tell from a new scroll there: Chrome merges events
- * when it is busy, so a tail can jump from 24 to 114.
- *
- * Once the viewer is gone, only the tail is swallowed. A scroll the person starts
- * then must reach the page at once, so the swallow ends as soon as the wheel speeds
- * up, turns around, goes sideways, or stops slowing down, and every later event
- * passes. A turn or a sideways swipe ends it during the close too, since momentum
- * never does either.
+ * as the close starts. `judgeMomentum` decides which events belong to the tail.
  *
  * `lastDelta` is the closing event's `deltaY`, which the tail continues. `viewer`
  * is any element inside the dialog, which leaves the document once the close ends.
  */
 function swallowWheelMomentum(lastDelta: number, viewer: Element) {
   let timer = 0;
-  let quietest = Math.abs(lastDelta);
-  let previous = quietest;
-  let steady = 0;
-  const direction = Math.sign(lastDelta);
+  let tail = startMomentumTail(lastDelta);
 
   const swallow = (event: WheelEvent) => {
     if (event.ctrlKey) return;
 
     const unit = wheelUnit(event);
-    const delta = event.deltaY * unit;
-    const size = Math.abs(delta);
 
-    steady = size >= previous && size >= MOMENTUM_STEADY_PX ? steady + 1 : 0;
-    previous = size;
+    const judged = judgeMomentum(
+      tail,
+      event.deltaX * unit,
+      event.deltaY * unit,
+      viewer.isConnected,
+    );
 
-    const turned =
-      (delta !== 0 && Math.sign(delta) !== direction) || Math.abs(event.deltaX * unit) > size;
+    tail = judged.tail;
 
-    const fresh =
-      turned ||
-      (!viewer.isConnected &&
-        (size > quietest * MOMENTUM_RISE_RATIO + MOMENTUM_RISE_PX ||
-          steady >= MOMENTUM_STEADY_EVENTS));
-
-    if (fresh) {
+    if (judged.verdict === "release") {
       stop();
 
       return;
     }
 
-    quietest = Math.min(quietest, size);
     event.preventDefault();
     window.clearTimeout(timer);
     timer = window.setTimeout(stop, MOMENTUM_IDLE_MS);
