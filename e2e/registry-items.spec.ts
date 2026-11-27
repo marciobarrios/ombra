@@ -3,6 +3,8 @@ import { basename, dirname, join } from "node:path";
 
 import { expect, test } from "@playwright/test";
 
+import { listApiParts } from "../apps/docs/lib/item-surface.ts";
+
 type RegistryFile = { path: string; target?: string };
 
 type RegistryItem = {
@@ -96,6 +98,32 @@ test.describe("registry items", () => {
 
     for (const declaration of declarations) {
       expect(globals, declaration).toContain(declaration);
+    }
+  });
+
+  // `pnpm typecheck` checks the tables against the types; these names are plain strings.
+  test("the API reference names what the registry source exports and sets", () => {
+    const sources = registry.items
+      .flatMap((item) => item.files.map((file) => readFileSync(join(root, file.path), "utf8")))
+      .join("\n");
+
+    for (const part of listApiParts()) {
+      const item = registry.items.find((entry) => entry.name === part.item);
+      const path = `registry/ombra/${part.file}`;
+
+      expect(
+        item?.files.map((file) => file.path),
+        part.name,
+      ).toContain(path);
+      expect(readFileSync(join(root, path), "utf8"), part.name).toMatch(
+        new RegExp(`export function ${part.name}\\b`),
+      );
+
+      if (part.slot) expect(sources, `${part.name}: ${part.slot}`).toContain(`"${part.slot}"`);
+
+      for (const hook of [...(part.dataAttributes ?? []), ...(part.cssVariables ?? [])]) {
+        expect(sources, `${part.name}: ${hook.name}`).toContain(hook.name);
+      }
     }
   });
 });

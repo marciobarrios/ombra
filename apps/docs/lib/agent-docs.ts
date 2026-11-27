@@ -4,6 +4,7 @@ import { exampleSource, guideMarkdownPath, guidePath, listGuides } from "./guide
 import { galleryItemFields, galleryProps, morphParams, zoomParams } from "./item-surface";
 import type { SurfaceNote } from "./item-surface";
 import { DOCS_ORIGIN } from "./origin";
+import { notesMarkdown } from "./surface-markdown";
 
 export { DOCS_ORIGIN };
 
@@ -167,29 +168,9 @@ export function promptFor(doc: ItemDoc): string {
     .join("\n");
 }
 
-/** Marks required entries only in a list that also has optional ones, where the mark says something. */
-export function marksRequired(entries: readonly SurfaceNote[]): boolean {
-  return entries.some((entry) => !entry.required);
-}
-
-function notes(entries: readonly SurfaceNote[]): string {
-  const markRequired = marksRequired(entries);
-
-  return entries
-    .map((entry) => {
-      const facts = [
-        `\`${entry.type}\``,
-        markRequired && entry.required ? "required" : undefined,
-        entry.default ? `default \`${entry.default}\`` : undefined,
-      ];
-
-      return `- \`${entry.name}\` (${facts.filter(Boolean).join(", ")}): ${entry.note}`;
-    })
-    .join("\n");
-}
-
 export function markdownFor(doc: ItemDoc): string {
-  const fieldSection = doc.fields.length > 0 ? `\n## Item fields\n\n${notes(doc.fields)}\n` : "";
+  const fieldSection =
+    doc.fields.length > 0 ? `\n## Item fields\n\n${notesMarkdown(doc.fields)}\n` : "";
 
   return `# ${doc.title}
 
@@ -203,7 +184,7 @@ ${promptFor(doc)}
 
 ## ${doc.propsTitle}
 
-${notes(doc.props)}
+${notesMarkdown(doc.props)}
 ${fieldSection}`;
 }
 
