@@ -70,7 +70,7 @@ export const styling: Guide = {
   slug: "styling",
   title: "Styling contract",
   description:
-    "The data-slot names, state attributes and CSS variables Ombra publishes, how className and render work on every part, and the global CSS each registry item ships.",
+    "The data-slot names, state attributes and CSS variables Ombra publishes, how className and render work, and the global CSS each registry item ships.",
   sections: [
     {
       id: "class-names",
@@ -96,7 +96,7 @@ export const styling: Guide = {
       blocks: [
         {
           kind: "text",
-          text: "Every part carries a `data-slot`, so CSS can select it without a class of its own: `[data-slot=ombra-close]`.",
+          text: "Every part that renders an element carries a `data-slot`, so CSS can select it without a class of its own: `[data-slot=ombra-close]`.",
         },
         { kind: "list", items: slotItems() },
         {
