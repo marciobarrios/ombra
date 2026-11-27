@@ -8,7 +8,7 @@ The architecture has three layers: behavior primitives, editable styled parts, a
 
 ## Develop
 
-Node.js 26 (`nvm use` or mise, from `.nvmrc`) and pnpm 12.
+Node.js 26 and pnpm 12: `mise install` (from `mise.toml`), or `nvm use` (from `.nvmrc`) for Node alone.
 
 ```bash
 pnpm install
