@@ -120,6 +120,10 @@ export const anatomy: Guide = {
           items: [
             "[Minimal lightbox](/docs/examples/minimal): the root, triggers, shell, slides, media and close.",
             "[Full gallery](/docs/examples/full-gallery): `OmbraGallery` written out from the parts, with zoom and every control.",
+            "[Album](/docs/examples/album): `OmbraAlbum` written out from the parts. One cover opens the collection.",
+            "[Changes in JSX](/docs/examples/jsx-changes): move the controls, swap the image renderer, and leave out zoom or the thumbnail strip.",
+            "[Controlled state](/docs/examples/controlled): `open` and the active item held by the page around the lightbox.",
+            "[Recipes](/docs/recipes): `OmbraGallery` and `OmbraAlbum` as editable starting points.",
           ],
         },
       ],
@@ -128,6 +132,11 @@ export const anatomy: Guide = {
 };
 
 const photosFile: GuideBlock = { kind: "file", file: "photos.ts" };
+
+const sourceNote: GuideBlock = {
+  kind: "text",
+  text: "The docs app typechecks these files against the registry source, and the demo above renders them. The icons come from `lucide-react`; any icon works.",
+};
 
 const minimal: Guide = {
   slug: "examples/minimal",
@@ -207,7 +216,171 @@ const fullGallery: Guide = {
   ],
 };
 
-const guides: readonly Guide[] = [anatomy, minimal, fullGallery];
+const album: Guide = {
+  slug: "examples/album",
+  title: "Album",
+  description:
+    "One cover opens the whole collection, with the title and every control in a custom header, photos in a picture element, and no zoom or thumbnail strip. This is OmbraAlbum written out from the parts.",
+  sections: [
+    {
+      id: "source",
+      title: "Source",
+      blocks: [sourceNote, { kind: "file", file: "album.tsx" }, photosFile],
+    },
+    {
+      id: "how-it-differs",
+      title: "How it differs from the full gallery",
+      blocks: [
+        {
+          kind: "list",
+          items: [
+            "There is one `OmbraTrigger`, for the cover. `itemIds` still lists every photo, so the viewer can move through them, and it closes back onto the cover from the first photo. From any other photo it fades out, because no trigger on the page shows that photo.",
+            "The header holds `OmbraTitle`, the counter, previous, next and close. `OmbraCounter` takes a function child to word the count.",
+            "Each slide renders a `<picture>` inside `OmbraMedia`. The picture lays out as its image, so the image carries the sizing classes itself.",
+            "Each slide carries its own `OmbraCaption`, so the caption moves with its photo. `described` marks the active slide's caption as the dialog description.",
+            "There is no `OmbraZoom`, no zoom buttons and no `OmbraThumbnails`.",
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const jsxChanges: Guide = {
+  slug: "examples/jsx-changes",
+  title: "Changes in JSX",
+  description:
+    "Moving a control, swapping the image renderer, or leaving out zoom or the thumbnail strip is an edit to your JSX, never a new prop. This example does all four to the full gallery.",
+  sections: [
+    {
+      id: "source",
+      title: "Source",
+      blocks: [sourceNote, { kind: "file", file: "jsx-changes.tsx" }, photosFile],
+    },
+    {
+      id: "changes",
+      title: "The changes",
+      blocks: [
+        {
+          kind: "list",
+          items: [
+            "**Move the controls.** Previous, the counter, next and close sit in one bar under the photo. A control works wherever it renders inside `OmbraContent`; wrap it in `OmbraChrome` if a tap on the photo should hide it.",
+            "**Swap the image renderer.** `OmbraMedia` fits whatever image it holds: a native `<img>` (the [full gallery](/docs/examples/full-gallery)), a `<picture>` (the [album](/docs/examples/album)), or Next.js `Image`, as here. Give `OmbraMedia` the photo's intrinsic `width` and `height`, so it fits the box before the file loads.",
+            "**Leave out zoom.** Drop `OmbraZoom` and the zoom buttons. A slide without `OmbraZoom` does not zoom, so you can also keep it on some slides only.",
+            "**Leave out the thumbnail strip.** Drop `OmbraThumbnails`. Nothing else refers to it.",
+          ],
+        },
+        {
+          kind: "text",
+          text: "Next.js `Image` renders a single `<img>` with a resized `srcset`, so the morph and the fit treat it like any other image.",
+        },
+      ],
+    },
+  ],
+};
+
+const controlled: Guide = {
+  slug: "examples/controlled",
+  title: "Controlled state",
+  description:
+    "The page holds whether the viewer is open and which photo it shows, through the root's open and activeId props and their callbacks. Buttons outside the lightbox open it on any photo.",
+  sections: [
+    {
+      id: "source",
+      title: "Source",
+      blocks: [sourceNote, { kind: "file", file: "controlled.tsx" }, photosFile],
+    },
+    {
+      id: "how-it-works",
+      title: "How it works",
+      blocks: [
+        {
+          kind: "list",
+          items: [
+            "With `open` set, the lightbox never opens or closes by itself. A trigger, the close button, Escape and a pull each call `onOpenChange`, and the viewer moves only once the parent passes the new value.",
+            "With `activeId` set, a swipe, the keys and the arrows call `onActiveIdChange`, and the parent decides which photo shows. A pressed trigger asks for its photo first, then asks to open.",
+            "Setting both from outside, as the buttons above do, opens the viewer on that photo. It morphs from that photo's trigger.",
+            "A parent may refuse a request by not changing its state. A request from a trigger waits about a second for the answer, so the parent can also decide asynchronously.",
+            "Each pair works on its own: control only `open`, or only `activeId`, and the root keeps the other.",
+          ],
+        },
+        {
+          kind: "text",
+          text: "The example keeps its state in `useReducer`, with actions named after what happened. Any state holder works, as long as it passes the value back.",
+        },
+      ],
+    },
+  ],
+};
+
+export const recipes: Guide = {
+  slug: "recipes",
+  title: "Recipes",
+  description:
+    "OmbraGallery and OmbraAlbum are lightboxes already written from the parts. They install as files in your project, so they are starting points to edit, not components to configure.",
+  sections: [
+    {
+      id: "source",
+      title: "Usage",
+      blocks: [
+        {
+          kind: "text",
+          text: "The demo above renders both recipes from this file. They come with the `ombra` registry item, at `components/ombra/ombra-gallery.tsx` and `components/ombra/ombra-album.tsx`.",
+        },
+        { kind: "file", file: "recipes.tsx" },
+        photosFile,
+      ],
+    },
+    {
+      id: "gallery",
+      title: "OmbraGallery",
+      blocks: [
+        {
+          kind: "text",
+          text: "A masonry grid of triggers, and a viewer with zoom, previous and next, a counter, a caption and a thumbnail strip. It decodes the photos next to the active one before a swipe reaches them, and announces each photo's caption with its position. The [full gallery](/docs/examples/full-gallery) example is this recipe written out.",
+        },
+      ],
+    },
+    {
+      id: "album",
+      title: "OmbraAlbum",
+      blocks: [
+        {
+          kind: "text",
+          text: "One cover that opens the whole album, a header with the title and every control, `<picture>` media, and no zoom or thumbnail strip. The [album](/docs/examples/album) example is this recipe written out.",
+        },
+      ],
+    },
+    {
+      id: "copy-or-compose",
+      title: "Copy a recipe or compose the parts",
+      blocks: [
+        {
+          kind: "list",
+          items: [
+            "**Use a recipe as it is** when its layout is the one you want. Pass your photos, and the `OmbraRoot` props (`morph`, `open`, `activeId` and their callbacks) when you need them.",
+            "**Edit the recipe file** when you want the same lightbox with changes: other icons, a control in another place, no thumbnail strip. The file is yours, and an edit there is the same JSX change as in [Changes in JSX](/docs/examples/jsx-changes).",
+            "**Compose the parts** when the layout differs from both, or when you want the pieces in your own components from the start. Begin from the [minimal lightbox](/docs/examples/minimal) and add parts.",
+          ],
+        },
+        {
+          kind: "text",
+          text: "A recipe takes no layout props beyond a few switches, such as the gallery's `thumbnails`. If you want a new prop, edit the JSX instead.",
+        },
+      ],
+    },
+  ],
+};
+
+const guides: readonly Guide[] = [
+  anatomy,
+  minimal,
+  fullGallery,
+  album,
+  jsxChanges,
+  controlled,
+  recipes,
+];
 
 const EXAMPLES = "examples/";
 

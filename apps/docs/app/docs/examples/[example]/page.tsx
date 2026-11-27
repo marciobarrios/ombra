@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { ComponentType } from "react";
 
+import { Album } from "../../../../examples/album";
+import { ControlledLightbox } from "../../../../examples/controlled";
 import { FullGallery } from "../../../../examples/full-gallery";
+import { JsxChanges } from "../../../../examples/jsx-changes";
 import { MinimalLightbox } from "../../../../examples/minimal-lightbox";
 import { exampleGuide, exampleNames } from "../../../../lib/guides";
 import { GuidePage } from "../../guide-page";
@@ -16,6 +19,12 @@ function demoFor(example: string): ComponentType | undefined {
       return MinimalLightbox;
     case "full-gallery":
       return FullGallery;
+    case "album":
+      return Album;
+    case "jsx-changes":
+      return JsxChanges;
+    case "controlled":
+      return ControlledLightbox;
     default:
       return undefined;
   }
