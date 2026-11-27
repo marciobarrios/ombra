@@ -190,8 +190,22 @@ test.describe("spike viewer", () => {
       test(`a two-finger swipe ${direction} dismisses`, async ({ page }) => {
         await page.emulateMedia({ reducedMotion: "no-preference" });
         await openAndHover(page, "engine=flip");
+        // Browse with the keys first: the browser then rings script focus until a pointer press.
+        await page.keyboard.press("ArrowRight");
+        await page.keyboard.press("ArrowLeft");
+        await expect(page.locator("[data-slot=ombra-slide]").first()).toHaveAttribute(
+          "data-active",
+          "true",
+        );
+        await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 400)));
         await swipe(page, 0, deltaY, 8);
         await expect(page.getByRole("dialog")).toBeHidden();
+
+        // Focus goes back to the photo without a keyboard ring: a swipe closed the viewer.
+        const trigger = page.getByRole("button", { name: firstPhoto });
+
+        await expect(trigger).toBeFocused();
+        expect(await trigger.evaluate((node) => node.matches(":focus-visible"))).toBe(false);
       });
     }
 
