@@ -1,8 +1,9 @@
-import registry from "../../../registry.json";
-
-import { exampleSource, guideMarkdownPath, guidePath, listGuides } from "./guides";
+import { exampleSource } from "./guides";
+import { installCommand, registryItems } from "./install";
+import type { ItemName, RegistryItem } from "./install";
 import { galleryItemFields, galleryProps, morphParams, zoomParams } from "./item-surface";
 import type { SurfaceNote } from "./item-surface";
+import { docsNavigation } from "./navigation";
 import { DOCS_ORIGIN } from "./origin";
 import { notesMarkdown } from "./surface-markdown";
 
@@ -13,10 +14,6 @@ const AFTER_INSTALL =
 
 export const DOCS_INTRO =
   "Ombra is a React lightbox you copy into your app with the shadcn CLI. There is no animation library. Each item page has a Copy prompt button. The prompt is built from the registry entry, the props, and the usage example the project typechecks.";
-
-type RegistryItem = (typeof registry.items)[number];
-
-type ItemName = RegistryItem["name"];
 
 type PageMeta = {
   goal: string;
@@ -63,7 +60,6 @@ export type ItemDoc = {
   goal: string;
   constraints: string;
   install: string;
-  installCommands: readonly InstallCommand[];
   example: string;
   usageFile: string;
   propsTitle: PageMeta["propsTitle"];
@@ -88,23 +84,6 @@ function metaFor(name: string): PageMeta {
   }
 }
 
-export type InstallCommand = { manager: "pnpm" | "npm" | "yarn" | "bun"; command: string };
-
-function installCommand(name: string): string {
-  return `npx shadcn add ${DOCS_ORIGIN}/r/${name}.json`;
-}
-
-function installCommands(name: string): readonly InstallCommand[] {
-  const url = `${DOCS_ORIGIN}/r/${name}.json`;
-
-  return [
-    { manager: "pnpm", command: `pnpm dlx shadcn add ${url}` },
-    { manager: "npm", command: installCommand(name) },
-    { manager: "yarn", command: `yarn dlx shadcn add ${url}` },
-    { manager: "bun", command: `bunx --bun shadcn add ${url}` },
-  ];
-}
-
 function itemDoc(item: RegistryItem): ItemDoc {
   const meta = metaFor(item.name);
   const pagePath = `/docs/${item.name}`;
@@ -117,7 +96,6 @@ function itemDoc(item: RegistryItem): ItemDoc {
     goal: meta.goal,
     constraints: item.docs,
     install: installCommand(item.name),
-    installCommands: installCommands(item.name),
     example: exampleSource(meta.exampleFile),
     usageFile: meta.usageFile,
     propsTitle: meta.propsTitle,
@@ -135,7 +113,7 @@ let cached: readonly ItemDoc[] | undefined;
 export function listItemDocs(): readonly ItemDoc[] {
   if (cached) return cached;
 
-  cached = registry.items.map((item) => itemDoc(item));
+  cached = registryItems().map((item) => itemDoc(item));
 
   return cached;
 }
@@ -189,33 +167,26 @@ ${fieldSection}`;
 }
 
 export function indexMarkdown(): string {
-  const items = listItemDocs()
-    .map((item) => `- [${item.title}](${item.pageUrl}): ${item.description}`)
-    .join("\n");
+  const groups = docsNavigation().map((group) => {
+    const entries = group.entries
+      .map((entry) => `- [${entry.title}](${DOCS_ORIGIN}${entry.path}): ${entry.description}`)
+      .join("\n");
 
-  const guides = listGuides()
-    .map((guide) => `- [${guide.title}](${DOCS_ORIGIN}${guidePath(guide)}): ${guide.description}`)
-    .join("\n");
+    return `## ${group.title}\n\n${entries}`;
+  });
 
   return `# Ombra docs
 
 ${DOCS_INTRO}
 
-## Registry items
-
-${items}
-
-## Composition
-
-${guides}
+${groups.join("\n\n")}
 
 Machine-readable index: ${DOCS_ORIGIN}/llms.txt
 `;
 }
 
 export function llmsTxt(): string {
-  const items = listItemDocs();
-  const first = items[0];
+  const first = listItemDocs()[0];
 
   const lines = [
     "# Ombra",
@@ -229,14 +200,14 @@ export function llmsTxt(): string {
     "## Docs",
     "",
     `- [Ombra docs](${DOCS_ORIGIN}/docs.md): Install path, registry items, and the constraints an agent cannot guess from the source.`,
-    ...items.map((item) => `- [${item.title}](${item.markdownUrl}): ${item.description}`),
-    "",
-    "## Composition",
-    "",
-    ...listGuides().map(
-      (guide) =>
-        `- [${guide.title}](${DOCS_ORIGIN}${guideMarkdownPath(guide)}): ${guide.description}`,
-    ),
+    ...docsNavigation().flatMap((group) => [
+      "",
+      `## ${group.title}`,
+      "",
+      ...group.entries.map(
+        (entry) => `- [${entry.title}](${DOCS_ORIGIN}${entry.markdown}): ${entry.description}`,
+      ),
+    ]),
   ];
 
   return `${lines.join("\n")}\n`;

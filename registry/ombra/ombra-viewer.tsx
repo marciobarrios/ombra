@@ -1465,6 +1465,50 @@ export function useOmbraViewer() {
   }
 
   const restoreFocusRef = useRef(false);
+  const lastInputRef = useRef<"keyboard" | "pointer" | null>(null);
+  const viewing = phase !== "closed";
+
+  // The browser decides whether focus moved by script shows a ring from the last input, and
+  // a wheel does not count as one: a trackpad swipe that closes the viewer would leave a
+  // keyboard ring on the thumbnail. So the viewer tells it which input closed it.
+  useEffect(() => {
+    if (!viewing) return;
+
+    lastInputRef.current = null;
+
+    const keyboard = () => {
+      lastInputRef.current = "keyboard";
+    };
+
+    const pointer = () => {
+      lastInputRef.current = "pointer";
+    };
+
+    const capture = { capture: true, passive: true };
+
+    window.addEventListener("keydown", keyboard, capture);
+    window.addEventListener("pointerdown", pointer, capture);
+    window.addEventListener("wheel", pointer, capture);
+
+    return () => {
+      window.removeEventListener("keydown", keyboard, capture);
+      window.removeEventListener("pointerdown", pointer, capture);
+      window.removeEventListener("wheel", pointer, capture);
+    };
+  }, [viewing]);
+
+  function returnFocus(target: HTMLElement) {
+    // TypeScript before 6 has no `focusVisible`; browsers without it ignore the option.
+    const options: FocusOptions & { focusVisible?: boolean } = { preventScroll: true };
+
+    if (lastInputRef.current !== null) options.focusVisible = lastInputRef.current === "keyboard";
+
+    // The dialog may have returned focus already, and focusing the active element again
+    // changes nothing, so a ring it drew has to be dropped first.
+    if (options.focusVisible === false && target.matches(":focus-visible")) target.blur();
+
+    target.focus(options);
+  }
 
   function finishClose() {
     stopFollow();
@@ -1487,7 +1531,7 @@ export function useOmbraViewer() {
     requestAnimationFrame(() => {
       // The close already revealed its own trigger. A stand-in for one that is
       // gone must not scroll the page once the viewer has faded.
-      trigger?.focus({ preventScroll: true });
+      if (trigger) returnFocus(trigger);
     });
   }, [phase]);
 

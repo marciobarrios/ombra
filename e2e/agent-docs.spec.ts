@@ -67,6 +67,9 @@ const compositions = [
 }[];
 
 const guidePaths = [
+  "/docs/introduction",
+  "/docs/installation",
+  "/docs/quick-start",
   "/docs/anatomy",
   "/docs/api",
   "/docs/recipes",
@@ -102,12 +105,15 @@ async function promptText(page: Page): Promise<string> {
 }
 
 test.describe("agent docs", () => {
-  test("the home page links to the docs", async ({ page }) => {
+  test("the home page links to the docs and shows a live gallery", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("link", { name: "Read the docs" })).toHaveAttribute(
       "href",
       "/docs",
     );
+    await expect(
+      page.getByRole("region", { name: "Try it" }).locator("[data-slot=ombra-trigger]").first(),
+    ).toBeVisible();
   });
 
   test("llms.txt lists every docs page", async ({ request }) => {
@@ -133,11 +139,11 @@ test.describe("agent docs", () => {
   test("the docs index has a markdown version", async ({ page, request }) => {
     await page.goto("/docs");
 
-    const list = page.getByRole("region", { name: "Registry items" });
-    const guides = page.getByRole("region", { name: "Composition" });
+    const list = page.getByRole("region", { name: "API reference" });
+    const main = page.getByRole("main");
 
     for (const path of guidePaths) {
-      await expect(guides.locator(`a[href="${path}"]`)).toHaveCount(1);
+      await expect(main.locator(`a[href="${path}"]`)).toHaveCount(1);
     }
 
     for (const item of registry.items) {
@@ -244,6 +250,30 @@ test.describe("agent docs", () => {
     await install.getByRole("button", { name: "Copy code" }).click();
     await expect(install.getByRole("button", { name: "Copied" })).toBeVisible();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(command);
+  });
+
+  test("the installation page has a command for every registry item", async ({ page, request }) => {
+    await page.goto("/docs/installation");
+
+    // The sidebar and the narrow-screen menu both mark the page you are on.
+    const current = page.locator("a[aria-current=page]");
+
+    await expect(current).toHaveCount(2);
+
+    for (const link of await current.all()) {
+      await expect(link).toHaveAttribute("href", "/docs/installation");
+    }
+
+    const markdown = await (await request.get("/docs/installation.md")).text();
+
+    for (const item of registry.items) {
+      const section = page.getByRole("region", { name: item.name, exact: true });
+
+      await expect(section.getByRole("tabpanel", { name: "pnpm" })).toHaveText(
+        `pnpm dlx shadcn add ${origin}/r/${item.name}.json`,
+      );
+      expect(markdown).toContain(`npx shadcn add ${origin}/r/${item.name}.json`);
+    }
   });
 
   test("the props list shows each prop's type and default", async ({ page }) => {

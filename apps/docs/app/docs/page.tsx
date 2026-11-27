@@ -1,16 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { DOCS_INTRO, DOCS_ORIGIN, listItemDocs } from "../../lib/agent-docs";
-import { guideMarkdownPath, guidePath, listGuides } from "../../lib/guides";
+import { DOCS_INTRO, DOCS_ORIGIN } from "../../lib/agent-docs";
+import { docsNavigation } from "../../lib/navigation";
+import type { NavEntry } from "../../lib/navigation";
 import { linkClassName } from "./code";
 
 export const metadata: Metadata = {
   title: "Docs — Ombra",
   description: DOCS_INTRO,
 };
-
-type Entry = { key: string; title: string; description: string; path: string; markdown: string };
 
 function EntryList({
   id,
@@ -19,7 +18,7 @@ function EntryList({
 }: {
   id: string;
   title: string;
-  entries: readonly Entry[];
+  entries: readonly NavEntry[];
 }) {
   return (
     <section aria-labelledby={id} className="mt-12">
@@ -28,7 +27,7 @@ function EntryList({
       </h2>
       <ul className="mt-6 flex flex-col gap-8">
         {entries.map((entry) => (
-          <li key={entry.key}>
+          <li key={entry.path}>
             <h3 className="font-display text-2xl">
               <Link href={entry.path} className={linkClassName}>
                 {entry.title}
@@ -48,36 +47,14 @@ function EntryList({
 }
 
 export default function DocsIndexPage() {
-  const items = listItemDocs();
-  const guides = listGuides();
-
   return (
     <main>
       <p className="font-display text-sm tracking-[0.22em] text-brand">DOCS</p>
       <h1 className="font-display mt-4 text-5xl leading-none">Ombra docs</h1>
       <p className="mt-6 text-lg leading-8 text-foreground/80">{DOCS_INTRO}</p>
-      <EntryList
-        id="composition"
-        title="Composition"
-        entries={guides.map((guide) => ({
-          key: guide.slug,
-          title: guide.title,
-          description: guide.description,
-          path: guidePath(guide),
-          markdown: guideMarkdownPath(guide),
-        }))}
-      />
-      <EntryList
-        id="registry-items"
-        title="Registry items"
-        entries={items.map((item) => ({
-          key: item.name,
-          title: item.title,
-          description: item.description,
-          path: item.pagePath,
-          markdown: item.markdownPath,
-        }))}
-      />
+      {docsNavigation().map((group) => (
+        <EntryList key={group.id} id={group.id} title={group.title} entries={group.entries} />
+      ))}
       <p className="mt-12 text-sm leading-6 text-foreground/70">
         <a href="/llms.txt" className={linkClassName}>
           llms.txt

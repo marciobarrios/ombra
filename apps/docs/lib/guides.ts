@@ -1,13 +1,16 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { installation, introduction, quickStart } from "./getting-started";
+import { installCommand } from "./install";
 import { apiGroups } from "./item-surface";
 import type { ApiPart } from "./item-surface";
 import { DOCS_ORIGIN } from "./origin";
 import { partMarkdown } from "./surface-markdown";
 
 /**
- * Docs pages that are not one registry item: the anatomy and the composition examples.
+ * Docs pages that are not one registry item: getting started, the anatomy and the composition
+ * examples.
  * Each page is written once here, so the HTML page and its Markdown version say the same.
  * Text runs may hold `code` in backticks; the page renders those as inline code.
  */
@@ -15,8 +18,10 @@ export type GuideBlock =
   | { kind: "text"; text: string }
   | { kind: "list"; items: readonly string[] }
   | { kind: "tree"; text: string }
-  /** A file under `apps/docs/examples`, shown with its name. */
-  | { kind: "file"; file: string }
+  /** A file under `apps/docs/examples`, shown with its name or the path a reader would save it at. */
+  | { kind: "file"; file: string; title?: string }
+  /** The shadcn command that installs a registry item. */
+  | { kind: "install"; item: string }
   /** One public part's API section, from `item-surface.ts`. */
   | { kind: "api"; part: ApiPart };
 
@@ -397,6 +402,9 @@ export const apiReference: Guide = {
 };
 
 const guides: readonly Guide[] = [
+  introduction,
+  installation,
+  quickStart,
   anatomy,
   apiReference,
   minimal,
@@ -408,10 +416,6 @@ const guides: readonly Guide[] = [
 ];
 
 const EXAMPLES = "examples/";
-
-export function listGuides(): readonly Guide[] {
-  return guides;
-}
 
 export function guideBySlug(slug: string): Guide | undefined {
   return guides.find((guide) => guide.slug === slug);
@@ -467,8 +471,11 @@ function blockMarkdown(block: GuideBlock): string {
     case "file": {
       const lang = block.file.endsWith(".tsx") ? "tsx" : "ts";
 
-      return `\`${block.file}\`:\n\n\`\`\`${lang}\n${exampleSource(block.file)}\n\`\`\``;
+      return `\`${block.title ?? block.file}\`:\n\n\`\`\`${lang}\n${exampleSource(block.file)}\n\`\`\``;
     }
+
+    case "install":
+      return `\`\`\`bash\n${installCommand(block.item)}\n\`\`\``;
 
     case "api":
       return partMarkdown(block.part);

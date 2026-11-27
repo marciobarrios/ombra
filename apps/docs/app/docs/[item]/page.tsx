@@ -17,7 +17,7 @@ import {
 } from "../code";
 import { CopyButton } from "../copy-button";
 import { GalleryDemo } from "../gallery-demo";
-import { InstallTabs } from "../install-tabs";
+import { ItemInstall } from "../item-install";
 
 type ItemPageProps = PageProps<"/docs/[item]">;
 
@@ -137,15 +137,7 @@ export default async function ItemDocsPage({ params }: ItemPageProps) {
         title="Installation"
         intro="The shadcn CLI copies the source into your project. There is no package to update."
       >
-        <InstallTabs
-          panelClassName={panelClassName}
-          headerClassName={panelHeaderClassName}
-          commands={doc.installCommands.map((entry) => ({
-            manager: entry.manager,
-            command: entry.command,
-            code: <HighlightedCode code={entry.command} lang="bash" />,
-          }))}
-        />
+        <ItemInstall item={doc.name} />
       </Section>
       <Section
         id="usage"
