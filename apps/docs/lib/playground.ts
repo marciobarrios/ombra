@@ -55,6 +55,7 @@ export function playgroundMorph(settings: PlaygroundSettings): MorphEngine {
 export function playgroundSnippet(settings: PlaygroundSettings): string {
   const recipe = settings.layout === "gallery" ? "OmbraGallery" : "OmbraAlbum";
   const file = settings.layout === "gallery" ? "ombra-gallery" : "ombra-album";
+  const photoType = settings.layout === "gallery" ? "OmbraGalleryItem" : "OmbraAlbumPhoto";
 
   const props =
     settings.layout === "gallery"
@@ -64,11 +65,15 @@ export function playgroundSnippet(settings: PlaygroundSettings): string {
   // One prop a line, so the snippet fits a phone without scrolling sideways.
   const lines = [...props, `morph="${settings.morph}"`].map((prop) => `      ${prop}`);
 
-  const note = settings.reducedMotion ? "\n  // Reduced motion fades any morph." : "";
+  // The toggle previews the visitor's setting, so the code stays what you would ship.
+  const note = settings.reducedMotion
+    ? "\n  // A visitor who asks for reduced motion gets a fade, whatever the morph."
+    : "";
 
   return `import { ${recipe} } from "@/components/ombra/${file}";
+import type { ${photoType} } from "@/components/ombra/${file}";
 
-export function Photos() {${note}
+export function Photos({ photos }: { photos: readonly ${photoType}[] }) {${note}
   return (
     <${recipe}
 ${lines.join("\n")}
