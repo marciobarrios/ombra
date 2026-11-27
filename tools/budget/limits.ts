@@ -5,12 +5,13 @@
  * in, the ceiling moved to 32 KB to leave room for the v0.1 and v1 features that land in the
  * gallery bundle, so the size check fails above 32 KB. Zoom and track arbitration (MAR-22)
  * added 571 bytes. The thumbnail strip's landmark and one-photo rule (MAR-18) added 56,
- * and the natural-size zoom ceiling (MAR-21) 298. `OmbraTitle` saved 6.
+ * and the natural-size zoom ceiling (MAR-21) 298. `OmbraTitle` saved 6. Image loading (MAR-24)
+ * added 740.
  */
 export const CORE_GZIP_LIMIT_BYTES = 32 * 1024;
 
 /** Current gzip size of that bundle. Update it, and the reports that quote it, with the core. */
-export const CORE_GZIP_MEASURED_BYTES = 28_871;
+export const CORE_GZIP_MEASURED_BYTES = 29_611;
 
 /**
  * Longest frame the Chromium check allows. Chromium's long-animation-frame entries
