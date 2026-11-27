@@ -82,7 +82,7 @@ export const styling: Guide = {
         },
         {
           kind: "text",
-          text: "Every part but `OmbraCaption` and the two recipes takes Base UI's `render` prop, which swaps the element the part renders while keeping its behaviour, attributes and handlers. Pass an element, such as `render={<a href={href} />}`, or a function that spreads the props it receives onto your element: `render={(props) => <a {...props} href={href} />}`. The [API reference](/docs/api) lists the element each part renders by default.",
+          text: "Every part that renders an element, except `OmbraCaption` and the two recipes, takes Base UI's `render` prop, which swaps the element the part renders while keeping its behaviour, attributes and handlers. Pass an element, such as `render={<a href={href} />}`, or a function that spreads the props it receives onto your element: `render={(props) => <a {...props} href={href} />}`. The [API reference](/docs/api) lists the element each part renders by default.",
         },
         {
           kind: "text",
@@ -235,7 +235,7 @@ export const behaviour: Guide = {
         },
         {
           kind: "text",
-          text: "When the viewer closes on a photo whose trigger is gone, or still mostly clipped by a scroll container after the page scrolls it into view, it fades instead of morphing. It never morphs onto another photo's thumbnail.",
+          text: "The viewer fades out instead of morphing when the trigger of the photo it shows is gone, or when less than 55% of the trigger's width or height is visible once the page has scrolled it into view, clipped by the viewport or a scroll container. It never morphs onto another photo's thumbnail.",
         },
       ],
     },
@@ -296,7 +296,7 @@ export const behaviour: Guide = {
           kind: "list",
           items: [
             "**Swipe** between photos with a finger, a sideways trackpad scroll, or a sideways wheel. The track is native CSS scroll snap, so it moves the way the platform scrolls.",
-            "**Pull to dismiss** up or down, by touch, mouse drag or a vertical trackpad swipe. A pull that goes far enough, or is released fast enough, closes the viewer, morphing onto its thumbnail when there is one to land on; otherwise it settles back. While the track is still snapping, only a plainly vertical drag pulls, so a slightly diagonal flick to the next photo does not close it.",
+            "**Pull to dismiss** up or down, by touch, mouse drag or a vertical trackpad swipe. A pull that goes far enough, or is released fast enough, closes the viewer; a shorter, slower one settles back. A trackpad swipe has no release, so it closes as soon as it crosses the threshold. The close lands the same way as any other: a morph onto the thumbnail when there is one to land on, a fade otherwise, and a fade with `fade` or reduced motion. While the track is still snapping, only a plainly vertical drag pulls, so a slightly diagonal flick to the next photo does not close it.",
             "**Zoom** on a slide with `OmbraZoom`: pinch, double-tap or double-click, Ctrl and the wheel, or a trackpad pinch. Zoom stops where the photo shows at its natural size, or at `maxScale`, and the first zoom past the fitted size raises `sizes` on an `img` with `srcset`, so the browser loads a sharper file.",
             "**Pan** a zoomed photo by dragging it. Past its edge the drag carries on into the neighbouring photo, and on release the track glides there or back, depending on how far and how fast it went.",
             "**Tap** the photo to hide or show the `OmbraChrome` regions.",
