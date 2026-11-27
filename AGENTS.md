@@ -27,7 +27,7 @@ Ombra is a shadcn registry, not an npm component library. Users copy files. Do n
 
 ## Stack
 
-- pnpm 10, Node.js 24 (`.nvmrc`). This VM’s `/exec-daemon/node` is Node 22 and sits earlier on `PATH`. Put the Node 24 bin first before `pnpm`, `next`, `oxlint`, or Playwright.
+- pnpm 12 (`packageManager` in `package.json`), Node.js 26 (`.nvmrc`, and `engines` in `package.json`, which Vercel builds with). If an older Node sits earlier on `PATH` (a VM's `/exec-daemon/node`, a system package), put the Node 26 bin first before `pnpm`, `next`, `oxlint`, or Playwright. `pnpm budget` pins the exact gzip size measured with official Node builds, which bundle Chromium's zlib. A distro Node linked to the system zlib (Arch's `nodejs` package) measures about 100 bytes less and fails it, so run it with the `.nvmrc` Node from mise or nvm.
 - React 19 and Next.js 16 (App Router, Cache Components) in `apps/docs`.
 - TypeScript 7. Next 16.4 typechecks with the project-local `tsc` CLI. Leave that default alone (`useTypeScriptCli` stays on). TypeScript 7.0 has no programmatic API. `pnpm typecheck` runs `next typegen` first because `next-env.d.ts` and the route types are generated and gitignored.
 - Tailwind CSS 4. Registry files are scanned with `@source "../../../registry"` in `apps/docs/app/globals.css`.

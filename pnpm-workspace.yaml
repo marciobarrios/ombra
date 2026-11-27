@@ -2,6 +2,5 @@ packages:
   - "apps/*"
   - "registry"
 
-ignoredBuiltDependencies:
-  - sharp
-  - unrs-resolver
+allowBuilds:
+  esbuild: false
