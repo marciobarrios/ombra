@@ -9,13 +9,10 @@ export type ConnectionHint = {
 
 /** How many photos on each side of the active one load ahead: 1, or 0 on a slow or saving connection. */
 export function loadReach(hint: ConnectionHint | null | undefined): number {
-  if (!hint) return 1;
+  const saving =
+    hint?.saveData || hint?.effectiveType === "slow-2g" || hint?.effectiveType === "2g";
 
-  if (hint.saveData) return 0;
-
-  if (hint.effectiveType === "slow-2g" || hint.effectiveType === "2g") return 0;
-
-  return 1;
+  return saving ? 0 : 1;
 }
 
 /**
@@ -31,7 +28,7 @@ export function loadOrder<T>(items: readonly T[], active: number, reach: number)
 
   for (let step = 1; step <= reach; step += 1) {
     const next = items[active + step];
-    const previous = active - step >= 0 ? items[active - step] : undefined;
+    const previous = items[active - step];
 
     if (next !== undefined) order.push(next);
 

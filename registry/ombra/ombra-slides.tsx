@@ -5,7 +5,7 @@ import { cn } from "cn";
 import { createContext, useCallback, useContext, useLayoutEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 
-import { indexFromScroll } from "./geometry";
+import { imageIn, indexFromScroll } from "./geometry";
 import { initialMediaState, mediaReducer, mediaSize } from "./media-status";
 import { useOmbraRoot } from "./ombra-root";
 import type { OmbraSlidesHandle } from "./ombra-root";
@@ -363,11 +363,6 @@ export function OmbraSlide({ itemId, ref, className, render, ...props }: OmbraSl
   );
 }
 
-/** The image inside a media part, which reports the media's status. */
-function mediaImage(element: HTMLElement): HTMLImageElement | null {
-  return element instanceof HTMLImageElement ? element : element.querySelector("img");
-}
-
 /**
  * The full-size media a morph lands on. It sizes itself to the largest box of its intrinsic
  * ratio that fits its parent's size container, centred, which is where the open morph ends
@@ -395,15 +390,15 @@ export function OmbraMedia({
   const [media, sendMedia] = useReducerWithBailout(mediaReducer, initialMediaState);
   const elementRef = useRef<HTMLElement | null>(null);
   const size = mediaSize(width, height, media.natural);
-  const sizeWidth = size?.width ?? 0;
-  const sizeHeight = size?.height ?? 0;
+  const sizeWidth = size?.width;
+  const sizeHeight = size?.height;
 
   const register = useCallback(
     (element: HTMLElement | null) => {
       elementRef.current = element;
 
       // A morph needs the size, so media still measuring itself is not a landing yet.
-      if (!element || !(sizeWidth > 0)) return;
+      if (!element || sizeWidth === undefined || sizeHeight === undefined) return;
 
       return registerMedia({ itemId, element, width: sizeWidth, height: sizeHeight });
     },
@@ -428,18 +423,16 @@ export function OmbraMedia({
     };
 
     // A cached image can finish before this listens.
-    const image = mediaImage(element);
+    const image = imageIn(element);
 
     if (image?.complete) report(image);
 
-    // Load and error do not bubble, so listen while they pass down to the image.
+    // Load and error do not bubble, so listen while they pass down to the image. A failed
+    // image has no natural width, so `report` tells the two apart.
     const settled = (event: Event) => {
-      const target = mediaImage(element);
+      const target = imageIn(element);
 
-      if (event.target !== target || !target) return;
-
-      if (event.type === "error") sendMedia({ type: "image-failed" });
-      else report(target);
+      if (target && event.target === target) report(target);
     };
 
     element.addEventListener("load", settled, true);
@@ -456,7 +449,7 @@ export function OmbraMedia({
   const ratio = size ? size.width / size.height : 1;
 
   const fit: CSSProperties = {
-    aspectRatio: size ? `${size.width} / ${size.height}` : "1 / 1",
+    aspectRatio: `${ratio}`,
     width: `min(100cqw, calc(100cqh * ${ratio}))`,
     ...(hidden ? { opacity: 0 } : null),
     ...style,

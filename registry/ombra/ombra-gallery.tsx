@@ -4,7 +4,7 @@
 // edit the JSX to move, replace or leave out any part.
 
 import { cn } from "cn";
-import { createContext, useContext, useLayoutEffect } from "react";
+import { createContext, useContext, useLayoutEffect, useRef } from "react";
 import type { ReactNode } from "react";
 
 import { connectionHint, loadOrder, loadReach } from "./load-window";
@@ -171,7 +171,10 @@ function GalleryParts({
   const index = Math.max(0, activeAt);
   const count = items.length;
   const [{ sharpIds }, sendView] = useReducerWithBailout(viewReducer, initialViewState);
+  const sharpRef = useRef(sharpIds);
   const active = items[index];
+
+  sharpRef.current = sharpIds;
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -182,6 +185,8 @@ function GalleryParts({
     // thumbnail never gives way to a blank box. Decoded sources stay, so changing
     // selection never downgrades an outgoing photo.
     function load(item: OmbraGalleryItem): Promise<void> {
+      if (sharpRef.current.has(item.id)) return Promise.resolve();
+
       const loader = new Image();
 
       loader.sizes = "100vw";
