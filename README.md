@@ -71,7 +71,7 @@ One Vercel project, rooted at the docs app. Do not create the project from this 
 - Install: default is fine when Vercel installs the pnpm workspace from the repository root. If the install runs inside `apps/docs` and cannot see the lockfile, set it to `cd ../.. && pnpm install --frozen-lockfile`.
 - Build: the package script, `pnpm --dir ../.. run registry:build && next build`
 - Output: `apps/docs/.next`
-- Node.js 26 (`engines` in `package.json`; it overrides the Vercel project setting)
+- Node.js 26 (`engines` in `apps/docs/package.json`, the Vercel root directory; it overrides the project setting)
 
 ## Layout
 
