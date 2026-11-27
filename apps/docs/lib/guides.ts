@@ -300,7 +300,7 @@ const controlled: Guide = {
             "With `open` set, the lightbox never opens or closes by itself. A trigger, the close button, Escape and a pull each call `onOpenChange`, and the viewer moves only once the parent passes the new value.",
             "With `activeId` set, a swipe, the keys and the arrows call `onActiveIdChange`, and the parent decides which photo shows. A pressed trigger asks for its photo first, then asks to open.",
             "Setting both from outside, as the buttons above do, opens the viewer on that photo. It morphs from that photo's trigger.",
-            "A parent may refuse a request by not changing its state. A request from a trigger waits about a second for the answer, so the parent can also decide asynchronously.",
+            "A parent may refuse a request by not changing its state. A request from a trigger waits about a second for the answer, so the parent can also decide asynchronously. When you control both, accept the trigger's `activeId` along with `open`: an `open` that arrives alone opens the viewer on the photo the parent still holds.",
             "Each pair works on its own: control only `open`, or only `activeId`, and the root keeps the other.",
           ],
         },

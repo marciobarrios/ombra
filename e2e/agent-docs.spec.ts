@@ -54,8 +54,8 @@ const compositions = [
     title: "Controlled state",
     file: "controlled",
     next: "button",
-    // The parent opens the viewer from a button outside the lightbox.
-    opener: "Open road",
+    // The parent opens the viewer on the second photo from a button outside the lightbox.
+    opener: "Open ridge",
   },
 ] as const satisfies readonly {
   path: string;
@@ -291,12 +291,15 @@ test.describe("agent docs", () => {
       const slides = content.locator("[data-slot=ombra-slide]");
 
       await expect(content).toHaveAttribute("data-phase", "open", { timeout: 10_000 });
-      await expect(slides.first()).toHaveAttribute("data-active", "true");
+      // An outside opener names the second photo, so it starts one slide later.
+      const start = "opener" in example ? 1 : 0;
+
+      await expect(slides.nth(start)).toHaveAttribute("data-active", "true");
 
       if (example.next === "button") await page.getByRole("button", { name: "Next photo" }).click();
       else await page.keyboard.press("ArrowRight");
 
-      await expect(slides.nth(1)).toHaveAttribute("data-active", "true");
+      await expect(slides.nth(start + 1)).toHaveAttribute("data-active", "true");
       await page.keyboard.press("Escape");
       await expect(content).toHaveCount(0);
 
