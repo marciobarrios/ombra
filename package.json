@@ -13,6 +13,7 @@
     "typecheck": "pnpm --filter docs typecheck && tsc -p tsconfig.json --noEmit",
     "budget": "node --test tools/budget/core-size.test.ts && node tools/budget/core-size.ts",
     "test:e2e": "playwright test",
+    "test:install": "node tools/install-check/install-check.ts",
     "registry:build": "shadcn build registry.json -o apps/docs/public/r",
     "registry:validate": "shadcn registry validate registry.json"
   },

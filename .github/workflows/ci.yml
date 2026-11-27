@@ -30,6 +30,24 @@ jobs:
       - run: pnpm budget
       - run: pnpm registry:validate
 
+  # Runs every item's `shadcn add` snippet in a fresh consumer and typechecks it with
+  # TypeScript 5, 6 and 7. It needs the network (npm and shadcn's registry), so it has a job.
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v5
+      - name: Locate the pnpm store
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:install
+
   # One job per Playwright project, so the projects run side by side and each installs one browser.
   # The frame budget samples on a runner of its own, so no other test competes with it for the CPU.
   e2e:
@@ -84,7 +102,10 @@ jobs:
   # Branch protection requires a check named "check". It passes only when every job above passed.
   check:
     if: always()
-    needs: [static, e2e]
+    needs: [static, install, e2e]
     runs-on: ubuntu-latest
     steps:
-      - run: test "${{ needs.static.result }}" = success && test "${{ needs.e2e.result }}" = success
+      - run: |
+          test "${{ needs.static.result }}" = success
+          test "${{ needs.install.result }}" = success
+          test "${{ needs.e2e.result }}" = success
