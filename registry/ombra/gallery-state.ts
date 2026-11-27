@@ -11,22 +11,20 @@ export type GalleryState = {
   itemIds: readonly string[];
   /** Bumped when a FLIP or fade morph has to start again, even if `phase` did not change. */
   epoch: number;
-  /** A close from an off-screen thumbnail lets the page scroll while the viewer fades out. */
-  releaseScroll: boolean;
 };
 
 export type GalleryAction =
   /** `restart` is false for a View Transition, which runs outside the FLIP effect. */
   | { type: "open-requested"; itemId: string; restart: boolean }
   | { type: "opened" }
-  | { type: "close-requested"; releaseScroll: boolean }
+  | { type: "close-requested" }
   | { type: "closed" }
   | { type: "active-changed"; itemId: string }
   /** The registered items changed: added, removed, or reordered. */
   | { type: "items-registered"; itemIds: readonly string[] };
 
 export function createGalleryState(activeId: string | null = null): GalleryState {
-  return { phase: "closed", activeId, itemIds: [], epoch: 0, releaseScroll: false };
+  return { phase: "closed", activeId, itemIds: [], epoch: 0 };
 }
 
 export const initialGalleryState: GalleryState = createGalleryState();
@@ -59,8 +57,6 @@ export function galleryReducer(state: GalleryState, action: GalleryAction): Gall
         phase: "opening",
         activeId: action.itemId,
         epoch: action.restart ? state.epoch + 1 : state.epoch,
-        // A reversed close holds the viewer open again, so the page is locked once more.
-        releaseScroll: false,
       };
 
     case "opened":
@@ -71,17 +67,12 @@ export function galleryReducer(state: GalleryState, action: GalleryAction): Gall
     case "close-requested":
       if (state.phase !== "opening" && state.phase !== "open") return state;
 
-      return {
-        ...state,
-        phase: "closing",
-        epoch: state.epoch + 1,
-        releaseScroll: action.releaseScroll,
-      };
+      return { ...state, phase: "closing", epoch: state.epoch + 1 };
 
     case "closed":
       if (state.phase === "closed") return state;
 
-      return { ...state, phase: "closed", releaseScroll: false };
+      return { ...state, phase: "closed" };
 
     case "active-changed":
       if (state.activeId === action.itemId || !state.itemIds.includes(action.itemId)) return state;

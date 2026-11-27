@@ -68,6 +68,15 @@ for (const { engine, reducedMotion } of configurations) {
         .toBe(true);
 
       await page.getByRole("button", { name: "Close", exact: true }).click();
+
+      // The page stays locked while the photo flies, so a scroll then (trackpad
+      // momentum the viewer can no longer cancel) cannot carry the target away.
+      if (reducedMotion === "no-preference" && !(browserName === "webkit" && isMobile)) {
+        await expect(page.locator("[data-slot=ombra-flight]")).toHaveCount(1);
+        await page.mouse.move(200, 240);
+        await page.mouse.wheel(0, direction === "above" ? 600 : -600);
+      }
+
       await expect(viewer).toHaveCount(0, { timeout: 8_000 });
       await expect(page.locator("[data-slot=ombra-backdrop]")).toHaveCount(0);
       await expect(page.locator("[data-slot=ombra-flight]")).toHaveCount(0);
