@@ -162,7 +162,7 @@ export const installation: Guide = {
         },
         {
           kind: "text",
-          text: "Most projects want `ombra`, the whole lightbox. It already includes the files of `ombra-morph` and `ombra-zoom`. Install one of those alone only to use a helper without the lightbox.",
+          text: "Most projects want `ombra`, the whole lightbox. It already includes the files of `ombra-morph` and `ombra-zoom`. Install one of those alone only to use a helper without the lightbox. `ombra-bento` and `ombra-mosaic` are gallery layouts; each installs `ombra` with it.",
         },
       ],
     },

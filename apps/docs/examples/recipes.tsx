@@ -1,7 +1,9 @@
 import { OmbraAlbum } from "@/components/ombra/ombra-album";
 import type { OmbraAlbumPhoto } from "@/components/ombra/ombra-album";
+import { OmbraBento } from "@/components/ombra/ombra-bento";
 import { OmbraGallery } from "@/components/ombra/ombra-gallery";
 import type { OmbraGalleryItem } from "@/components/ombra/ombra-gallery";
+import { OmbraMosaic } from "@/components/ombra/ombra-mosaic";
 
 import { photos } from "./photos";
 
@@ -18,6 +20,23 @@ const album: readonly OmbraAlbumPhoto[] = photos.map((photo) => ({
 
 export function GalleryRecipe() {
   return <OmbraGallery items={items} />;
+}
+
+// Three tiles for four photos, so the last one reads "+2".
+export function BentoRecipe() {
+  return (
+    <OmbraGallery items={items}>
+      <OmbraBento max={3} />
+    </OmbraGallery>
+  );
+}
+
+export function MosaicRecipe() {
+  return (
+    <OmbraGallery items={items}>
+      <OmbraMosaic />
+    </OmbraGallery>
+  );
 }
 
 export function AlbumRecipe() {

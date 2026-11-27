@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 
-import { AlbumRecipe, GalleryRecipe } from "../../../examples/recipes";
+import { AlbumRecipe, BentoRecipe, GalleryRecipe, MosaicRecipe } from "../../../examples/recipes";
 import { recipes } from "../../../lib/guides";
+import { PhotoCredit } from "../../photo-credit";
 import { GuidePage } from "../guide-page";
 
 export const metadata: Metadata = {
@@ -17,9 +18,18 @@ function RecipesDemo() {
         <GalleryRecipe />
       </div>
       <div>
+        <h3 className="mb-4 font-mono text-xs text-foreground/70">OmbraGallery with OmbraBento</h3>
+        <BentoRecipe />
+      </div>
+      <div>
+        <h3 className="mb-4 font-mono text-xs text-foreground/70">OmbraGallery with OmbraMosaic</h3>
+        <MosaicRecipe />
+      </div>
+      <div>
         <h3 className="mb-4 font-mono text-xs text-foreground/70">OmbraAlbum</h3>
         <AlbumRecipe />
       </div>
+      <PhotoCredit />
     </div>
   );
 }

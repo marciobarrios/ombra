@@ -356,7 +356,7 @@ async function differingShare(page: Page, a: Buffer, b: Buffer): Promise<number>
 // A wide, tall window keeps the first thumbnails in view, so no close needs to scroll.
 async function openSpike(page: Page, query: string) {
   await page.addInitScript(installProbe);
-  await page.setViewportSize({ width: 900, height: 1000 });
+  await page.setViewportSize({ width: 900, height: 1100 });
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.goto(`/spike?${query}`);
 
@@ -491,7 +491,7 @@ test.describe("thumbnail morph", () => {
 
         if (!(grid instanceof HTMLElement) || !first) return -1;
 
-        grid.style.columns = "auto";
+        grid.style.display = "block";
         grid.style.width = "240px";
         grid.style.overflow = "clip";
 
@@ -541,6 +541,66 @@ test.describe("thumbnail morph", () => {
       await expect(triggers(page).nth(target)).toBeFocused();
     });
   }
+
+  // MAR-26: the bento's "+N" tile opens the first photo without a tile, and takes the hidden
+  // photo the viewer moves to, so the close lands on it.
+  test("the bento's overflow tile opens from its box and takes the photo it closes on", async ({
+    page,
+  }) => {
+    await page.addInitScript(installProbe);
+    await page.setViewportSize({ width: 900, height: 1000 });
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/docs/ombra-bento");
+
+    const overflow = page.locator("[data-slot=ombra-trigger][data-overflow]");
+
+    await expect(overflow).toHaveAccessibleName("4 more photos");
+    await overflow.scrollIntoViewIfNeeded();
+    await expect
+      .poll(() =>
+        overflow.evaluate((node) =>
+          Object.keys(node).some((key) => key.startsWith("__reactProps")),
+        ),
+      )
+      .toBe(true);
+
+    const tile = await boxOf(overflow.locator("img"));
+    const opened = page.evaluate(() => window.morphProbe?.pauseFlight("start"));
+
+    await tap(page, overflow);
+    await opened;
+    expectSameBox(await boxOf(page.locator(flightSelector)), tile, 0.5);
+    await page.evaluate(() => {
+      window.morphProbe?.resume("start");
+    });
+    await waitOpen(page);
+    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("5 / 8");
+
+    await page.keyboard.press("ArrowRight");
+    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("6 / 8");
+    await expect(overflow.locator("img")).toHaveAttribute("src", photos[5]!.thumbSrc);
+
+    await page.evaluate(() => {
+      window.morphProbe?.freezeFrames();
+    });
+
+    const closed = page.evaluate(() => window.morphProbe?.pauseFlight("end"));
+
+    await page.keyboard.press("Escape");
+    await closed;
+    expectSameBox(await boxOf(page.locator(flightSelector)), tile, 0.5);
+    await page.evaluate(() => {
+      window.morphProbe?.resume("end");
+      window.morphProbe?.thawFrames();
+    });
+    await expect(viewer(page)).toHaveCount(0);
+    await expect(overflow).toBeFocused();
+
+    // Once closed, the tile goes back to the first hidden photo and opens it again.
+    await expect(overflow.locator("img")).toHaveAttribute("src", photos[4]!.thumbSrc);
+    await page.keyboard.press("Enter");
+    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("5 / 8");
+  });
 
   test("fades and focuses the nearest thumbnail when the trigger unmounts", async ({ page }) => {
     await openSpike(page, "engine=flip&slow=1");

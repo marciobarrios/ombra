@@ -29,6 +29,8 @@ const docsPages = [
   "/docs/behaviour",
   "/docs/api",
   "/docs/ombra",
+  "/docs/ombra-bento",
+  "/docs/ombra-mosaic",
   "/docs/ombra-morph",
   "/docs/ombra-zoom",
   "/performance",

@@ -11,6 +11,7 @@ import type { MorphEngine } from "@/components/ombra/types";
 import { useReducedMotion } from "@/components/ombra/use-reduced-motion";
 
 import { photos } from "../../../examples/photos";
+import { PhotoCredit } from "../../photo-credit";
 import {
   PLAYGROUND_ALBUM_TITLE,
   PLAYGROUND_DEFAULTS,
@@ -158,6 +159,7 @@ export function Playground({ snippets }: { snippets: Readonly<Record<string, Rea
           />
         )}
       </div>
+      <PhotoCredit />
 
       {snippets[playgroundKey(settings)]}
     </div>

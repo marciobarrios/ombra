@@ -4,7 +4,7 @@ const port = 3000;
 
 // Specs that test plain functions and files. They need no browser, so they run once.
 const unitSpecs =
-  /(gallery-state|gesture-arbitration|registry-items|scroll-range|spring|wheel-momentum|zoom-limit)\.spec\.ts$/;
+  /(gallery-layout|gallery-state|gesture-arbitration|registry-items|scroll-range|spring|wheel-momentum|zoom-limit)\.spec\.ts$/;
 
 export default defineConfig({
   testDir: "./e2e",

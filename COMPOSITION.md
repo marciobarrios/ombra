@@ -320,10 +320,19 @@ only IDs.
 
 - **`OmbraGallery`** (`ombra-gallery.tsx`) takes `items` (`OmbraGalleryItem`: id, alt,
   caption, size, thumbnail frame and sources) and the root's state props and `morph`.
-  It renders a masonry grid of triggers and a viewer with a counter, zoom actions and
-  close in the header, previous and next over the photo, a caption, and the thumbnail
-  strip. Photos are native `<img>` with zoom. It takes no debug props: the spike page
-  wraps it in `OmbraDiagnostics`.
+  It renders its children as the triggers' layout (`OmbraGalleryGrid`, a plain grid,
+  when there are none) and a viewer with a counter, zoom actions and close in the
+  header, previous and next over the photo, a caption, and the thumbnail strip. Photos
+  are native `<img>` with zoom. It takes no debug props: the spike page wraps it in
+  `OmbraDiagnostics`.
+- **Gallery layouts (MAR-26).** `OmbraBento` (`ombra-bento`) and `OmbraMosaic`
+  (`ombra-mosaic`) are registry items of their own, rendered as the gallery's children.
+  A layout reads the items with `useOmbraGalleryItems()` and renders an
+  `OmbraGalleryTile` (an `OmbraTrigger` with the thumbnail) per photo. The bento's
+  "+N" tile opens the first photo without a tile, and takes whichever hidden photo the
+  open viewer shows, so the close lands on the same image; once closed it shows the
+  first hidden photo again. Its tile and count decisions live
+  in `gallery-layout.ts`, with a unit spec.
 - **`OmbraAlbum`** (`ombra-album.tsx`) takes a `title` and `photos`
   (`OmbraAlbumPhoto`). One cover opens the whole album. Its header holds the visible
   title, the counter, previous, next and close; photos render through `<picture>`
