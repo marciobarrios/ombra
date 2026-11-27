@@ -8,7 +8,7 @@ The architecture has three layers: behavior primitives, editable styled parts, a
 
 ## Develop
 
-Node.js 24 (`nvm use`) and pnpm 10.
+Node.js 26 (`nvm use` or mise, from `.nvmrc`) and pnpm 10.
 
 ```bash
 pnpm install
@@ -71,7 +71,7 @@ One Vercel project, rooted at the docs app. Do not create the project from this 
 - Install: default is fine when Vercel installs the pnpm workspace from the repository root. If the install runs inside `apps/docs` and cannot see the lockfile, set it to `cd ../.. && pnpm install --frozen-lockfile`.
 - Build: the package script, `pnpm --dir ../.. run registry:build && next build`
 - Output: `apps/docs/.next`
-- Node.js 24
+- Node.js 26 (`engines` in `package.json`; it overrides the Vercel project setting)
 
 ## Layout
 
