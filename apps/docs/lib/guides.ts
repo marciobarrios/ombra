@@ -6,6 +6,7 @@ import { installCommand } from "./install";
 import { apiGroups } from "./item-surface";
 import type { ApiPart } from "./item-surface";
 import { DOCS_ORIGIN } from "./origin";
+import { playground } from "./playground";
 import { behaviour, styling } from "./styling-behaviour";
 import { partMarkdown } from "./surface-markdown";
 
@@ -416,6 +417,7 @@ const guides: readonly Guide[] = [
   jsxChanges,
   controlled,
   recipes,
+  playground,
   styling,
   behaviour,
 ];

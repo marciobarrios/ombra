@@ -11,6 +11,29 @@ if (!first || !second || !third || !far) {
   throw new Error("the spike gallery needs at least five photos");
 }
 
+const docsPages = [
+  "/",
+  "/docs",
+  "/docs/introduction",
+  "/docs/installation",
+  "/docs/quick-start",
+  "/docs/anatomy",
+  "/docs/examples/minimal",
+  "/docs/examples/full-gallery",
+  "/docs/examples/album",
+  "/docs/examples/jsx-changes",
+  "/docs/examples/controlled",
+  "/docs/recipes",
+  "/docs/playground",
+  "/docs/styling",
+  "/docs/behaviour",
+  "/docs/api",
+  "/docs/ombra",
+  "/docs/ombra-morph",
+  "/docs/ombra-zoom",
+  "/performance",
+];
+
 /** One line per violation, so a failure names the rule and the node. */
 function violationReport(
   violations: Awaited<ReturnType<AxeBuilder["analyze"]>>["violations"],
@@ -106,17 +129,33 @@ test.describe("accessibility", () => {
       await expectNoViolations(page, "[data-slot=ombra-album]");
     });
 
-    // The docs highlight code with a theme pair; a theme change can drop a token below 4.5:1.
-    for (const item of ["ombra", "ombra-morph", "ombra-zoom"]) {
-      test(`the ${item} docs page has no axe violations in ${colorScheme} mode`, async ({
-        page,
-      }) => {
-        await page.emulateMedia({ colorScheme });
-        await page.goto(`/docs/${item}`);
-        await expect(page.locator("[data-agent-prompt]")).toBeVisible();
-        await expectNoViolations(page, "main");
-      });
-    }
+    // Every page a reader reaches from the docs, at the narrowest phone width. The code is
+    // highlighted with a theme pair, so a theme change can drop a token below 4.5:1.
+    test(`the docs pages fit 375 px and have no axe violations in ${colorScheme} mode`, async ({
+      page,
+    }) => {
+      test.slow();
+      await page.emulateMedia({ colorScheme });
+      await page.setViewportSize({ width: 375, height: 812 });
+
+      for (const path of docsPages) {
+        await page.goto(path);
+        await expect(page.locator("main")).toBeVisible();
+        await settle(page);
+
+        const scroll = await page.evaluate(() => {
+          const root = document.documentElement;
+
+          return { width: root.scrollWidth, viewport: root.clientWidth };
+        });
+
+        expect(scroll.width, `${path} scrolls sideways`).toBeLessThanOrEqual(scroll.viewport);
+
+        const results = await new AxeBuilder({ page }).analyze();
+
+        expect(results.violations, `${path}\n${violationReport(results.violations)}`).toEqual([]);
+      }
+    });
   }
 
   test("the open dialog names itself, traps focus, and escape returns focus", async ({ page }) => {

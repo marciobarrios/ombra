@@ -9,6 +9,7 @@ import {
 } from "./guides";
 import type { Guide } from "./guides";
 import { registryItems } from "./install";
+import { playground } from "./playground";
 import { behaviour, styling } from "./styling-behaviour";
 
 /**
@@ -58,7 +59,7 @@ const groups: readonly NavGroup[] = [
   {
     id: "guides",
     title: "Guides",
-    entries: [styling, behaviour].map(guideEntry),
+    entries: [playground, styling, behaviour].map(guideEntry),
   },
   {
     id: "api-reference",

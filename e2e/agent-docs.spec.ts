@@ -73,6 +73,7 @@ const guidePaths = [
   "/docs/anatomy",
   "/docs/api",
   "/docs/recipes",
+  "/docs/playground",
   "/docs/styling",
   "/docs/behaviour",
   ...compositions.map((example) => example.path),

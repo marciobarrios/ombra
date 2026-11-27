@@ -48,10 +48,9 @@ export function Album() {
 
   return (
     <OmbraRoot itemIds={photos.map((photo) => photo.id)}>
-      {/* One trigger for the whole album: the cover opens on the first photo. */}
+      {/* One trigger for the whole album: the cover opens on the first photo. Its text names it. */}
       <OmbraTrigger
         itemId={cover.id}
-        aria-label={`${title}, ${photos.length} photos`}
         className="relative block aspect-[4/3] w-full max-w-md overflow-hidden rounded-md text-left"
       >
         <Picture
