@@ -6,11 +6,12 @@ import { installCommand } from "./install";
 import { apiGroups } from "./item-surface";
 import type { ApiPart } from "./item-surface";
 import { DOCS_ORIGIN } from "./origin";
+import { behaviour, styling } from "./styling-behaviour";
 import { partMarkdown } from "./surface-markdown";
 
 /**
- * Docs pages that are not one registry item: getting started, the anatomy and the composition
- * examples.
+ * Docs pages that are not one registry item: getting started, the anatomy, the composition
+ * examples, the styling contract and the behaviour notes.
  * Each page is written once here, so the HTML page and its Markdown version say the same.
  * Text runs may hold `code` in backticks; the page renders those as inline code.
  */
@@ -23,7 +24,9 @@ export type GuideBlock =
   /** The shadcn command that installs a registry item. */
   | { kind: "install"; item: string }
   /** One public part's API section, from `item-surface.ts`. */
-  | { kind: "api"; part: ApiPart };
+  | { kind: "api"; part: ApiPart }
+  /** A snippet that is not an example file, such as the registry's global CSS. */
+  | { kind: "code"; lang: "css"; title: string; text: string };
 
 export type GuideSection = { id: string; title: string; blocks: readonly GuideBlock[] };
 
@@ -413,6 +416,8 @@ const guides: readonly Guide[] = [
   jsxChanges,
   controlled,
   recipes,
+  styling,
+  behaviour,
 ];
 
 const EXAMPLES = "examples/";
@@ -479,6 +484,9 @@ function blockMarkdown(block: GuideBlock): string {
 
     case "api":
       return partMarkdown(block.part);
+
+    case "code":
+      return `\`${block.title}\`:\n\n\`\`\`${block.lang}\n${block.text}\n\`\`\``;
   }
 }
 

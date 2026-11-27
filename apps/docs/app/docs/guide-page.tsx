@@ -44,6 +44,8 @@ function Block({ block }: { block: GuideBlock }) {
       return <ItemInstall item={block.item} />;
     case "api":
       return <ApiPartView part={block.part} />;
+    case "code":
+      return <CodeBlock code={block.text} lang={block.lang} title={block.title} />;
   }
 }
 

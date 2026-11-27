@@ -1,6 +1,26 @@
-import type { Guide, GuideBlock } from "./guides";
+import type { Guide, GuideBlock, GuideSection } from "./guides";
 import { itemContents, registryItems } from "./install";
 import type { RegistryItem } from "./install";
+
+/** Shared by the introduction and the behaviour notes. */
+export const browserSupport: GuideSection = {
+  id: "browser-support",
+  title: "Browser support",
+  blocks: [
+    {
+      kind: "text",
+      text: "Ombra supports current browsers on desktop and mobile: Chrome, Edge, Safari on macOS and iOS, and Firefox. Its styles are Tailwind CSS 4, and it uses `@property` and dynamic viewport units, so the oldest versions that run it are Chrome and Edge 111, Safari 16.4 and Firefox 128.",
+    },
+    {
+      kind: "list",
+      items: [
+        "`flip`, the default morph, runs wherever the Web Animations API does. `vt` needs View Transitions, and runs `flip` in a browser without them.",
+        "With reduced motion on, every morph is a short fade.",
+        "The automated tests run in Chromium and WebKit, on a desktop window and on phone-sized touch screens.",
+      ],
+    },
+  ],
+};
 
 /** The Getting started pages: introduction, installation and quick start. */
 
@@ -60,24 +80,7 @@ export const introduction: Guide = {
         },
       ],
     },
-    {
-      id: "browser-support",
-      title: "Browser support",
-      blocks: [
-        {
-          kind: "text",
-          text: "Ombra supports current browsers on desktop and mobile: Chrome, Edge, Safari on macOS and iOS, and Firefox. Its styles are Tailwind CSS 4, and it uses `@property` and dynamic viewport units, so the oldest versions that run it are Chrome and Edge 111, Safari 16.4 and Firefox 128.",
-        },
-        {
-          kind: "list",
-          items: [
-            "`flip`, the default morph, runs wherever the Web Animations API does. `vt` needs View Transitions, and runs `flip` in a browser without them.",
-            "With reduced motion on, every morph is a short fade.",
-            "The automated tests run in Chromium and WebKit, on a desktop window and on phone-sized touch screens.",
-          ],
-        },
-      ],
-    },
+    browserSupport,
     {
       id: "next",
       title: "Next",

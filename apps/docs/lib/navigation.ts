@@ -9,6 +9,7 @@ import {
 } from "./guides";
 import type { Guide } from "./guides";
 import { registryItems } from "./install";
+import { behaviour, styling } from "./styling-behaviour";
 
 /**
  * The docs pages in reading order, grouped as the sidebar, the docs index, `docs.md` and
@@ -53,6 +54,11 @@ const groups: readonly NavGroup[] = [
       exampleGuide("controlled"),
       recipes,
     ].map(guideEntry),
+  },
+  {
+    id: "guides",
+    title: "Guides",
+    entries: [styling, behaviour].map(guideEntry),
   },
   {
     id: "api-reference",
