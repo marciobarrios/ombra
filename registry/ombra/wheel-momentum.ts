@@ -23,7 +23,9 @@ export type MomentumTail = {
   direction: number;
   /** The size of the last event seen. */
   previous: number;
-  /** The smallest event since the viewer went away, or null while it is on screen. */
+  /** Whether any event so far was smaller than the one before it. */
+  slowed: boolean;
+  /** The smallest event since the viewer went away and the tail slowed, or null. */
   quietest: number | null;
   /** Events in a row since the viewer went away that did not slow down. */
   steady: number;
@@ -42,6 +44,7 @@ export function startMomentumTail(lastDelta: number): MomentumTail {
   return {
     direction: Math.sign(lastDelta),
     previous: Math.abs(lastDelta),
+    slowed: false,
     quietest: null,
     steady: 0,
   };
@@ -55,10 +58,13 @@ export function startMomentumTail(lastDelta: number): MomentumTail {
  * peaks during the close, and real momentum is too noisy to tell from a new scroll
  * (Chrome merges events when it is busy, so a tail can jump from 24 to 114).
  *
- * Once the viewer is gone, only the tail is swallowed, measured from the last event
- * of the close rather than from the closing event, which a quick swipe left far
- * behind. The swallow ends as soon as the wheel speeds up or stops slowing down.
- * A turn or a sideways swipe ends it at any time, since momentum never does either.
+ * Once the viewer is gone, only the tail is swallowed. A swipe that has not slowed
+ * yet is still the closing swipe speeding up (a reduced-motion close ends at once),
+ * so the wheel only counts as speeding up again once the tail has slowed, measured
+ * from the last event of the close rather than from the closing event, which a
+ * quick swipe left far behind. The swallow ends as soon as the wheel speeds up
+ * again, or holds the same size (mouse wheel notches). A turn or a sideways swipe
+ * ends it at any time, since momentum never does either.
  */
 export function judgeMomentum(
   tail: MomentumTail,
@@ -68,21 +74,29 @@ export function judgeMomentum(
 ): MomentumJudgement {
   const size = Math.abs(deltaY);
   const turned = (deltaY !== 0 && Math.sign(deltaY) !== tail.direction) || Math.abs(deltaX) > size;
+  const slowed = tail.slowed || size < tail.previous;
 
   if (viewerOpen) {
-    return { tail: { ...tail, previous: size }, verdict: turned ? "release" : "swallow" };
+    return {
+      tail: { ...tail, previous: size, slowed },
+      verdict: turned ? "release" : "swallow",
+    };
   }
 
-  const quietest = tail.quietest ?? tail.previous;
-  const steady = size >= tail.previous && size >= MOMENTUM_STEADY_PX ? tail.steady + 1 : 0;
-
-  const fresh =
-    turned ||
-    size > quietest * MOMENTUM_RISE_RATIO + MOMENTUM_RISE_PX ||
-    steady >= MOMENTUM_STEADY_EVENTS;
+  const quietest = tail.slowed ? (tail.quietest ?? tail.previous) : null;
+  const rose = quietest !== null && size > quietest * MOMENTUM_RISE_RATIO + MOMENTUM_RISE_PX;
+  // Before the tail slows, a growing event is the swipe speeding up, not a notch.
+  const held = tail.slowed ? size >= tail.previous : size === tail.previous;
+  const steady = held && size >= MOMENTUM_STEADY_PX ? tail.steady + 1 : 0;
 
   return {
-    tail: { ...tail, previous: size, quietest: Math.min(quietest, size), steady },
-    verdict: fresh ? "release" : "swallow",
+    tail: {
+      ...tail,
+      previous: size,
+      slowed,
+      quietest: slowed ? Math.min(quietest ?? size, size) : null,
+      steady,
+    },
+    verdict: turned || rose || steady >= MOMENTUM_STEADY_EVENTS ? "release" : "swallow",
   };
 }

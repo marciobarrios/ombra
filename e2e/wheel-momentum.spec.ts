@@ -32,6 +32,12 @@ test.describe("wheel momentum after a close", () => {
     expect(verdicts.every((verdict) => verdict === "swallow")).toBe(true);
   });
 
+  test("a swipe still speeding up when a reduced-motion close ends is swallowed to the end", () => {
+    const verdicts = run(35, after(60, 80, 90, 70, 50, 30, 15, 5, 2));
+
+    expect(verdicts.every((verdict) => verdict === "swallow")).toBe(true);
+  });
+
   test("a scroll that starts once the tail has slowed reaches the page", () => {
     const verdicts = run(40, [...during(30), ...after(20, 12, 8, 30, 45)]);
 
