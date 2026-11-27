@@ -330,7 +330,8 @@ only IDs.
   A layout reads the items with `useOmbraGalleryItems()` and renders an
   `OmbraGalleryTile` (an `OmbraTrigger` with the thumbnail) per photo. The bento's
   "+N" tile opens the first photo without a tile, and takes whichever hidden photo the
-  viewer shows, so the close lands on the same image. Its tile and count decisions live
+  open viewer shows, so the close lands on the same image; once closed it shows the
+  first hidden photo again. Its tile and count decisions live
   in `gallery-layout.ts`, with a unit spec.
 - **`OmbraAlbum`** (`ombra-album.tsx`) takes a `title` and `photos`
   (`OmbraAlbumPhoto`). One cover opens the whole album. Its header holds the visible

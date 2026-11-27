@@ -9,7 +9,7 @@ import { frameRatio } from "./gallery-layout";
 import { OmbraGalleryTile, useOmbraGalleryItems } from "./ombra-gallery";
 
 export type OmbraMosaicProps = {
-  /** Set `--ombra-row-height` here to change the target row height. */
+  /** Class on the mosaic. Set `--ombra-row-height` here or on an ancestor to change the row height. */
   className?: string;
 };
 
@@ -22,8 +22,9 @@ export function OmbraMosaic({ className }: OmbraMosaicProps) {
       className={cn(
         // Each tile grows in proportion to its width over height, so every tile in a row
         // stretches to the same height. The trailing spacer takes the last row's spare width,
-        // so that row keeps the target height instead of stretching.
-        "flex flex-wrap items-start gap-2 [--ombra-row-height:8rem] after:grow-[1000] after:content-[''] md:[--ombra-row-height:12rem]",
+        // so that row keeps the target height instead of stretching. `--ombra-row-height`
+        // overrides the responsive default at every width.
+        "flex flex-wrap items-start gap-2 [--ombra-mosaic-row:var(--ombra-row-height,8rem)] after:grow-[1000] after:content-[''] md:[--ombra-mosaic-row:var(--ombra-row-height,12rem)]",
         className,
       )}
     >
@@ -37,11 +38,11 @@ export function OmbraMosaic({ className }: OmbraMosaicProps) {
             sizes="(min-width: 768px) 40vw, 70vw"
             // A row of one wide photo on a narrow screen would stretch far past the target
             // height. The cap crops it instead: the thumbnail is a cover crop anyway.
-            className="max-h-[calc(var(--ombra-row-height)*1.5)]"
+            className="max-h-[calc(var(--ombra-mosaic-row)*1.5)]"
             style={{
               aspectRatio: item.frame,
               flexGrow: ratio,
-              flexBasis: `calc(${ratio} * var(--ombra-row-height))`,
+              flexBasis: `calc(${ratio} * var(--ombra-mosaic-row))`,
             }}
           />
         );

@@ -41,7 +41,8 @@ export function OmbraBento({ max = 5, overflowLabel = morePhotos, className }: O
 
   if (tiles === 0) return null;
 
-  const overflow = hidden > 0 ? items[overflowIndex(index, regular, items.length)] : undefined;
+  const openIndex = phase === "closed" ? -1 : index;
+  const overflow = hidden > 0 ? items[overflowIndex(openIndex, regular, items.length)] : undefined;
 
   return (
     <div

@@ -366,7 +366,7 @@ export const recipes: Guide = {
         {
           kind: "list",
           items: [
-            '**`OmbraBento`** (`ombra-bento`): one large photo and up to four around it. Past `max` tiles, the last one dims its photo under a "+N" count and opens the first photo without a tile. While the viewer shows a hidden photo, that tile takes it, so the close lands on the tile.',
+            '**`OmbraBento`** (`ombra-bento`): one large photo and up to four around it. Past `max` tiles, the last one dims its photo under a "+N" count and opens the first photo without a tile. While the viewer is open on a hidden photo, that tile takes it, so the close lands on the tile, and it shows the first hidden photo again once closed.',
             "**`OmbraMosaic`** (`ombra-mosaic`): justified rows of equal height that fill the width, in reading order. `--ombra-row-height` sets the target height.",
           ],
         },

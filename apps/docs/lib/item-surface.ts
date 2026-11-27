@@ -157,7 +157,7 @@ export const mosaicProps = [
   {
     name: "className",
     type: "string",
-    note: "Class on the mosaic, merged after the defaults. Set `--ombra-row-height` here to change the row height.",
+    note: "Class on the mosaic, merged after the defaults. Set `--ombra-row-height` here or on an ancestor to change the row height at every width.",
   },
 ] as const satisfies readonly SurfaceNote[];
 
@@ -991,7 +991,7 @@ export const apiGroups: readonly ApiGroup[] = [
         item: "ombra-bento",
         file: "ombra-bento.tsx",
         summary:
-          'A gallery layout: one large photo and up to four around it. When the photos outnumber the tiles, the last tile dims its photo under a "+N" count and opens the first photo without a tile. While the viewer shows a hidden photo, that tile takes the photo, so the close lands on it.',
+          'A gallery layout: one large photo and up to four around it. When the photos outnumber the tiles, the last tile dims its photo under a "+N" count and opens the first photo without a tile. While the viewer is open on a hidden photo, that tile takes the photo, so the close lands on it; once closed, it shows the first hidden photo again.',
         renders: "A `<div>` grid of `OmbraGalleryTile` triggers. Renders inside `OmbraGallery`.",
         slot: "ombra-bento",
         tables: [{ kind: "object", title: "Props", of: "OmbraBentoProps", entries: bentoProps }],
@@ -1015,7 +1015,7 @@ export const apiGroups: readonly ApiGroup[] = [
         cssVariables: [
           {
             name: "--ombra-row-height",
-            note: "The target row height: 8rem, 12rem from 768px. Rows stretch past it to fill the width, up to 1.5 times; a taller row crops its photos.",
+            note: "Read, not set: the target row height. Unset, it is 8rem, and 12rem from 768px. Rows stretch past it to fill the width, up to 1.5 times; a taller row crops its photos.",
           },
         ],
       },

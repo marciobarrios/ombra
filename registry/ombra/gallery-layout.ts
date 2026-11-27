@@ -29,13 +29,13 @@ export function bentoLayout(count: number, max: number = BENTO_MAX_TILES): Bento
 }
 
 /**
- * The photo the overflow tile shows and opens. It starts on the first hidden photo. While the
- * viewer shows a hidden photo, the tile takes that photo, so the close lands on the tile with
- * the same image (a close never morphs onto a different photo). The root keeps the active item
- * after a close, so the tile keeps the last hidden photo seen instead of swapping images.
+ * The photo the overflow tile shows and opens: the first hidden photo. While the viewer is
+ * open on a hidden photo, the tile takes that photo, so the close lands on the tile with the
+ * same image (a close never morphs onto a different photo). Pass -1 once the viewer has closed,
+ * so the tile goes back to the first hidden photo.
  */
-export function overflowIndex(activeIndex: number, firstHidden: number, count: number): number {
-  return activeIndex >= firstHidden && activeIndex < count ? activeIndex : firstHidden;
+export function overflowIndex(openIndex: number, firstHidden: number, count: number): number {
+  return openIndex >= firstHidden && openIndex < count ? openIndex : firstHidden;
 }
 
 /** Width over height of a CSS aspect-ratio value such as "3 / 2" or "1.5". 1 when unreadable. */

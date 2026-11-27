@@ -595,6 +595,11 @@ test.describe("thumbnail morph", () => {
     });
     await expect(viewer(page)).toHaveCount(0);
     await expect(overflow).toBeFocused();
+
+    // Once closed, the tile goes back to the first hidden photo and opens it again.
+    await expect(overflow.locator("img")).toHaveAttribute("src", photos[4]!.thumbSrc);
+    await page.keyboard.press("Enter");
+    await expect(page.locator("[data-slot=ombra-counter]")).toHaveText("5 / 8");
   });
 
   test("fades and focuses the nearest thumbnail when the trigger unmounts", async ({ page }) => {

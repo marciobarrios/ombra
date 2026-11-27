@@ -22,7 +22,7 @@ test.describe("gallery layouts", () => {
     expect(bentoLayout(4, Number.NaN)).toEqual({ tiles: 1, regular: 0, hidden: 4 });
   });
 
-  test("the overflow tile follows a hidden photo the viewer shows, and only a hidden one", () => {
+  test("the overflow tile follows a hidden photo the open viewer shows, and only a hidden one", () => {
     expect(overflowIndex(-1, 4, 8)).toBe(4);
     expect(overflowIndex(2, 4, 8)).toBe(4);
     expect(overflowIndex(6, 4, 8)).toBe(6);
