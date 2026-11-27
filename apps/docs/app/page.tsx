@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { OmbraGallery } from "../../../registry/ombra/ombra-gallery";
+import { OmbraMosaic } from "../../../registry/ombra/ombra-mosaic";
 import { photos } from "./spike/photos";
 
 const demo = photos.slice(0, 6);
@@ -46,7 +47,9 @@ export default function Home() {
           down to close.
         </p>
         <div className="mt-6">
-          <OmbraGallery items={demo} />
+          <OmbraGallery items={demo}>
+            <OmbraMosaic />
+          </OmbraGallery>
         </div>
       </section>
     </main>
