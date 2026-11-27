@@ -384,7 +384,7 @@ export function OmbraRoot({
           return true;
         },
         close: () => {
-          send({ type: "close-requested", releaseScroll: false });
+          send({ type: "close-requested" });
           send({ type: "closed" });
         },
       },
@@ -881,8 +881,10 @@ export function OmbraRoot({
       <Dialog.Root
         open={isOpen(state)}
         triggerId={ownerId}
-        // A close that releases the page lets it scroll while the photo fades out.
-        modal={state.phase === "closing" && state.releaseScroll ? false : true}
+        // The page stays locked until the close lands. Unlocked, a scroll during the
+        // flight (momentum the browser no longer lets the viewer cancel) moves the
+        // thumbnail away and the photo chases it off screen.
+        modal
         actionsRef={dialogActionsRef}
         onOpenChange={(next, details) => {
           if (next) {

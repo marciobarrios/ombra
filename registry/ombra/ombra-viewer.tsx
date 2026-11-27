@@ -1761,8 +1761,7 @@ export function useOmbraViewer() {
 
     preserveFlightRef.current = flightRef.current !== null;
     tokenRef.current += 1;
-    // An off-screen thumbnail cannot be a morph target, so the page may scroll during the fade.
-    send({ type: "close-requested", releaseScroll: !canMorph });
+    send({ type: "close-requested" });
   }
 
   function closeWithViewTransition(thumb: HTMLElement) {
