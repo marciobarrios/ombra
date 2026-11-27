@@ -1,6 +1,7 @@
 import { OmbraBento } from "../../../../registry/ombra/ombra-bento";
 import { OmbraGallery } from "../../../../registry/ombra/ombra-gallery";
 import { OmbraMosaic } from "../../../../registry/ombra/ombra-mosaic";
+import { PhotoCredit } from "../photo-credit";
 import { photos } from "../spike/photos";
 
 const demos = {
@@ -37,6 +38,7 @@ export function GalleryDemo({ item = "ombra" }: { item?: GalleryDemoItem }) {
           ) : null}
         </OmbraGallery>
       </div>
+      <PhotoCredit />
     </section>
   );
 }

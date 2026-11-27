@@ -205,11 +205,6 @@ function GalleryParts({
     <div data-slot="ombra-root" className={cn("text-foreground", className)}>
       {children}
 
-      <p className="mt-10 max-w-xl text-sm leading-6 text-foreground/70">
-        Photographs from Unsplash, used under the Unsplash License. Thumbnails are cover crops; the
-        viewer shows the full frame.
-      </p>
-
       {/* OmbraRoot supplies the Base UI dialog root, shared with the triggers above. */}
       <OmbraPortal>
         <OmbraBackdrop />

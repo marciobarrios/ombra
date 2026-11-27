@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { OmbraGallery } from "../../../registry/ombra/ombra-gallery";
 import { OmbraMosaic } from "../../../registry/ombra/ombra-mosaic";
+import { PhotoCredit } from "./photo-credit";
 import { photos } from "./spike/photos";
 
 const demo = photos.slice(0, 6);
@@ -51,6 +52,7 @@ export default function Home() {
             <OmbraMosaic />
           </OmbraGallery>
         </div>
+        <PhotoCredit />
       </section>
     </main>
   );

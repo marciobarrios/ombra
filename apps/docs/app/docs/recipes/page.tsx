@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { AlbumRecipe, BentoRecipe, GalleryRecipe, MosaicRecipe } from "../../../examples/recipes";
 import { recipes } from "../../../lib/guides";
+import { PhotoCredit } from "../../photo-credit";
 import { GuidePage } from "../guide-page";
 
 export const metadata: Metadata = {
@@ -28,6 +29,7 @@ function RecipesDemo() {
         <h3 className="mb-4 font-mono text-xs text-foreground/70">OmbraAlbum</h3>
         <AlbumRecipe />
       </div>
+      <PhotoCredit />
     </div>
   );
 }
