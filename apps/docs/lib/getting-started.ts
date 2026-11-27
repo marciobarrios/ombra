@@ -66,7 +66,7 @@ export const introduction: Guide = {
       blocks: [
         {
           kind: "text",
-          text: "Ombra supports current browsers on desktop and mobile: Chrome, Edge, Safari on macOS and iOS, and Firefox. It uses `@property`, dynamic viewport units and `Array.prototype.toSorted`, so the oldest versions that run it are Chrome and Edge 110, Safari 16.4 and Firefox 128.",
+          text: "Ombra supports current browsers on desktop and mobile: Chrome, Edge, Safari on macOS and iOS, and Firefox. Its styles are Tailwind CSS 4, and it uses `@property` and dynamic viewport units, so the oldest versions that run it are Chrome and Edge 111, Safari 16.4 and Firefox 128.",
         },
         {
           kind: "list",

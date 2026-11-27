@@ -256,8 +256,12 @@ test.describe("agent docs", () => {
     await page.goto("/docs/installation");
 
     // The sidebar and the narrow-screen menu both mark the page you are on.
-    for (const current of await page.locator("a[aria-current=page]").all()) {
-      await expect(current).toHaveAttribute("href", "/docs/installation");
+    const current = page.locator("a[aria-current=page]");
+
+    await expect(current).toHaveCount(2);
+
+    for (const link of await current.all()) {
+      await expect(link).toHaveAttribute("href", "/docs/installation");
     }
 
     const markdown = await (await request.get("/docs/installation.md")).text();
