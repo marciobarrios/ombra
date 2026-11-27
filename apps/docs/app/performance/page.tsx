@@ -19,7 +19,7 @@ export default function PerformancePage() {
       </p>
 
       <table className="mt-10 w-full text-left text-sm leading-6">
-        <thead className="text-foreground/60">
+        <thead className="text-foreground/70">
           <tr className="border-b border-foreground/15">
             <th className="py-2 pr-4 font-medium">Check</th>
             <th className="py-2 pr-4 font-medium">Ceiling</th>
@@ -66,8 +66,8 @@ export default function PerformancePage() {
 
       <h2 className="font-display mt-14 text-3xl">Size</h2>
       <p className="mt-4 leading-7 text-foreground/80">
-        The pre-spike proposal was 12 KB gzipped. The shipped recipes measure 28,863 bytes, so the
-        enforced ceiling is 32 KB (32 × 1024 bytes). 3,905 bytes of headroom remain, for the v0.1
+        The pre-spike proposal was 12 KB gzipped. The shipped recipes measure 28,851 bytes, so the
+        enforced ceiling is 32 KB (32 × 1024 bytes). 3,917 bytes of headroom remain, for the v0.1
         and v1 features that go into the gallery bundle: image loading, deep links, windowing and
         video. Each one still records its growth here. The first ceiling was 27 KB, set when the
         core measured 26,252 bytes; it moved to 32 KB once captions left 78 bytes. Zoom and track
@@ -75,7 +75,8 @@ export default function PerformancePage() {
         scroll clamps 94, and the thumbnail strip&apos;s landmark and one-photo rule 56, and the
         natural-size zoom ceiling 298. <code className="font-mono">OmbraTitle</code> saved 6, and
         the trackpad momentum guard after a close added 138, and a trackpad close's focus return
-        without a ring 162. Keeping the page locked through every close saved 37.
+        without a ring 162. Keeping the page locked through every close saved 37, and naming the
+        album cover by its own text 12.
       </p>
       <p className="mt-4 leading-7 text-foreground/80">
         <code className="font-mono">pnpm budget</code> bundles{" "}

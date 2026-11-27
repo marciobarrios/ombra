@@ -14,10 +14,13 @@ export type CodeLine = readonly CodeToken[];
 const themes = { light: "ayu-light", dark: "ayu-dark" } as const;
 
 /**
- * The `--card` colour behind every code panel, in each mode. Ayu Light's colours sit between
- * 2:1 and 3.4:1 on white, so each token is deepened to AA against these before it is used.
+ * The background each token must read on, in each mode. Code sits on the `--card` panels and,
+ * for inline types and values, straight on the page. Ayu Light's colours sit between 2:1 and
+ * 3.4:1 on white, so each token is deepened to AA against the harder of the two: the page
+ * `--background` in light mode (darker than the white card), the `--card` in dark mode
+ * (lighter than the page).
  */
-const panels = { light: "#ffffff", dark: "#171717" } as const;
+const panels = { light: "#f4f0e7", dark: "#171717" } as const;
 
 let highlighter: Promise<HighlighterCore> | undefined;
 

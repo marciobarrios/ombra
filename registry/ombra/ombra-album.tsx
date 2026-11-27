@@ -77,7 +77,6 @@ export function OmbraAlbum({ title, photos, className, ...root }: OmbraAlbumProp
     <OmbraRoot {...root} itemIds={photos.map((photo) => photo.id)}>
       <OmbraTrigger
         itemId={cover.id}
-        aria-label={`${title}, ${photos.length} photos`}
         className={cn(
           "relative block w-full overflow-hidden rounded-[6px] text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground",
           className,
@@ -89,6 +88,7 @@ export function OmbraAlbum({ title, photos, className, ...root }: OmbraAlbumProp
           sizes="(min-width: 768px) 40vw, 100vw"
           className="h-full w-full object-cover"
         />
+        {/* The cover is named by this text, so speech input can say what it shows. */}
         <span className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-linear-to-t from-black/60 to-transparent p-3 pt-10 text-white">
           <span className="text-base font-medium">{title}</span>
           <span className="font-mono text-xs">{photos.length} photos</span>
