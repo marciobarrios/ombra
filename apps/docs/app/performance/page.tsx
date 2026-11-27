@@ -76,7 +76,8 @@ export default function PerformancePage() {
         natural-size zoom ceiling 298. <code className="font-mono">OmbraTitle</code> saved 6, and
         the trackpad momentum guard after a close added 138, and a trackpad close's focus return
         without a ring 162. Keeping the page locked through every close saved 37, and naming the
-        album cover by its own text 12. The gallery&apos;s layout children and shared tile added 115.
+        album cover by its own text 12. The gallery&apos;s layout children and shared tile added
+        115.
       </p>
       <p className="mt-4 leading-7 text-foreground/80">
         <code className="font-mono">pnpm budget</code> bundles{" "}
