@@ -5,6 +5,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
 import { photos } from "../apps/docs/app/spike/photos";
+import { listApiParts } from "../apps/docs/lib/item-surface.ts";
 
 const root = join(import.meta.dirname, "..");
 const origin = "https://www.useombra.dev";
@@ -67,6 +68,7 @@ const compositions = [
 
 const guidePaths = [
   "/docs/anatomy",
+  "/docs/api",
   "/docs/recipes",
   ...compositions.map((example) => example.path),
 ];
@@ -256,6 +258,26 @@ test.describe("agent docs", () => {
 
     await expect(morph).toContainText('"flip" | "vt" | "fade"');
     await expect(morph).toContainText('Default"flip"');
+  });
+
+  test("the API reference has a section for every public part", async ({ page, request }) => {
+    await page.goto("/docs/api");
+
+    for (const part of listApiParts()) {
+      await expect(
+        page.getByRole("heading", { level: 3, name: part.name, exact: true }),
+      ).toHaveCount(1);
+    }
+
+    const overflows = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+
+    expect(overflows).toBe(false);
+
+    const body = await (await request.get("/docs/api.md")).text();
+
+    for (const part of listApiParts()) expect(body).toContain(`### ${part.name}\n`);
   });
 
   test("the gallery docs page opens a lightbox", async ({ page }) => {

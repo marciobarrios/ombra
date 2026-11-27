@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { apiGroups } from "./item-surface";
+import type { ApiPart } from "./item-surface";
 import { DOCS_ORIGIN } from "./origin";
+import { partMarkdown } from "./surface-markdown";
 
 /**
  * Docs pages that are not one registry item: the anatomy and the composition examples.
@@ -13,7 +16,9 @@ export type GuideBlock =
   | { kind: "list"; items: readonly string[] }
   | { kind: "tree"; text: string }
   /** A file under `apps/docs/examples`, shown with its name. */
-  | { kind: "file"; file: string };
+  | { kind: "file"; file: string }
+  /** One public part's API section, from `item-surface.ts`. */
+  | { kind: "api"; part: ApiPart };
 
 export type GuideSection = { id: string; title: string; blocks: readonly GuideBlock[] };
 
@@ -372,8 +377,28 @@ export const recipes: Guide = {
   ],
 };
 
+/**
+ * Every public part, from the same data `pnpm typecheck` compares with the registry source,
+ * so the tables cannot drift from the types.
+ */
+export const apiReference: Guide = {
+  slug: "api",
+  title: "API reference",
+  description:
+    "Every public part: its props with type, default and required, the element it renders, its data-slot, data attributes and CSS variables.",
+  sections: apiGroups.map((group) => ({
+    id: group.id,
+    title: group.title,
+    blocks: [
+      { kind: "text", text: group.intro },
+      ...group.parts.map((part): GuideBlock => ({ kind: "api", part })),
+    ],
+  })),
+};
+
 const guides: readonly Guide[] = [
   anatomy,
+  apiReference,
   minimal,
   fullGallery,
   album,
@@ -444,6 +469,9 @@ function blockMarkdown(block: GuideBlock): string {
 
       return `\`${block.file}\`:\n\n\`\`\`${lang}\n${exampleSource(block.file)}\n\`\`\``;
     }
+
+    case "api":
+      return partMarkdown(block.part);
   }
 }
 

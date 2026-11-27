@@ -45,6 +45,7 @@ Ombra is a shadcn registry, not an npm component library. Users copy files. Do n
 - Every registry file has `target: "components/ombra/<file>"`, because the files import each other relatively. A new file needs one too, and a relative import must point at a file in the same item (`e2e/registry-items.spec.ts` checks both).
 - Global CSS the viewer needs ships through the item's `css` in `registry.json`, never only through the docs app's `globals.css`. The pull styles live in both; keep them the same.
 - Registry code must typecheck in a consumer's project: TypeScript 5 or 6, no `@types/node` (Vite).
+- The API reference (`/docs/api`, its Markdown, and the item pages' tables) comes from `apps/docs/lib/item-surface.ts`. A change to a public part's props, parameters or return value updates that file in the same PR: `pnpm typecheck` runs `tools/api-types/generate.ts`, which writes a type check for every row (gitignored `api-types.generated.ts`), and the `unit` project checks each documented `data-slot`, data attribute and CSS variable against the registry source.
 - The spike UI may live in `apps/docs/app/spike`. Promote something into `registry/ombra` only when the behaviour is worth keeping.
 
 ## State

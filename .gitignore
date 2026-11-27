@@ -14,3 +14,4 @@ blob-report
 .DS_Store
 apps/docs/public/r
 apps/docs/next-env.d.ts
+apps/docs/lib/api-types.generated.ts

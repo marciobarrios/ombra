@@ -2,11 +2,12 @@
   "name": "docs",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "pnpm --dir ../.. run registry:build && next build",
     "start": "next start --hostname 127.0.0.1 --port 3000",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "node ../../tools/api-types/generate.ts && next typegen && tsc --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",

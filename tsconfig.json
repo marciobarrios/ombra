@@ -10,5 +10,10 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["playwright.config.ts", "e2e/**/*.ts", "tools/budget/**/*.ts"]
+  "include": [
+    "playwright.config.ts",
+    "e2e/**/*.ts",
+    "tools/budget/**/*.ts",
+    "tools/api-types/**/*.ts"
+  ]
 }
