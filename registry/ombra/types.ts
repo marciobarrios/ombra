@@ -7,8 +7,10 @@ export type OmbraGalleryItem = {
   id: string;
   alt: string;
   caption: string;
-  width: number;
-  height: number;
+  /** Intrinsic width. With `height`, it reserves the photo's box before the file loads. */
+  width?: number;
+  /** Intrinsic height. Without both, the viewer measures the photo once it loads. */
+  height?: number;
   /** CSS aspect-ratio for the cover-cropped thumbnail, such as "3 / 4". */
   frame: string;
   src: string;

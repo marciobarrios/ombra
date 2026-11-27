@@ -7,6 +7,7 @@ import { cn } from "cn";
 import { createContext, useContext, useLayoutEffect } from "react";
 import type { ReactNode } from "react";
 
+import { connectionHint, loadOrder, loadReach } from "./load-window";
 import { OmbraCaption } from "./ombra-caption";
 import {
   OmbraCounter,
@@ -177,23 +178,34 @@ function GalleryParts({
 
     let cancelled = false;
 
-    // Decode the neighbors before they enter the viewport, and retain decoded
-    // sources so changing selection never downgrades an outgoing photo.
-    for (const item of items.slice(Math.max(0, index - 1), index + 2)) {
+    // Decode the full-size file off screen and swap it in only once it can paint, so the
+    // thumbnail never gives way to a blank box. Decoded sources stay, so changing
+    // selection never downgrades an outgoing photo.
+    function load(item: OmbraGalleryItem): Promise<void> {
       const loader = new Image();
 
       loader.sizes = "100vw";
       loader.srcset = item.srcSet;
       loader.src = item.src;
 
-      void loader.decode().then(
+      return loader.decode().then(
         () => {
-          if (cancelled) return;
-
-          sendView({ type: "decoded", id: item.id });
+          if (!cancelled) sendView({ type: "decoded", id: item.id });
         },
+        // A file that fails keeps the thumbnail.
         () => undefined,
       );
+    }
+
+    // The active photo first, then its neighbours, so they never compete with it.
+    const [current, ...neighbours] = loadOrder(items, index, loadReach(connectionHint()));
+
+    if (current) {
+      void load(current).then(() => {
+        if (cancelled) return;
+
+        for (const item of neighbours) void load(item);
+      });
     }
 
     return () => {
@@ -256,7 +268,7 @@ function GalleryParts({
                         <OmbraMedia
                           width={item.width}
                           height={item.height}
-                          className="rounded-[6px] outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10"
+                          className="group/media rounded-[6px] outline outline-1 -outline-offset-1 outline-(--ombra-ink)/10 data-[status=error]:bg-(--ombra-ink)/5"
                         >
                           <img
                             data-slot="ombra-image"
@@ -269,8 +281,15 @@ function GalleryParts({
                             height={item.height}
                             draggable={false}
                             fetchPriority={current ? "high" : "low"}
-                            className="rounded-[inherit]"
+                            className="rounded-[inherit] group-data-[status=error]/media:opacity-0"
                           />
+                          {/* A failed photo keeps its box, and the viewer stays usable around it. */}
+                          <span
+                            data-slot="ombra-media-fallback"
+                            className="absolute inset-0 hidden items-center justify-center p-4 text-center text-sm text-(--ombra-ink)/70 group-data-[status=error]/media:flex"
+                          >
+                            This photo could not load.
+                          </span>
                         </OmbraMedia>
                       </OmbraZoom>
                     </OmbraSlide>

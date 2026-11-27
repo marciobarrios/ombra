@@ -43,6 +43,7 @@ export function SpikeApp({
   debugZoom,
   benchRuns,
   photoCount,
+  unsized,
 }: {
   initialEngine: MorphEngine;
   initialSlow: boolean;
@@ -52,6 +53,8 @@ export function SpikeApp({
   benchRuns: number | null;
   /** How many photos `?photos=` asks for, or null for the whole set. */
   photoCount: number | null;
+  /** `?unsized=1` leaves out each photo's size, so the viewer measures it as it loads. */
+  unsized: boolean;
 }) {
   const [{ engine, slow, spring }, dispatch] = useReducer(settingsReducer, {
     engine: initialEngine,
@@ -72,10 +75,11 @@ export function SpikeApp({
 
   readoutConditionRef.current = readoutCondition;
 
-  const items = useMemo(
-    () => (photoCount === null ? photos : spikePhotos(photoCount)),
-    [photoCount],
-  );
+  const items = useMemo(() => {
+    const chosen = photoCount === null ? photos : spikePhotos(photoCount);
+
+    return unsized ? chosen.map(({ width: _w, height: _h, ...photo }) => photo) : chosen;
+  }, [photoCount, unsized]);
 
   const benchListener = useRef<BenchSampleListener | null>(null);
 
@@ -155,8 +159,9 @@ function reducedNote() {
       Add <span className="font-mono">?engine=vt</span>, <span className="font-mono">flip</span>, or{" "}
       <span className="font-mono">fade</span>, <span className="font-mono">?slow=1</span>, and{" "}
       <span className="font-mono">?spring=1</span> to inspect, and{" "}
-      <span className="font-mono">?photos=3</span> (up to 50) to change how many photos there are.
-      When the system asks for reduced motion, movement falls back to a fade.
+      <span className="font-mono">?photos=3</span> (up to 50) to change how many photos there are,
+      and <span className="font-mono">?unsized=1</span> to leave out their sizes. When the system
+      asks for reduced motion, movement falls back to a fade.
     </p>
   );
 }

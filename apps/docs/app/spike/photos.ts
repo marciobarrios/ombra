@@ -302,7 +302,10 @@ const sources: readonly PhotoSource[] = [
   },
 ];
 
-export const photos: readonly OmbraGalleryItem[] = sources.map((source) => {
+/** A spike photo always knows its size, which the benches measure against. */
+export type SpikePhoto = OmbraGalleryItem & { width: number; height: number };
+
+export const photos: readonly SpikePhoto[] = sources.map((source) => {
   const format = source.format ?? "jpg";
   const thumbSrc = `/photos/${source.file}-960.${format}`;
   const src = `/photos/${source.file}-1600.${format}`;
@@ -324,7 +327,7 @@ export const photos: readonly OmbraGalleryItem[] = sources.map((source) => {
  * `count` photos for the spike's `?photos=` parameter, repeating the set past its end with
  * distinct IDs, so the strip can be tried at 3, 14 and 50 images.
  */
-export function spikePhotos(count: number): readonly OmbraGalleryItem[] {
+export function spikePhotos(count: number): readonly SpikePhoto[] {
   return Array.from({ length: count }, (_, index) => {
     const photo = photos[index % photos.length];
     const round = Math.floor(index / photos.length);

@@ -176,8 +176,16 @@ export const galleryItemFields = [
     note: "Accessible name of the photo. The viewer uses it as the dialog name.",
   },
   { name: "caption", type: "string", required: true, note: "Text under the photo in the viewer." },
-  { name: "width", type: "number", required: true, note: "Intrinsic width in pixels." },
-  { name: "height", type: "number", required: true, note: "Intrinsic height in pixels." },
+  {
+    name: "width",
+    type: "number",
+    note: "Intrinsic width in pixels. With `height`, it reserves the photo's box before the file loads.",
+  },
+  {
+    name: "height",
+    type: "number",
+    note: "Intrinsic height in pixels. Without both, the viewer measures the photo once it loads and fades it in.",
+  },
   {
     name: "frame",
     type: "string",
@@ -652,11 +660,16 @@ export const apiGroups: readonly ApiGroup[] = [
               {
                 name: "width",
                 type: "number",
-                required: true,
-                note: "Intrinsic width, in any unit that shares a ratio with height. Zoom stops where the media shows at this width.",
+                note: "Intrinsic width, in any unit that shares a ratio with height. Zoom stops where the media shows at this width. Give it with `height` to reserve the box before the image loads; without both, the media takes the image's natural size once it loads and stays transparent until then.",
               },
-              { name: "height", type: "number", required: true, note: "Intrinsic height." },
+              { name: "height", type: "number", note: "Intrinsic height." },
             ],
+          },
+        ],
+        dataAttributes: [
+          {
+            name: "data-status",
+            note: "`loading`, `loaded` or `error`, from the first `<img>` inside. A failed image keeps its box, so style a fallback on `error`; the viewer stays usable.",
           },
         ],
       },
