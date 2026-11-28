@@ -699,9 +699,11 @@ export function useZoom(
      * `overflow: hidden`. Any scroll during a pinch is that glide, so it goes back.
      */
     const onTrackScroll = () => {
+      if (!pinching.current) return;
+
       const slide = layerRef.current?.closest("[data-slot=ombra-slide]");
 
-      if (pinching.current && slide) pinSlide(track, slide);
+      if (slide) pinSlide(track, slide);
     };
 
     /** Lets go of a pinch once fewer than two fingers are down. */
