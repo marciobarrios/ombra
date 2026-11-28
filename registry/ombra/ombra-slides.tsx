@@ -5,7 +5,8 @@ import { cn } from "cn";
 import { createContext, useCallback, useContext, useLayoutEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 
-import { indexFromScroll } from "./geometry";
+import { imageIn, indexFromScroll } from "./geometry";
+import { initialMediaState, mediaReducer, mediaSize } from "./media-status";
 import { useOmbraRoot } from "./ombra-root";
 import type { OmbraSlidesHandle } from "./ombra-root";
 import { clampScrollLeft } from "./scroll-range";
@@ -29,10 +30,13 @@ export type OmbraSlideProps = useRender.ComponentProps<"div"> & {
 };
 
 export type OmbraMediaProps = useRender.ComponentProps<"div"> & {
-  /** Intrinsic width of the media, in any unit that shares a ratio with `height`. */
-  width: number;
+  /**
+   * Intrinsic width of the media, in any unit that shares a ratio with `height`. Give both
+   * to reserve the box before the image loads; without them, the image's natural size is used.
+   */
+  width?: number;
   /** Intrinsic height of the media. */
-  height: number;
+  height?: number;
 };
 
 const SlideContext = createContext<string | null>(null);
@@ -364,7 +368,10 @@ export function OmbraSlide({ itemId, ref, className, render, ...props }: OmbraSl
  * ratio that fits its parent's size container, centred, which is where the open morph ends
  * and the close morph leaves from. Any image renderer inside it works: a native `img`,
  * Next.js `Image`, a `picture`. The first `<img>` inside receives a decoded source when a
- * swipe catches it still loading.
+ * swipe catches it still loading, and its loads and errors set `data-status`.
+ *
+ * Without `width` and `height`, the media takes the image's natural size once it loads, and
+ * stays transparent until then, so it never paints at a guessed size and jumps.
  *
  * `OmbraSlide` is a size container, so media directly in a slide fills it. Beside a caption,
  * give the media a parent of its own with `container-type: size` that centres it.
@@ -380,34 +387,88 @@ export function OmbraMedia({
 }: OmbraMediaProps) {
   const itemId = useSlideItem("OmbraMedia");
   const { registerMedia } = useOmbraRoot();
+  const [media, sendMedia] = useReducerWithBailout(mediaReducer, initialMediaState);
+  const size = mediaSize(width, height, media.natural);
+  const sizeWidth = size?.width;
+  const sizeHeight = size?.height;
 
   const register = useCallback(
     (element: HTMLElement | null) => {
-      if (!element) return;
+      // A morph needs the size, so media still measuring itself is not a landing yet.
+      if (!element || sizeWidth === undefined || sizeHeight === undefined) return;
 
-      return registerMedia({ itemId, element, width, height });
+      return registerMedia({ itemId, element, width: sizeWidth, height: sizeHeight });
     },
-    [itemId, width, height, registerMedia],
+    [itemId, sizeWidth, sizeHeight, registerMedia],
   );
 
-  const ratio = width > 0 && height > 0 ? width / height : 1;
+  // Follows the node itself, so a `render` that swaps the element listens on the new one.
+  const listen = useCallback(
+    (element: HTMLElement | null) => {
+      if (!element) return;
+
+      const report = (image: HTMLImageElement) => {
+        if (image.naturalWidth > 0) {
+          sendMedia({
+            type: "image-loaded",
+            width: image.naturalWidth,
+            height: image.naturalHeight,
+          });
+        } else if (image.getAttribute("src") || image.getAttribute("srcset")) {
+          sendMedia({ type: "image-failed" });
+        }
+      };
+
+      // A cached image can finish before this listens, and a node that replaces another
+      // may still be loading its own.
+      const image = imageIn(element);
+
+      if (image?.complete) report(image);
+      else if (image) sendMedia({ type: "image-pending" });
+
+      // Load and error do not bubble, so listen while they pass down to the image. A failed
+      // image has no natural width, so `report` tells the two apart.
+      const settled = (event: Event) => {
+        const target = imageIn(element);
+
+        if (target && event.target === target) report(target);
+      };
+
+      element.addEventListener("load", settled, true);
+      element.addEventListener("error", settled, true);
+
+      return () => {
+        element.removeEventListener("load", settled, true);
+        element.removeEventListener("error", settled, true);
+      };
+    },
+    [sendMedia],
+  );
+
+  const measuring = width === undefined || height === undefined;
+  const hidden = size === null && media.status !== "error";
+  const ratio = size ? size.width / size.height : 1;
 
   const fit: CSSProperties = {
-    aspectRatio: `${width} / ${height}`,
+    aspectRatio: `${ratio}`,
     width: `min(100cqw, calc(100cqh * ${ratio}))`,
+    ...(hidden ? { opacity: 0 } : null),
     ...style,
   };
 
   return useRender({
     render,
-    ref: [register, ref ?? null],
+    ref: [register, listen, ref ?? null],
     props: {
       "data-slot": "ombra-media",
+      "data-status": media.status,
       ...props,
       style: fit,
       className: cn(
         // m-auto centres it in a flex parent, which is where the morph expects it.
         "relative m-auto max-h-full max-w-full shrink-0 [&>img]:h-full [&>img]:w-full [&>img]:object-contain",
+        // Media that measures itself fades in once its size is known.
+        measuring && "transition-opacity duration-200 ease-out motion-reduce:transition-none",
         className,
       ),
     },

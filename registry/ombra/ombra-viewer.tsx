@@ -30,6 +30,7 @@ import {
   RESTING_POSE,
   restsOnSlide,
   revealElement,
+  imageIn,
   uncropBox,
 } from "./geometry";
 import { startFrameSampler } from "./frame-sampler";
@@ -194,15 +195,6 @@ function showDecoded(image: HTMLImageElement, src: string) {
 
       if (own !== null) image.setAttribute("src", own);
     });
-}
-
-/** The image inside a slide's media, which can take a decoded source while it still loads. */
-function imageIn(media: HTMLElement | null): HTMLImageElement | null {
-  if (!media) return null;
-
-  if (media instanceof HTMLImageElement) return media;
-
-  return media.querySelector("img");
 }
 
 /**

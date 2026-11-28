@@ -119,6 +119,15 @@ export function boxContains(box: Box, x: number, y: number): boolean {
   return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
 }
 
+/** The image inside a media part: the part itself when it is an `<img>`, or its first `<img>`. */
+export function imageIn(media: HTMLElement | null): HTMLImageElement | null {
+  if (!media) return null;
+
+  if (media instanceof HTMLImageElement) return media;
+
+  return media.querySelector("img");
+}
+
 /** Whether an element is in the document and laid out, so it has a box to morph to. */
 export function isRendered(element: HTMLElement | null | undefined): element is HTMLElement {
   return Boolean(element?.isConnected && element.getClientRects().length > 0);

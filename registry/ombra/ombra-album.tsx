@@ -144,13 +144,24 @@ function AlbumViewer({ title, photos }: Pick<OmbraAlbumProps, "title" | "photos"
               className="flex-col"
             >
               <div className="flex min-h-0 w-full flex-1 px-3 [container-type:size]">
-                <OmbraMedia width={photo.width} height={photo.height} className="rounded-[6px]">
+                <OmbraMedia
+                  width={photo.width}
+                  height={photo.height}
+                  className="group/media rounded-[6px] data-[status=error]:bg-(--ombra-ink)/5"
+                >
                   {/* `<picture>` lays out as its image, so the image fills the media itself. */}
                   <Picture
                     photo={photo}
                     sizes="100vw"
-                    className="h-full w-full rounded-[6px] object-contain"
+                    className="h-full w-full rounded-[6px] object-contain group-data-[status=error]/media:opacity-0"
                   />
+                  {/* A failed photo keeps its box, and the viewer stays usable around it. */}
+                  <span
+                    data-slot="ombra-media-fallback"
+                    className="absolute inset-0 hidden items-center justify-center p-4 text-center text-sm text-(--ombra-ink)/70 group-data-[status=error]/media:flex"
+                  >
+                    This photo could not load.
+                  </span>
                 </OmbraMedia>
               </div>
               <OmbraChrome className="w-full pt-3 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]">

@@ -175,6 +175,16 @@
           "target": "components/ombra/zoom-limit.ts"
         },
         {
+          "path": "registry/ombra/load-window.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/load-window.ts"
+        },
+        {
+          "path": "registry/ombra/media-status.ts",
+          "type": "registry:lib",
+          "target": "components/ombra/media-status.ts"
+        },
+        {
           "path": "registry/ombra/gallery-state.ts",
           "type": "registry:lib",
           "target": "components/ombra/gallery-state.ts"

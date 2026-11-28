@@ -23,6 +23,7 @@ async function SpikeRoute({ searchParams }: { searchParams: PageProps<"/spike">[
       debugZoom={firstString(query.debug) === "zoom"}
       benchRuns={firstString(query.bench) === "1" ? benchRuns(firstString(query.runs)) : null}
       photoCount={photoCount(firstString(query.photos))}
+      unsized={firstString(query.unsized) === "1"}
     />
   );
 }

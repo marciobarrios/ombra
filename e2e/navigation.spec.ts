@@ -171,4 +171,43 @@ test.describe("spike navigation", () => {
       await expect(counter).toHaveText(text!);
     }
   });
+
+  // MAR-24: only the active photo and its neighbours load in full, and a photo whose files
+  // fail shows a fallback in its box without stopping navigation.
+  test("loads one neighbour ahead and steps past a failed photo", async ({ page }) => {
+    await page.route(/\/photos\/08-/, (route) => route.abort());
+    await page.goto("/spike?engine=fade");
+    await page.waitForLoadState("networkidle");
+
+    const large: string[] = [];
+
+    page.on("request", (request) => {
+      const file = /\/photos\/(\d+)-1600\./.exec(request.url())?.[1];
+
+      if (file) large.push(file);
+    });
+
+    await page
+      .getByRole("button", { name: "Snowy peaks under the Milky Way", exact: true })
+      .click();
+    await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+    await expect.poll(() => [...new Set(large)].sort()).toEqual(["06", "07", "08"]);
+
+    const counter = page.locator("[data-slot=ombra-counter]");
+    const active = page.locator("[data-slot=ombra-slide][data-active=true]");
+
+    await page.getByRole("button", { name: "Next photo" }).click();
+    await expect(counter).toHaveText(`8 / ${photoCount}`);
+    await expect(active.locator("[data-slot=ombra-media]")).toHaveAttribute("data-status", "error");
+    await expect(active.locator("[data-slot=ombra-media-fallback]")).toBeVisible();
+
+    await page.getByRole("button", { name: "Next photo" }).click();
+    await expect(counter).toHaveText(`9 / ${photoCount}`);
+    await expect(active.locator("[data-slot=ombra-media]")).toHaveAttribute(
+      "data-status",
+      "loaded",
+    );
+    // Never further ahead than one photo past the active one.
+    expect(large.every((file) => Number(file) <= 10)).toBe(true);
+  });
 });
