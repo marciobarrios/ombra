@@ -152,23 +152,39 @@ function slideStep(track: HTMLElement): number {
   return Math.abs(second.offsetLeft - first.offsetLeft);
 }
 
+/** The distance from the track's centre to the slide's centre, in pixels. */
+function offCentre(track: HTMLElement, slide: Element): number {
+  const rect = slide.getBoundingClientRect();
+
+  return rect.left + rect.width / 2 - (track.getBoundingClientRect().left + track.clientWidth / 2);
+}
+
+/**
+ * Puts the slide in the centre at once. A new scroll ends any smooth scroll still in flight,
+ * even one that has not moved yet, so it is issued when the slide already sits there too.
+ */
+function pinSlide(track: HTMLElement, slide: Element) {
+  track.scrollTo({ left: track.scrollLeft + offCentre(track, slide), behavior: "auto" });
+}
+
 /**
  * Puts the slide nearest the centre exactly there, at once. A new scroll ends any smooth
  * scroll still in flight, which `overflow: hidden` alone would let carry on.
  */
 function pinNearestSlide(track: HTMLElement) {
-  const mid = track.getBoundingClientRect().left + track.clientWidth / 2;
-  let offset = Number.POSITIVE_INFINITY;
+  let nearest: Element | null = null;
+  let distance = Number.POSITIVE_INFINITY;
 
-  for (const slide of track.querySelectorAll<HTMLElement>("[data-slot=ombra-slide]")) {
-    const rect = slide.getBoundingClientRect();
-    const candidate = rect.left + rect.width / 2 - mid;
+  for (const slide of track.querySelectorAll("[data-slot=ombra-slide]")) {
+    const candidate = Math.abs(offCentre(track, slide));
 
-    if (Math.abs(candidate) < Math.abs(offset)) offset = candidate;
+    if (candidate < distance) {
+      nearest = slide;
+      distance = candidate;
+    }
   }
 
-  if (Number.isFinite(offset))
-    track.scrollTo({ left: track.scrollLeft + offset, behavior: "auto" });
+  if (nearest) pinSlide(track, nearest);
 }
 
 function capturePointer(track: HTMLElement, pointerId: number) {
@@ -677,6 +693,17 @@ export function useZoom(
       return true;
     };
 
+    /**
+     * A glide can escape the pin: Firefox runs a smooth scroll off the main thread, so a
+     * pin issued before its first frame changes nothing and the glide carries on under
+     * `overflow: hidden`. Any scroll during a pinch is that glide, so it goes back.
+     */
+    const onTrackScroll = () => {
+      const slide = layerRef.current?.closest("[data-slot=ombra-slide]");
+
+      if (pinching.current && slide) pinSlide(track, slide);
+    };
+
     /** Lets go of a pinch once fewer than two fingers are down. */
     const releasePinch = () => {
       if (!pinching.current) return;
@@ -1069,6 +1096,7 @@ export function useZoom(
     };
 
     track.addEventListener("pointerdown", onPointerDown);
+    track.addEventListener("scroll", onTrackScroll, { passive: true });
     track.addEventListener("pointermove", onPointerMove);
     track.addEventListener("pointerup", onPointerUp);
     track.addEventListener("pointercancel", onPointerUp);
@@ -1083,6 +1111,7 @@ export function useZoom(
 
     return () => {
       track.removeEventListener("pointerdown", onPointerDown);
+      track.removeEventListener("scroll", onTrackScroll);
       track.removeEventListener("pointermove", onPointerMove);
       track.removeEventListener("pointerup", onPointerUp);
       track.removeEventListener("pointercancel", onPointerUp);
