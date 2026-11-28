@@ -32,3 +32,30 @@ for (const colorScheme of ["light", "dark"] as const) {
     expect(ink).toBe(foreground);
   });
 }
+
+// A manual theme overrides the system setting, persists across loads, and the viewer follows
+// it (MAR-106).
+test("a chosen dark theme persists and the viewer follows it on a light system", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  await page.goto("/");
+  const lightBody = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+
+  await page.getByTitle("Dark").click();
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.getByRole("radio", { name: "Dark" })).toBeChecked();
+
+  await page.locator("[data-slot=ombra-trigger]").first().click();
+  await expect(page.locator("[data-slot=ombra-viewer]")).toHaveAttribute("data-phase", "open");
+
+  const { backdrop, body } = await page.evaluate(() => ({
+    backdrop: getComputedStyle(document.querySelector("[data-slot=ombra-backdrop]")!)
+      .backgroundColor,
+    body: getComputedStyle(document.body).backgroundColor,
+  }));
+
+  expect(body).not.toBe(lightBody);
+  expect(backdrop).toBe(body);
+});

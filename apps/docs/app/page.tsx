@@ -3,6 +3,7 @@ import Link from "next/link";
 import { OmbraGallery } from "../../../registry/ombra/ombra-gallery";
 import { OmbraMosaic } from "../../../registry/ombra/ombra-mosaic";
 import { PhotoCredit } from "./photo-credit";
+import { ThemeControl } from "./theme-control";
 import { photos } from "./spike/photos";
 
 const demo = photos.slice(0, 6);
@@ -12,7 +13,8 @@ const linkClassName =
 
 export default function Home() {
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-6 pt-24 pb-16">
+    <main className="relative mx-auto flex w-full max-w-5xl flex-1 flex-col px-6 pt-24 pb-16">
+      <ThemeControl className="absolute top-6 right-6" />
       <div className="max-w-3xl">
         <p className="font-display text-sm tracking-[0.22em] text-brand">OMBRA</p>
         <h1 className="font-display mt-4 text-5xl leading-none sm:text-6xl">A lightbox you own.</h1>
