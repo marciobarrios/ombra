@@ -14,6 +14,7 @@
     "playwright.config.ts",
     "e2e/**/*.ts",
     "tools/budget/**/*.ts",
-    "tools/api-types/**/*.ts"
+    "tools/api-types/**/*.ts",
+    "tools/install-check/**/*.ts"
   ]
 }
