@@ -66,8 +66,8 @@ export default function PerformancePage() {
 
       <h2 className="font-display mt-14 text-3xl">Size</h2>
       <p className="mt-4 leading-7 text-foreground/80">
-        The pre-spike proposal was 12 KB gzipped. The shipped recipes measure 29,611 bytes, so the
-        enforced ceiling is 32 KB (32 × 1024 bytes). 3,157 bytes of headroom remain, for the v0.1
+        The pre-spike proposal was 12 KB gzipped. The shipped recipes measure 29,681 bytes, so the
+        enforced ceiling is 32 KB (32 × 1024 bytes). 3,087 bytes of headroom remain, for the v0.1
         and v1 features that go into the gallery bundle: deep links, windowing and video. Each one
         still records its growth here. The first ceiling was 27 KB, set when the core measured
         26,252 bytes; it moved to 32 KB once captions left 78 bytes. Zoom and track arbitration
