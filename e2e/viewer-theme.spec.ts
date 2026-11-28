@@ -42,6 +42,8 @@ test("a chosen dark theme persists and the viewer follows it on a light system",
   await page.goto("/");
   const lightBody = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 
+  // Wait for hydration, so the click reaches the radio's handler.
+  await expect(page.getByRole("radio", { name: "System" })).toBeChecked();
   await page.getByTitle("Dark").click();
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
