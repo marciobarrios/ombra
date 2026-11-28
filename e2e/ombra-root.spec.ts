@@ -123,6 +123,11 @@ test.describe("OmbraRoot", () => {
     await harness(page, { type: "parent-selected", activeId: first.id });
     await expectActive(page, first.alt, "1 / 5");
 
+    // A second choice while the track still glides to the first one turns it around.
+    await harness(page, { type: "parent-selected", activeId: fifth.id });
+    await harness(page, { type: "parent-selected", activeId: third.id });
+    await expectActive(page, third.alt, "3 / 5");
+
     await harness(page, { type: "parent-closed" });
     await expect(viewer(page)).toHaveCount(0);
   });

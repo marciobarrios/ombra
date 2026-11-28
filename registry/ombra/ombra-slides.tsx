@@ -119,6 +119,9 @@ export function OmbraSlides({
 
     let settled = true;
     let target: string | null = null;
+    // Gliding to the item the root already has active: a parent's choice, or back from a
+    // slide it refused. The slides passed on the way are not choices, so none is asked for.
+    let gliding = false;
     let timer = 0;
     const hold = () => rootRef.current.trackHoldRef.current?.() ?? "free";
 
@@ -138,21 +141,30 @@ export function OmbraSlides({
       return slide ? rootRef.current.slideItem(slide) : null;
     };
 
+    /** Scrolls to an item's slide. Returns whether the track has anywhere to go. */
     const scrollTo = (itemId: string, behavior: ScrollBehavior) => {
       const slide = rootRef.current.slideFor(itemId);
 
-      if (!slide) return;
+      if (!slide) return false;
 
       const delta = slide.getBoundingClientRect().left - node.getBoundingClientRect().left;
-      const left = node.scrollLeft + delta - (node.clientWidth - slide.clientWidth) / 2;
 
-      node.scrollTo({ left: clampScrollLeft(node, left), behavior });
+      const left = clampScrollLeft(
+        node,
+        node.scrollLeft + delta - (node.clientWidth - slide.clientWidth) / 2,
+      );
+
+      const moves = Math.abs(left - node.scrollLeft) >= 1;
+
+      node.scrollTo({ left, behavior });
+
+      return moves;
     };
 
     const behavior = (): ScrollBehavior => (reducedRef.current ? "auto" : "smooth");
 
     const publish = () => {
-      if (hold() === "gesture") return;
+      if (gliding || hold() === "gesture") return;
 
       const itemId = centred();
 
@@ -165,14 +177,38 @@ export function OmbraSlides({
 
       if (activeId === null || rootRef.current.state.phase !== "open") return;
 
-      if (!settled || hold() !== "free" || centred() === activeId) return;
+      // The viewer's own navigation asks for each slide it passes. Those answers are not new
+      // choices to scroll to.
+      if (hold() !== "free" || (target !== null && !gliding)) return;
 
+      // A new choice during a glide turns it towards that item.
+      if (gliding) {
+        // Back to the slide it has not left yet: no scroll follows to end the glide.
+        if (activeId !== target && !scrollTo(activeId, to)) {
+          gliding = false;
+          target = null;
+        } else {
+          target = activeId;
+        }
+
+        return;
+      }
+
+      if (!settled || centred() === activeId) return;
+
+      gliding = to === "smooth";
+      target = gliding ? activeId : null;
       scrollTo(activeId, to);
     };
 
     const settle = () => {
+      // A pause in a smooth navigation, from slow frames or an early scrollend, is not its
+      // end. Carry on to the destination rather than rest on a slide the track only passed.
+      if (target !== null && centred() !== target && scrollTo(target, behavior())) return;
+
       settled = true;
       target = null;
+      gliding = false;
       publish();
       // One announcement for the slide the track rested on, not each slide it passed.
       announceSettled(centred());
@@ -199,6 +235,7 @@ export function OmbraSlides({
 
     const onTrackInput = () => {
       target = null;
+      gliding = false;
     };
 
     const handle: OmbraSlidesHandle = {
@@ -211,6 +248,7 @@ export function OmbraSlides({
         if (itemId === rootRef.current.latestActiveId() && target === null) return;
 
         target = to === "smooth" ? itemId : null;
+        gliding = false;
 
         // Smooth scrolling publishes the centred slide as it moves. Selecting the
         // destination now would flash its border before the first scroll event.
@@ -261,8 +299,6 @@ export function OmbraSlides({
   const { activeId } = root.state;
 
   useLayoutEffect(() => {
-    if (handleRef.current?.navigationTarget() != null) return;
-
     snapRef.current?.(reducedRef.current ? "auto" : "smooth");
 
     const handle = handleRef.current;
