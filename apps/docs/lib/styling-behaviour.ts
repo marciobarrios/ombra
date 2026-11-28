@@ -145,6 +145,20 @@ export const styling: Guide = {
       ],
     },
     {
+      id: "themes",
+      title: "Light and dark themes",
+      blocks: [
+        {
+          kind: "text",
+          text: "The viewer has no colours of its own. `--ombra-surface` and `--ombra-ink` default to your `--color-background` and `--color-foreground`, so the backdrop, the controls, the captions and the thumbnail strip's edge fades follow whatever switches those tokens: a `prefers-color-scheme` query, or a class or attribute your theme toggle sets on `<html>`. Set the two variables on the content and the backdrop to give the viewer a different surface.",
+        },
+        {
+          kind: "text",
+          text: "iOS Safari 26 picks the colour of its status bar and toolbar once, while the backdrop is still fading in, and falls back to its default glass, which follows the system appearance. The bars blend in when your theme matches the system setting. When a manual choice differs from it, such as a dark theme on a phone set to light, the bars can show the other appearance around the viewer. Keep `color-scheme` on the root in step with the chosen theme.",
+        },
+      ],
+    },
+    {
       id: "global-css",
       title: "Global CSS",
       blocks: [
